@@ -340,7 +340,7 @@ function setup(){
   seed=11;alertDone=false;firstLaunchT=0;saidEscorts=false;objs=[];byId=new Map();nextId=1;simT=0;acc=0;events=[];log=[];comms=[];frames=[];lastFrame=-1;firstLaunch=false;scriptIdx=0;replayIdx=null;
   stats={exp:{blue:{'SM-2':0,ESSM:0,AAM:0,CIWS:0},red:{ASM:0,Drones:0}},lost:{blue:{},red:{}},intercepts:0,hits:0,ciws:0,ff:0};
   rep={};
-  const ship=(kind,name,x,y,extra)=>add(Object.assign({side:'blue',kind,name,x,y,alt:0,hdg:.12,spd:K[kind].spd,hp:100,ctrl:'Mission',mission:'Sea control ALPHA',doctrine:'Free',emcon:'Active'},extra));
+  const ship=(kind,name,x,y,extra)=>add(Object.assign({side:'blue',kind,name,x,y,alt:0,hdg:.12,spd:K[kind].spd,hp:100,ctrl:'Mission',mission:'Sea control ALPHA',doctrine:'Free',emcon:'Active',st:[x,y]},extra));
   ship('cvn','Kestrel',0,0,{mag:{ESSM:[16,16],CIWS:[2,2]},channels:2,vip:true});
   ship('ddg','Halyard',14,9,{mag:{'SM-2':[32,32],ESSM:[8,8],CIWS:[1,1]},channels:4});
   ship('ddg','Bowline',14,-9,{mag:{'SM-2':[32,32],ESSM:[8,8],CIWS:[1,1]},channels:4});
@@ -489,6 +489,24 @@ function doOrder(o,dt){
       if(t&&simT>o.cool&&!(t.engagedBy&&byId.get(t.engagedBy)?.alive)){launch('aam',o,t,'AAM');o.aam--;stats.exp.blue.AAM++;o.cool=simT+3.5;report(o,'AAM',1);}}
     return true;
   }
+  if(od.type==='rtb'){
+    const b=byId.get(od.base);
+    if(!b||!b.alive){logMsg('orders',`${o.name}: ${b?b.name:'the base'} is lost, cannot land. Returning to ${o.mission}.`,o.x,o.y);o.order=null;releaseUnit(o);return false;}
+    const [mx,my]=marshalPt(b);
+    if(od.phase==='approach'){steerTo(o,Math.atan2(b.y-o.y,b.x-o.x),.8,dt);o.alt=Math.max(20,o.alt-dt*90);if(dist(o,b)<.7)land(o,b);return true;}
+    const d=Math.hypot(mx-o.x,my-o.y);
+    if(od.phase==='transit'){if(d<5){od.phase='marshal';od.slot=b.slotSeq=(b.slotSeq||0)+1;}else steerTo(o,Math.atan2(my-o.y,mx-o.x),.5,dt);}
+    if(od.phase==='marshal'){o.orbit={x:mx,y:my,r:3.5};orbit(o,dt);
+      let rank=0;for(const x of objs)if(x.alive&&x!==o&&x.order&&x.order.type==='rtb'&&x.order.base===b.id&&(x.order.phase==='approach'||(x.order.phase==='marshal'&&x.order.slot<od.slot)))rank++;
+      o.alt+=((1200+rank*300)-o.alt)*.02;
+      if(rank===0&&simT>=(b.nextLand||0)){od.phase='approach';b.nextLand=simT+LAND_GAP;}}
+    selfDefend(o);return true;}
+  if(od.type==='track'){
+    const P=od.pts;let bi=0,bd=1e9;for(let i=0;i<P.length;i++){const q=(P[i][0]-o.x)**2+(P[i][1]-o.y)**2;if(q<bd){bd=q;bi=i;}}
+    const far=bd>9,tp=P[(bi+(far?0:3))%P.length];
+    steerTo(o,Math.atan2(tp[1]-o.y,tp[0]-o.x),.5,dt);o.alt+=(od.alt-o.alt)*.02;
+    if(!far&&!od.on){od.on=true;}
+    selfDefend(o);return true;}
   if(od.type==='defend'){
     const v=byId.get(od.unit);
     if(!v||!v.alive){logMsg('orders',`${o.name}: ${v?v.name:'the protected unit'} is lost. Returning to ${o.mission}.`,o.x,o.y);o.order=null;if(o.ctrl==='Order')releaseUnit(o);return false;}
@@ -536,6 +554,59 @@ function issueRoute(pts){
   renderUnit();
 }
 function releaseUnit(u){u.ctrl=u.prevCtrl||'Mission';u.order=null;if(u.home)u.orbit=u.home;if(K[u.kind].domain!=='air')u.spd=K[u.kind].spd;}
+const LAND_GAP=5,MARSHAL_D=8,DECK_TURN=90;
+function prepOrder(u){if(u.ctrl!=='Order'&&u.ctrl!=='Manual')u.prevCtrl=u.ctrl;if(!u.home&&u.orbit)u.home=u.orbit;}
+function marshalPt(b){return [b.x-Math.cos(b.hdg)*MARSHAL_D,b.y-Math.sin(b.hdg)*MARSHAL_D];}
+function deckOf(b){return objs.filter(o=>o.deck===b.id);}
+// RTB and land: aircraft go to the marshal stack astern of the carrier, land one at a time, rearm on deck; ships return to station
+function issueRtb(units,label){
+  const c=byId.get(1),ok=[],ref=[];
+  for(const u of units){if(!u||!u.alive||u.side!=='blue'||K[u.kind].missile)continue;
+    if(u===c){ref.push(`${u.name} is the base`);continue;}
+    if(!c||!c.alive){ref.push(`${u.name}: no base left`);continue;}
+    prepOrder(u);
+    if(K[u.kind].domain==='air')u.order={type:'rtb',base:c.id,phase:'transit'};
+    else u.order={type:'defend',unit:c.id,ox:(u.st||[3,0])[0],oy:(u.st||[3,0])[1],rtb:true};
+    if(u.ctrl!=='Manual')u.ctrl='Order';ok.push(u);}
+  if(ok.length){const air=ok.filter(u=>K[u.kind].domain==='air').length,sh=ok.length-air;
+    const who=label||(ok.length>4?ok.length+' units':ok.map(u=>u.name).join(', '));
+    logMsg('orders',`${who}: RTB to ${c.name}.${air?` ${air} aircraft to the marshal stack ${MARSHAL_D} km astern, then land one every ${LAND_GAP} s.`:''}${sh?` ${sh} ship${sh>1?'s':''} back to station.`:''}`,c.x,c.y);}
+  if(ref.length){logMsg('orders',`RTB refused: ${ref.join('; ')}.`,c?c.x:0,c?c.y:0);toast(`RTB refused: ${ref.join('; ')}.`);}
+  renderUnit();}
+let rtbAllT=0;
+function rtbAll(){const air=objs.filter(o=>o.alive&&o.side==='blue'&&K[o.kind].domain==='air'&&!K[o.kind].missile);
+  const now=performance.now();
+  if(now-rtbAllT>3000){rtbAllT=now;toast(`Press Shift+R again (or click RTB all again) within 3 s to send all ${air.length} aircraft home to Kestrel.`);return;}
+  rtbAllT=0;issueRtb(air,`All aircraft (${air.length})`);}
+function land(o,b){o.alive=false;o.deck=b.id;o.landedT=simT;o.ready=false;o.order=null;o.ctrl=o.prevCtrl&&o.prevCtrl!=='Order'?o.prevCtrl:'Mission';
+  const n=deckOf(b).length;logMsg('orders',`${o.name} landed on ${b.name}. ${n} aircraft on deck.`,b.x,b.y);}
+function deckTick(){for(const o of objs){if(o.deck==null)continue;const b=byId.get(o.deck);
+  if(!b||!b.alive){o.deck=null;killObj(o,`lost on deck with ${b?b.name:'the carrier'}`);continue;}
+  if(!o.ready&&simT-o.landedT>=DECK_TURN){o.ready=true;if(o.aamMax!=null)o.aam=o.aamMax;if(o.fuel!=null)o.fuel=.95;}}}
+function launchDeck(b){const r=deckOf(b).filter(o=>o.ready);if(!r.length){toast('No aircraft are ready yet. Rearming and refuelling take 90 s after landing.');return;}
+  r.forEach((o,i)=>{o.alive=true;o.deck=null;o.x=b.x+Math.cos(b.hdg)*(.4+i*.15);o.y=b.y+Math.sin(b.hdg)*(.4+i*.15);o.hdg=b.hdg;o.alt=300+i*40;o.trail=[];o.order=null;o.ctrl='Mission';o.prevCtrl=null;if(o.home)o.orbit=o.home;});
+  logMsg('orders',`${b.name} launched ${r.length} aircraft (${r.length>4?r.length+' aircraft':r.map(o=>o.name).join(', ')}). They return to their missions.`,b.x,b.y);renderUnit();}
+// racetrack holding pattern: two straight legs joined by half circles; aircraft stack by altitude
+function trackPts(a,b,r){const ux=b[0]-a[0],uy=b[1]-a[1],L=Math.hypot(ux,uy)||1,u=[ux/L,uy/L],n=[-u[1],u[0]],P=[],K1=10,K2=12,an=Math.atan2(n[1],n[0]);
+  for(let k=0;k<=K1;k++){const t=k/K1;P.push([a[0]+n[0]*r+ux*t,a[1]+n[1]*r+uy*t]);}
+  for(let k=1;k<K2;k++){const th=an-Math.PI*k/K2;P.push([b[0]+Math.cos(th)*r,b[1]+Math.sin(th)*r]);}
+  for(let k=0;k<=K1;k++){const t=k/K1;P.push([b[0]-n[0]*r-ux*t,b[1]-n[1]*r-uy*t]);}
+  for(let k=1;k<K2;k++){const th=an+Math.PI-Math.PI*k/K2;P.push([a[0]+Math.cos(th)*r,a[1]+Math.sin(th)*r]);}
+  return P;}
+let pendingTrack=false,tdrag=null;
+function issueTrack(a,b){
+  const units=[...sel].map(id=>byId.get(id)).filter(u=>u&&u.alive&&u.side==='blue'&&!K[u.kind].missile);
+  const air=units.filter(u=>K[u.kind].domain==='air'),ships=units.filter(u=>K[u.kind].domain!=='air');
+  if(!units.length){toast('Select your aircraft first, then choose Racetrack and drag its long leg on the plot.');return;}
+  if(ships.length){const m=`Racetrack refused for ${ships.map(u=>u.name).join(', ')}: ships cannot fly a holding pattern. Use Send to… or a drawn route.`;logMsg('orders',m,ships[0].x,ships[0].y);toast(m);}
+  if(!air.length)return;
+  const pts=trackPts(a,b,3),L=Math.round(Math.hypot(b[0]-a[0],b[1]-a[1])),c=byId.get(1);
+  const base={};air.forEach(u=>{prepOrder(u);const k=u.kind==='ucav'?'d':'a';base[k]=(base[k]||0)+1;
+    u.order={type:'track',pts,a,b,alt:(u.kind==='ucav'?1200:u.kind==='aew'?8500:4500)+(base[k]-1)*(u.kind==='ucav'?150:300)};if(u.ctrl!=='Manual')u.ctrl='Order';});
+  logMsg('orders',`${air.length>4?air.length+' aircraft':air.map(u=>u.name).join(', ')}: racetrack holding pattern, ${L} km legs, 6 km wide, ${pad3(brgOf({x:a[0],y:a[1]},{x:b[0],y:b[1]}))}°, ${Math.round(Math.hypot(a[0]-c.x,a[1]-c.y))} km from Kestrel. Stacked ${air.length>1?'300 m apart':'at '+air[0].order.alt+' m'}.`,a[0],a[1]);
+  renderUnit();}
+function finishTrack(){const a=tdrag.a;let b=tdrag.b;tdrag=null;pendingTrack=false;
+  if(Math.hypot(b[0]-a[0],b[1]-a[1])<3)b=[a[0]+20,a[1]];issueTrack(a,b);}
 function issueDefend(v){
   const units=[...sel].map(id=>byId.get(id)).filter(u=>u&&u.alive&&u.side==='blue'&&!K[u.kind].missile&&u!==v);
   if(!units.length){toast('Select the units that should protect it first, then right-click the unit to protect.');return;}
@@ -589,8 +660,22 @@ function drawOrders(){
     od.pts.forEach((p,i)=>{const s=toS(p[0],p[1]);i?g.lineTo(s[0],s[1]):g.moveTo(s[0],s[1]);});g.stroke();g.lineWidth=1.2;
     const e=toS(od.pts[od.pts.length-1][0],od.pts[od.pts.length-1][1]);g.beginPath();g.arc(e[0],e[1],5,0,7);g.stroke();}
   if(rdrag&&rdrag.moved){g.setLineDash([]);g.strokeStyle=COL.accent;g.lineWidth=1.8;g.beginPath();rdrag.pts.forEach((p,i)=>{const s=toS(p[0],p[1]);i?g.lineTo(s[0],s[1]):g.moveTo(s[0],s[1]);});g.stroke();g.lineWidth=1.2;}
-  for(const o of objs){if(!o.alive||!o.order||o.order.type==='route')continue;const a=toS(o.x,o.y);let b;
-    if(o.order.type==='move')b=toS(o.order.x,o.order.y);else{const t=byId.get(o.order.type==='defend'?o.order.unit:o.order.target);if(!t||!t.alive)continue;b=toS(t.x,t.y);}
+  const seenT=new Set(),bases=new Set();
+  for(const o of objs){if(!o.alive||!o.order)continue;const od=o.order;
+    if(od.type==='rtb')bases.add(od.base);
+    if(od.type!=='track'||seenT.has(od.pts))continue;seenT.add(od.pts);
+    g.setLineDash([]);g.strokeStyle=rgba(COL.accent,.7);g.lineWidth=1.4;g.beginPath();od.pts.forEach((p,i)=>{const q=toS(p[0],p[1]);i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1]);});g.closePath();g.stroke();
+    const m=od.pts[5],m2=od.pts[6],q=toS(m[0],m[1]),q2=toS(m2[0],m2[1]),ang=Math.atan2(q2[1]-q[1],q2[0]-q[0]);
+    g.fillStyle=rgba(COL.accent,.8);g.beginPath();g.moveTo(q[0]+Math.cos(ang)*6,q[1]+Math.sin(ang)*6);g.lineTo(q[0]+Math.cos(ang+2.5)*5,q[1]+Math.sin(ang+2.5)*5);g.lineTo(q[0]+Math.cos(ang-2.5)*5,q[1]+Math.sin(ang-2.5)*5);g.closePath();g.fill();
+    g.lineWidth=1.2;}
+  for(const id of bases){const b=byId.get(id);if(!b||!b.alive)continue;const [mx,my]=marshalPt(b),q=toS(mx,my);
+    g.setLineDash([2,3]);g.strokeStyle=rgba(COL.accent,.55);g.beginPath();g.arc(q[0],q[1],Math.max(6,3.5*view.scale),0,7);g.stroke();
+    g.setLineDash([]);g.font=`600 9px ${F_DATA}`;g.fillStyle=rgba(COL.accent,.8);g.textAlign='center';g.fillText('MARSHAL',q[0],q[1]-Math.max(6,3.5*view.scale)-4);g.textAlign='left';}
+  if(tdrag){const pr=trackPts(tdrag.a,Math.hypot(tdrag.b[0]-tdrag.a[0],tdrag.b[1]-tdrag.a[1])<3?[tdrag.a[0]+20,tdrag.a[1]]:tdrag.b,3);
+    g.setLineDash([4,4]);g.strokeStyle=COL.accent;g.lineWidth=1.6;g.beginPath();pr.forEach((p,i)=>{const q=toS(p[0],p[1]);i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1]);});g.closePath();g.stroke();g.lineWidth=1.2;}
+  for(const o of objs){if(!o.alive||!o.order||o.order.type==='route'||o.order.type==='track'||(o.order.type==='rtb'&&o.order.phase!=='transit'))continue;const a=toS(o.x,o.y);let b;
+    if(o.order.type==='move')b=toS(o.order.x,o.order.y);else if(o.order.type==='rtb'){const bb=byId.get(o.order.base);if(!bb||!bb.alive)continue;const mp=marshalPt(bb);b=toS(mp[0],mp[1]);}
+    else{const t=byId.get(o.order.type==='defend'?o.order.unit:o.order.target);if(!t||!t.alive)continue;b=toS(t.x,t.y);}
     g.strokeStyle=rgba(COL.accent,la);g.setLineDash([5,4]);g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.stroke();
     if(o.order.type==='move'){g.setLineDash([]);g.beginPath();g.moveTo(b[0]-5,b[1]);g.lineTo(b[0],b[1]-5);g.lineTo(b[0]+5,b[1]);g.lineTo(b[0],b[1]+5);g.closePath();g.stroke();}}
   g.restore();
@@ -662,7 +747,7 @@ function step(dt){
     if(simT-o.lastTrail>=1){o.trail.push(o.x,o.y);if(o.trail.length>60)o.trail.splice(0,2);o.lastTrail=simT;}}
   if(Math.floor(simT*2)!==Math.floor((simT-dt)*2))shipsFire();
   ciws(dt);
-  if(Math.floor(simT)!==Math.floor(simT-dt)){classify();scripted();
+  if(Math.floor(simT)!==Math.floor(simT-dt)){classify();scripted();deckTick();
     if(firstLaunchT&&!saidEscorts&&simT>firstLaunchT+45){saidEscorts=true;sayComms('Diplomatic','Red commander','red','Your escorts are spending their last missiles. Withdraw south and we will hold the second wave.');}if(posture==='Proactive'&&!alertDone&&simT>=20)alertLaunch();}
   if(Math.floor(simT/6)!==Math.floor((simT-dt)/6))flushReports();
   if(simT-lastFrame>=.5){record();lastFrame=simT;}
@@ -921,8 +1006,9 @@ function pick(sx,sy){let b=null,bd=1e9;for(const it of drawList){if(it.sx==null)
 let pendingMove=false,boxSel=null;
 let lastCtx=0,rdrag=null,suppressCtx=0;
 cv.addEventListener('contextmenu',e=>{e.preventDefault();const now=performance.now();if(now-lastCtx<400||now-suppressCtx<600||(rdrag&&rdrag.moved))return;lastCtx=now;const it=pick(e.offsetX,e.offsetY);const [wx,wy]=toW(e.offsetX,e.offsetY);if(it&&it.o.side==='blue'&&!K[it.o.kind].missile&&!sel.has(it.o.id)&&[...sel].some(id=>byId.get(id)?.side==='blue'))issueDefend(it.o);else issueOrder(wx,wy,it&&it.o.side==='red'?it.o:null);});
-cv.addEventListener('pointerdown',e=>{if(e.button===2){cv.setPointerCapture(e.pointerId);rdrag={pts:[toW(e.offsetX,e.offsetY)],sx:e.offsetX,sy:e.offsetY,lx:e.offsetX,ly:e.offsetY,moved:false};return;}cv.setPointerCapture(e.pointerId);drag={x:e.offsetX,y:e.offsetY,cx:view.cx,cy:view.cy,moved:false,box:e.shiftKey};});
+cv.addEventListener('pointerdown',e=>{if(e.button===0&&pendingTrack){cv.setPointerCapture(e.pointerId);const w=toW(e.offsetX,e.offsetY);tdrag={a:w,b:w};return;}if(e.button===2){cv.setPointerCapture(e.pointerId);rdrag={pts:[toW(e.offsetX,e.offsetY)],sx:e.offsetX,sy:e.offsetY,lx:e.offsetX,ly:e.offsetY,moved:false};return;}cv.setPointerCapture(e.pointerId);drag={x:e.offsetX,y:e.offsetY,cx:view.cx,cy:view.cy,moved:false,box:e.shiftKey};});
 cv.addEventListener('pointermove',e=>{
+  if(tdrag){tdrag.b=toW(e.offsetX,e.offsetY);}
   if(rdrag){if(Math.hypot(e.offsetX-rdrag.sx,e.offsetY-rdrag.sy)>10)rdrag.moved=true;
     if(rdrag.moved&&Math.hypot(e.offsetX-rdrag.lx,e.offsetY-rdrag.ly)>14){rdrag.pts.push(toW(e.offsetX,e.offsetY));rdrag.lx=e.offsetX;rdrag.ly=e.offsetY;}}
   if(drag){const dx=e.offsetX-drag.x,dy=e.offsetY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3){drag.moved=true;if(!drag.box)cv.classList.add('grab');}
@@ -930,6 +1016,7 @@ cv.addEventListener('pointermove',e=>{
   hover=pick(e.offsetX,e.offsetY);showTip(hover,e.offsetX,e.offsetY);
 });
 cv.addEventListener('pointerup',e=>{cv.classList.remove('grab');
+  if(tdrag&&e.button===0){finishTrack();drag=null;return;}
   if(e.button===2&&rdrag){if(rdrag.moved){rdrag.pts.push(toW(e.offsetX,e.offsetY));issueRoute(rdrag.pts);suppressCtx=performance.now();}rdrag=null;return;}
   if(e.button!==0){drag=null;boxSel=null;return;}
   if(drag&&drag.box&&boxSel){const x0=Math.min(boxSel.x0,boxSel.x1),x1=Math.max(boxSel.x0,boxSel.x1),y0=Math.min(boxSel.y0,boxSel.y1),y1=Math.max(boxSel.y0,boxSel.y1);
@@ -957,8 +1044,11 @@ function showTip(it,x,y){const t=$('#tip');if(!it){t.hidden=true;return;}const o
 window.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;
   if(e.key===' '){e.preventDefault();togglePlay();}
   else if(e.key==='f'||e.key==='F')fitAll();
-  else if(e.key==='Escape'){sel.clear();renderUnit();}
+  else if(e.key==='Escape'){if(pendingTrack||tdrag){pendingTrack=false;tdrag=null;renderUnit();return;}sel.clear();renderUnit();}
   else if(e.key==='v'||e.key==='V'){toggleVip();}
+  else if((e.key==='r'||e.key==='R')&&e.shiftKey){rtbAll();}
+  else if(e.key==='r'||e.key==='R'){issueRtb([...sel].map(id=>byId.get(id)));}
+  else if(e.key==='t'||e.key==='T'){pendingTrack=!pendingTrack;tdrag=null;if(pendingTrack)toast('Racetrack: drag on the plot along the long leg. A plain click makes a 20 km leg pointing east. T again cancels.');renderUnit();}
   else if(e.key===']'){sizeSel(1.25);}else if(e.key==='['){sizeSel(.8);}
   else if(/^Digit[1-9]$/.test(e.code)){const d=e.code.slice(5);
     if(e.altKey){e.preventDefault();const ids=[...sel].filter(i=>byId.get(i)?.side==='blue');if(!ids.length){toast('Select your units first, then press Alt+'+d+'.');return;}
@@ -1035,8 +1125,8 @@ function renderUnit(){
   if(!ids.length){el.innerHTML=`<div class="unit"><p class="note">Click a track on the plot or in the list. Shift-click adds to the selection. [ and ] shrink or enlarge the selected symbols.</p></div>`;return;}
   const o=byId.get(primary&&sel.has(primary)?primary:ids[0]);const c=byId.get(1);const blue=o.side==='blue';
   const ctrlCls=(o.ctrl==='Manual'||o.ctrl==='Order')?'manual':o.ctrl==='Agent'?'agent':'';
-  const ctrlTxt=o.ctrl==='Order'?(o.order&&o.order.type==='attack'?'Your order · attack':o.order&&o.order.type==='defend'?'Your order · protect '+(byId.get(o.order.unit)?.name||''):'Your order · move'):o.ctrl==='Manual'?'Manual · you':o.ctrl==='Agent'?'Agent':o.ctrl==='Mission'?'Mission':o.ctrl==='Script'?'Script':'BDArmory AI';
-  let h=`<div class="unit"><div class="uh"><span id="symSlot"></span><div><h3>${esc(o.name)}</h3><p>${K[o.kind].cls} · ${blue?'Blue':'Red'}${o.alive?'':' · <span class="win">lost</span>'}</p></div></div>`;
+  const ctrlTxt=o.ctrl==='Order'?(!o.order?'Your order':o.order.type==='attack'?'Your order · attack':o.order.type==='rtb'?'Your order · RTB · '+({transit:'inbound',marshal:'in the marshal stack',approach:'landing'}[o.order.phase]||''):o.order.type==='track'?'Your order · racetrack':o.order.type==='defend'?(o.order.rtb?'Your order · RTB to station':'Your order · protect '+(byId.get(o.order.unit)?.name||'')):o.order.type==='route'?'Your order · route':'Your order · move'):o.ctrl==='Manual'?'Manual · you':o.ctrl==='Agent'?'Agent':o.ctrl==='Mission'?'Mission':o.ctrl==='Script'?'Script':'BDArmory AI';
+  let h=`<div class="unit"><div class="uh"><span id="symSlot"></span><div><h3>${esc(o.name)}</h3><p>${K[o.kind].cls} · ${blue?'Blue':'Red'}${o.alive?'':o.deck!=null?` · on deck${o.ready?' · ready':' · rearming'}`:' · <span class="win">lost</span>'}</p></div></div>`;
   if(ids.length>1)h+=`<p class="note">${ids.length} tracks selected. Size buttons apply to all of them.</p>`;
   if(ids.length>1&&ids.some(i=>byId.get(i).side==='blue'))h+=`<div class="sec"><span class="lbl">Make a group from the selection</span><div class="ctl"><input id="grpName" placeholder="Group name, e.g. Strike A" autocomplete="off"><button class="btn acc" data-act="mkgroup">Make group</button></div><span class="note">Tip: Alt+1…9 puts the selection on a number key. Press the number to select the group again.</span></div>`;
   if(blue){h+=`<div class="ctl"><span class="cstate ${ctrlCls}">${ctrlTxt}</span><span class="note">${esc(o.mission||'')}</span></div>
@@ -1050,6 +1140,8 @@ function renderUnit(){
   if(o.aam!=null)h+=`<div class="sec"><span class="lbl">Weapons &amp; fuel</span><div class="mag"><span>AAM</span><span class="bar"><i style="width:${100*o.aam/(o.aamMax||6)}%"></i></span><span class="r ${o.aam===0?'win':''}">${o.aam}/${o.aamMax||6}</span></div><div class="mag"><span>Fuel</span><span class="bar"><i style="width:${o.fuel*100}%"></i></span><span class="r">${Math.round(o.fuel*100)}%</span></div></div>`;
   if(o.fuel!=null&&o.aam==null)h+=`<div class="sec"><span class="lbl">Fuel</span><div class="mag"><span>Fuel</span><span class="bar"><i style="width:${o.fuel*100}%"></i></span><span class="r">${Math.round(o.fuel*100)}%</span></div></div>`;
   if(o.hp!=null)h+=`<div class="sec"><span class="lbl">Damage</span><div class="mag"><span>Hull</span><span class="bar dmg"><i style="width:${100-o.hp}%"></i></span><span class="r">${Math.round(100-o.hp)}%</span></div></div>`;
+  if(blue&&o.alive&&!K[o.kind].missile){h+=`<div class="sec"><span class="lbl">Orders for the selection</span><div class="ctl"><button class="btn acc" data-act="rtb">RTB &amp; land</button><button class="btn" data-act="track" aria-pressed="${pendingTrack}">Racetrack…</button><button class="btn ghost" data-act="rtball">RTB all aircraft</button></div><span class="note">R sends the selection home: aircraft stack at the marshal point astern of Kestrel and land one at a time; ships return to station. T, then drag on the plot, sets a racetrack holding pattern. Shift+R twice sends every aircraft home.</span></div>`;}
+  if(blue&&o.kind==='cvn'){const dk=deckOf(o),rd=dk.filter(x=>x.ready).length;h+=`<div class="sec"><span class="lbl">Flight deck</span><span>${dk.length?`<b>${dk.length}</b> aircraft on deck, <b>${rd}</b> ready`:'Deck empty'}${dk.length>rd?` · ${dk.length-rd} rearming (90 s)`:''}</span>${dk.length?`<span class="note">${esc(dk.slice(0,12).map(x=>x.name).join(', '))}${dk.length>12?'…':''}</span>`:''}<div class="ctl"><button class="btn acc" data-act="launch" ${rd?'':'disabled'}>Launch ready aircraft</button></div></div>`;}
   if(blue&&o.doctrine){h+=`<div class="sec"><span class="lbl">Weapons control</span><div class="seg" data-doc>${['Free','Tight','Hold'].map(d=>`<button data-v="${d}" aria-pressed="${o.doctrine===d}">${d}</button>`).join('')}</div>
      <span class="lbl" style="margin-top:6px">Radar</span><div class="seg" data-emcon>${['Active','Passive'].map(d=>`<button data-v="${d}" aria-pressed="${o.emcon===d}">${d}</button>`).join('')}</div>
      <span class="note">Hold or passive radar stops SAM fire. Close-in guns keep defending the ship.</span></div>`;}
@@ -1062,6 +1154,10 @@ $('#unit').addEventListener('click',e=>{const b=e.target.closest('button');if(!b
   else if(a==='release'){for(const id of ids){const u=byId.get(id);if(u.ctrl==='Manual'||u.ctrl==='Order')releaseUnit(u);}logMsg('orders',`${o.name} returned to ${o.mission}. The mission re-plans from the unit's position.`,o.x,o.y);}
   else if(a==='mkgroup'){const v=($('#grpName')||{}).value;makeGroup((v||'').trim()||`Group ${String.fromCharCode(65+(grpSeq++%26))}`,ids);document.activeElement&&document.activeElement.blur();}
   else if(a==='vip'){toggleVip();return;}
+  else if(a==='rtb'){issueRtb(ids.map(i=>byId.get(i)));return;}
+  else if(a==='rtball'){rtbAll();return;}
+  else if(a==='track'){pendingTrack=!pendingTrack;tdrag=null;if(pendingTrack)toast('Racetrack: drag on the plot along the long leg. A plain click makes a 20 km leg pointing east. Esc cancels.');}
+  else if(a==='launch'){launchDeck(o);return;}
   else if(a==='send'){pendingMove=!pendingMove;if(pendingMove)toast('Click the plot where the selected units should go, or click a hostile to attack it.');}
   else if(a==='fly'){toast(`In the real build this makes ${o.name} the active vessel in KSP so you can fly it yourself. The map keeps tracking it.`);}
   else if(a==='center')center(o);

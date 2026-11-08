@@ -130,7 +130,7 @@ The host's **report engine** turns events the TPE, BDA adapter and C2 engine alr
 
 | Family | Types | Default executor |
 |---|---|---|
-| Movement | `move_to`, `move_route`, `patrol_area`, `loiter {center, radius, alt}`, `follow {leader, slot}`, `formation {template}`, `hold_position`, `return_to {point|carrier}`, `rtb` (§2.1.1), `set_depth`, `set_speed_limit`, `set_alt_band` | in-game (BDA commands + holds, `06-flight-control.md`) |
+| Movement | `move_to`, `move_route`, `patrol_area`, `loiter {center, radius, alt}`, `follow {leader, slot}`, `formation {template}`, `hold_position`, `return_to {point|carrier}`, `rtb` (§2.1.1), `hold_pattern {a, b, widthKm?: 6, turn?: right, altStackM?: 300}` (racetrack, §2.1.2), `set_depth`, `set_speed_limit`, `set_alt_band` | in-game (BDA commands + holds, `06-flight-control.md`) |
 | Engagement | `engage {track}`, `engage_all {filter}`, `defend_sector {sector, priorities}`, `defend_unit {unit, radius}`, `intercept {track}`, `screen {main_body, bearings}`, `escort {unit}`, `suppress {zone}`, `strike {target, package}`, `attack_position {pos}` | in-game (assignments, fire authority, BDA `CommandAttack`) |
 | Fire control | `weapons_hold`, `weapons_tight`, `weapons_free`, `set_roe {profile}`, `missile_budget {per_track, total}`, `salvo_policy {size, stagger}` | in-game (WM fields, F3 hook) |
 | Sensors | `emcon {level}`, `radar {on|off}`, `sonar {passive|active|off}`, `irst`, `datalink {on|off}` (comms model) | in-game |
@@ -172,6 +172,23 @@ c2.order.issue {type:"rtb", units|group|mission|side:"Blue", filter?:{domain:air
   - a right-click menu entry
   - in-game, a Skizzy toolbar entry "RTB selected / RTB all" that works with nothing but the host running (no AI client needed)
 - **MCP.** The `c2_order` tool accepts `type:"rtb"`. The compact form is `rtb Cobra` or `rtb all air`.
+
+#### 2.1.2 Racetrack holding pattern and carrier landing (user request, 2026-11-08; mockup v10)
+
+- **`hold_pattern`** is a racetrack: two straight legs from `a` to `b`, joined by half-circles of width `widthKm`.
+  - Each aircraft in the order gets its own altitude in a stack. Drones and AEW use their own base altitudes.
+  - It is valid for aircraft only. Ships and subs **refuse** with `NOT_APPLICABLE` and a reason ("use move or a route").
+  - Self-defence fire stays allowed while holding.
+  - Executor: per-unit pursuit of a point a few samples ahead on the sampled racetrack. In KSP this means BDA waypoints (F6) re-fed each lap, or the Skizzy flight engine when it holds the `steer` lease.
+- **RTB & land** extends `rtb` (§2.1.1) with the full carrier cycle.
+  - **Transit** to the marshal point, 8 km astern of the carrier.
+  - **Marshal** stack in arrival order (FIFO). Altitude steps down as aircraft ahead land, starting at 1,200 m with 300 m steps.
+  - **Approach clearance,** one aircraft every `landGapS` (5 s in the mockup).
+  - **Land:** the aircraft is on deck, off the plot, and listed in the carrier's Flight deck section.
+  - **Turnaround:** rearm and refuel take 90 s.
+  - **Launch:** ready aircraft return to their missions.
+  - If the carrier is lost, aircraft on deck are lost with it, and aircraft still inbound report that they cannot land and go back to their mission.
+- **Real-system gap.** BDArmory's pilot AI cannot land on a moving carrier. Real landing needs a carrier-landing autopilot driving the ACA arrestor wires: the `recover` adapter in the Systems family. **The user wants this, so it moves up from P2 to P1 (M8, naval depth).** Until it exists, `rtb` ends at marshal with the "on station at marshal" report, and the deck cycle is only simulated in the mockup and Skizzy.Sim.
 
 ### 2.2 Lifecycle
 

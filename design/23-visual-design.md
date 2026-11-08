@@ -159,3 +159,11 @@ These were recorded by the user on 2026-11-08 and must hold in the real system:
     - **Protect order:** select units, then right-click one of your own units. That unit becomes a VIP. Aircraft orbit it at 7–10 km and engage anything within 40 km of it; ships take stations around it. When the VIP is lost, the protectors report and go back to their mission.
     - **On the plot:** four accent corner brackets around the symbol, a faint 40 km protection ring, and the "VIP" tag only when the unit is selected (so it doesn't collide with labels).
     - **In the real system:** `defend_unit {unit, radius}` (`09-c2-multi-agent.md` §2.1) plus a side-level `vip` flag that feeds WTA priority.
+14. **Orders section for the selection** (user request, 2026-11-08; mockup v10). The Unit panel's "Orders for the selection" section holds:
+    - **RTB & land (R):** aircraft stack at the marshal point and land one at a time; ships return to station; the carrier refuses because it is the base.
+    - **Racetrack… (T):** drag the long leg on the plot. A plain click makes a 20 km leg. Aircraft stack 300 m apart. Ships refuse with a reason.
+    - **RTB all aircraft:** Shift+R twice within 3 s. The second press is the confirmation, since there are no modal dialogs.
+    - **The carrier's Flight deck section** shows aircraft on deck, ready or rearming, plus **Launch ready aircraft**.
+    - **On the plot:** a solid accent racetrack with a direction arrow, a dashed MARSHAL ring astern of the carrier, and dashed lines from inbound aircraft to the marshal point.
+    - Spec in `09-c2-multi-agent.md` §2.1.2.
+
