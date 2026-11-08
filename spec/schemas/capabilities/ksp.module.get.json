@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:ksp.module.get@1",
+  "title": "ksp.module.get",
+  "description": "Reads field values of one part module by handle (m:<partPid>:<index>:<Class>, from ksp.vessel.get depth 2 or ksp.query).",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "ksp_module_get",
+  "input": {
+    "type": "object",
+    "properties": {
+      "module": {
+        "type": "string",
+        "description": "module handle",
+        "x-skz-handle": "module",
+        "minLength": 3,
+        "maxLength": 160
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "description": "field names; omit for all",
+        "maxItems": 128
+      }
+    },
+    "required": [
+      "module"
+    ],
+    "additionalProperties": false
+  }
+}

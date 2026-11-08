@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:permissions.get@1",
+  "title": "permissions.get",
+  "description": "The effective permission decision for this session: for one capability (allow/ask/deny with the matched rule), or a summary of levels.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "any",
+  "x-skz-mcpTool": "permissions_get",
+  "input": {
+    "type": "object",
+    "properties": {
+      "capability": {
+        "type": "string",
+        "description": "capability name",
+        "maxLength": 128
+      }
+    },
+    "additionalProperties": false
+  }
+}

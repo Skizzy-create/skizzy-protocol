@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:ksp.camera.set_mode@1",
+  "title": "ksp.camera.set_mode",
+  "description": "Sets the flight camera mode (13 §1.2): follow (auto mode on the target), orbit (heading/pitch/distance), chase (behind the velocity vector), free (stays in place), look_at (keeps `to` behind the target in view), locked. Never changes the active vessel.",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "ksp_camera_set_mode",
+  "input": {
+    "type": "object",
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": [
+          "follow",
+          "orbit",
+          "chase",
+          "free",
+          "look_at",
+          "auto",
+          "orbital",
+          "locked"
+        ],
+        "description": "camera mode"
+      },
+      "target": {
+        "type": "string",
+        "description": "vessel to target first (default: current camera target)",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "to": {
+        "type": "string",
+        "description": "look_at: the vessel to keep in view beyond the target",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "orbit": {
+        "type": "object",
+        "description": "Camera orbit around the target.",
+        "properties": {
+          "heading": {
+            "type": "number",
+            "description": "degrees, 0 = camera north of target looking south, 180 = astern for a north-bound vessel",
+            "minimum": -360,
+            "maximum": 360,
+            "x-skz-unit": "deg"
+          },
+          "pitch": {
+            "type": "number",
+            "description": "degrees above the horizon",
+            "minimum": -89,
+            "maximum": 89,
+            "x-skz-unit": "deg"
+          },
+          "distance": {
+            "type": "number",
+            "description": "metres from the target",
+            "minimum": 3,
+            "maximum": 150000,
+            "x-skz-unit": "m"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "mode"
+    ],
+    "additionalProperties": false
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:host.doctor@1",
+  "title": "host.doctor",
+  "description": "The in-game half of `skizzy doctor`: versions, KSP build, KSPCommunityFixes MemoryLeaks setting, CommNet in the current game, other autopilots (AtmosphereAutopilot, MechJeb, kOS), KJR, PhysicsRangeExtender, Harmony and KSPBurst notes, with green/yellow/red lines.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "host_doctor",
+  "input": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}

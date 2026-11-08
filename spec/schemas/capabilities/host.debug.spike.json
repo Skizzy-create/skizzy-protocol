@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:host.debug.spike@1",
+  "title": "host.debug.spike",
+  "description": "Runs one of the M0 spikes in the real game and returns measured results: jpg_thread (ImageConversion.EncodeArrayToJPG off the main thread), async_readback (AsyncGPUReadback support and cost on this graphics API), sync_context (UnitySynchronizationContext idle wake latency), nostdlib (assembly references and runtime), or all.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "host_debug_spike",
+  "input": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "enum": [
+          "jpg_thread",
+          "async_readback",
+          "sync_context",
+          "nostdlib",
+          "all"
+        ],
+        "description": "which spike",
+        "default": "all"
+      }
+    },
+    "additionalProperties": false
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:host.stats@1",
+  "title": "host.stats",
+  "description": "Host performance and health: dispatcher budget and main-thread time (p50/p99), queue depth, sessions, frame time while active, GC collections, idle mode, screenshot and log sampler timings, auto-disabled capabilities, kill switch state.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "any",
+  "x-skz-mcpTool": "host_stats",
+  "input": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}

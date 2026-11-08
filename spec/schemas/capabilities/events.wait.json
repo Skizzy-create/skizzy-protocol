@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:events.wait@1",
+  "title": "events.wait",
+  "description": "Long-poll: waits up to timeoutS for events after `cursor` that match `names`, then returns them (or an empty list on timeout). MCP has no server push, so agents call this to be woken by game events instead of polling.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "any",
+  "x-skz-mcpTool": "events_wait",
+  "input": {
+    "type": "object",
+    "properties": {
+      "cursor": {
+        "type": "integer",
+        "description": "wait for events with cursor > this; omit to wait for new events from now",
+        "minimum": 0
+      },
+      "names": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "description": "event name globs",
+        "maxItems": 32
+      },
+      "timeoutS": {
+        "type": "number",
+        "description": "seconds to wait",
+        "minimum": 0,
+        "maximum": 120,
+        "default": 20
+      },
+      "maxEvents": {
+        "type": "integer",
+        "description": "max events returned",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 20
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "json",
+          "compact"
+        ],
+        "description": "\"compact\" = a few readable text lines (best for LLMs), \"json\" = structured",
+        "default": "compact"
+      }
+    },
+    "additionalProperties": false
+  }
+}

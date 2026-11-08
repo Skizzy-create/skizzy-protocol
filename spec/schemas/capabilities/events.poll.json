@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:events.poll@1",
+  "title": "events.poll",
+  "description": "Reads events from the host's ring buffer (8192 events) after `cursor`. Namespaces: vessel.*, sim.*, host.*, rec.*. Returns {events, nextCursor, resyncRequired}. Use nextCursor in the next call.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "any",
+  "x-skz-mcpTool": "events_poll",
+  "input": {
+    "type": "object",
+    "properties": {
+      "cursor": {
+        "type": "integer",
+        "description": "return events with cursor > this; omit for the most recent `limit` events",
+        "minimum": 0
+      },
+      "limit": {
+        "type": "integer",
+        "description": "max events",
+        "minimum": 1,
+        "maximum": 256,
+        "default": 50
+      },
+      "names": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "description": "event name globs, e.g. [\"vessel.*\", \"sim.paused\"]",
+        "maxItems": 32
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "json",
+          "compact"
+        ],
+        "description": "\"compact\" = a few readable text lines (best for LLMs), \"json\" = structured",
+        "default": "json"
+      }
+    },
+    "additionalProperties": false
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:rec.get_file@1",
+  "title": "rec.get_file",
+  "description": "Reads a chunk (up to 1 MB) of a file under Skizzy/logs or Skizzy/screenshots, base64 encoded. Loop with offset until eof.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "any",
+  "x-skz-mcpTool": "rec_get_file",
+  "input": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "path relative to the KSP folder, e.g. Skizzy/logs/2026-11-08/climb.csv",
+        "minLength": 1,
+        "maxLength": 400
+      },
+      "offset": {
+        "type": "integer",
+        "description": "byte offset",
+        "minimum": 0,
+        "default": 0
+      },
+      "length": {
+        "type": "integer",
+        "description": "bytes to read",
+        "minimum": 1,
+        "maximum": 1048576,
+        "default": 1048576
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "additionalProperties": false
+  }
+}

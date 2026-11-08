@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:ksp.log.tail@1",
+  "title": "ksp.log.tail",
+  "description": "Returns the last lines of KSP.log (read from disk; the host never hooks Unity's log). Filter by level or substring.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "any",
+  "x-skz-mcpTool": "ksp_log_tail",
+  "input": {
+    "type": "object",
+    "properties": {
+      "lines": {
+        "type": "integer",
+        "description": "lines to return",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 50
+      },
+      "level": {
+        "type": "string",
+        "enum": [
+          "all",
+          "warning",
+          "error"
+        ],
+        "description": "minimum level",
+        "default": "all"
+      },
+      "contains": {
+        "type": "string",
+        "description": "only lines containing this text (case-insensitive)",
+        "maxLength": 200
+      }
+    },
+    "additionalProperties": false
+  }
+}

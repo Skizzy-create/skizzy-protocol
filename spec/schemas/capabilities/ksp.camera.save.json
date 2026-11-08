@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:ksp.camera.save@1",
+  "title": "ksp.camera.save",
+  "description": "Same capture as ksp.camera.screenshot, written to Skizzy/screenshots/<date>/<name>.<ext> under the KSP folder. Returns the path.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "ksp_camera_save",
+  "input": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "file name stem (letters, digits, - _ .); default is a timestamp",
+        "pattern": "^[A-Za-z0-9 _.-]{1,64}$"
+      },
+      "width": {
+        "type": "integer",
+        "description": "image width in pixels",
+        "minimum": 256,
+        "maximum": 1920,
+        "default": 1920
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png"
+        ],
+        "description": "image format",
+        "default": "png"
+      },
+      "quality": {
+        "type": "integer",
+        "description": "JPEG quality",
+        "minimum": 10,
+        "maximum": 95,
+        "default": 90
+      },
+      "hideUi": {
+        "type": "boolean",
+        "description": "hide the KSP UI for one frame",
+        "default": false
+      },
+      "target": {
+        "type": "string",
+        "description": "optional vessel to point the camera at first",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "follow",
+          "orbit",
+          "chase",
+          "free",
+          "auto",
+          "orbital",
+          "locked"
+        ],
+        "description": "optional camera mode"
+      },
+      "returnImage": {
+        "type": "boolean",
+        "description": "also return the image",
+        "default": false
+      }
+    },
+    "additionalProperties": false
+  }
+}

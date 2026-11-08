@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:host.debug.confirm_test@1",
+  "title": "host.debug.confirm_test",
+  "description": "Does nothing, but is classified destructive so the user's 'ask' prompt can be tested end to end. Returns {confirmed:true} if approved.",
+  "x-skz-safety": "destructive",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "any",
+  "x-skz-mcpTool": "host_debug_confirm_test",
+  "input": {
+    "type": "object",
+    "properties": {
+      "note": {
+        "type": "string",
+        "description": "shown in the prompt",
+        "maxLength": 200
+      }
+    },
+    "additionalProperties": false
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:rec.log.stop@1",
+  "title": "rec.log.stop",
+  "description": "Stops a log started with rec.log.start and closes its file. Returns the path, row count and bytes.",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "rec_log_stop",
+  "input": {
+    "type": "object",
+    "properties": {
+      "log": {
+        "type": "string",
+        "description": "log id \"log:N\" or the log name",
+        "minLength": 1,
+        "maxLength": 80
+      }
+    },
+    "required": [
+      "log"
+    ],
+    "additionalProperties": false
+  }
+}

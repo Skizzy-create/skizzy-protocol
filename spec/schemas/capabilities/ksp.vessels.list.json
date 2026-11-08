@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:ksp.vessels.list@1",
+  "title": "ksp.vessels.list",
+  "description": "Lists vessels with handle, name, type, situation, body, lat/lon/altitude, state (live, packed, unloaded), parts, crew, surface speed and whether it is the active vessel. Debris is excluded unless includeDebris. Paged: use `cursor`.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT",
+    "SPACECENTER",
+    "TRACKSTATION"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "ksp_vessels_list",
+  "input": {
+    "type": "object",
+    "properties": {
+      "loaded": {
+        "type": "boolean",
+        "description": "only loaded (true) or only unloaded (false) vessels"
+      },
+      "nameLike": {
+        "type": "string",
+        "description": "glob on the name, e.g. \"DDG*\"",
+        "maxLength": 256
+      },
+      "type": {
+        "type": [
+          "string",
+          "array"
+        ],
+        "items": {
+          "type": "string"
+        },
+        "description": "vessel types, e.g. Ship, Plane"
+      },
+      "includeDebris": {
+        "type": "boolean",
+        "description": "include debris",
+        "default": false
+      },
+      "limit": {
+        "type": "integer",
+        "description": "maximum rows to return",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 50
+      },
+      "cursor": {
+        "type": "string",
+        "description": "opaque cursor from a previous result's \"cursor\" to get the next page",
+        "maxLength": 64
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "json",
+          "compact"
+        ],
+        "description": "\"compact\" = a few readable text lines (best for LLMs), \"json\" = structured",
+        "default": "json"
+      }
+    },
+    "additionalProperties": false
+  }
+}

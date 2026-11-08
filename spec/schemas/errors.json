@@ -1,0 +1,172 @@
+{
+  "protocol": "skizzy-protocol",
+  "version": "1.0",
+  "errors": [
+    {
+      "name": "PARSE_ERROR",
+      "code": -32700,
+      "retryable": "no",
+      "defaultHint": "Send one valid UTF-8 JSON-RPC 2.0 object per text frame."
+    },
+    {
+      "name": "INVALID_REQUEST",
+      "code": -32600,
+      "retryable": "no",
+      "defaultHint": "Send a single JSON-RPC 2.0 request object; call session.hello first."
+    },
+    {
+      "name": "METHOD_NOT_FOUND",
+      "code": -32601,
+      "retryable": "no",
+      "defaultHint": "Use catalog.search to find the right capability name."
+    },
+    {
+      "name": "INVALID_PARAMS",
+      "code": -32602,
+      "retryable": "no",
+      "defaultHint": "Fix the arguments listed in data.errors; catalog.describe shows the schema."
+    },
+    {
+      "name": "INTERNAL_ERROR",
+      "code": -32603,
+      "retryable": "later",
+      "defaultHint": "A host bug; retry later and report the trace id if it repeats."
+    },
+    {
+      "name": "UNAUTHENTICATED",
+      "code": -32001,
+      "retryable": "no",
+      "defaultHint": "Read the token from GameData/SkizzyProtocol/PluginData/auth.token and send it as 'Authorization: Bearer <token>'."
+    },
+    {
+      "name": "PERMISSION_DENIED",
+      "code": -32002,
+      "retryable": "no",
+      "defaultHint": "The user's permission settings forbid this; ask the user to change them in the in-game Permissions window."
+    },
+    {
+      "name": "CONFIRMATION_REQUIRED",
+      "code": -32003,
+      "retryable": "yes",
+      "defaultHint": "Ask the user to approve the prompt in game, then retry."
+    },
+    {
+      "name": "UNAVAILABLE_IN_SCENE",
+      "code": -32004,
+      "retryable": "later",
+      "defaultHint": "Switch KSP to one of the scenes in data.required and retry."
+    },
+    {
+      "name": "NOT_FOUND",
+      "code": -32005,
+      "retryable": "no",
+      "defaultHint": "List current objects again (ksp.vessels.list) and use a fresh handle."
+    },
+    {
+      "name": "BUSY",
+      "code": -32006,
+      "retryable": "yes",
+      "defaultHint": "Retry after data.retryAfterMs."
+    },
+    {
+      "name": "TIMEOUT",
+      "code": -32007,
+      "retryable": "yes",
+      "defaultHint": "Retry, or raise opts.timeoutMs."
+    },
+    {
+      "name": "CONFLICT",
+      "code": -32008,
+      "retryable": "no",
+      "defaultHint": "The game state conflicts with this call; read data.detail and change the state first."
+    },
+    {
+      "name": "PRECONDITION_FAILED",
+      "code": -32009,
+      "retryable": "later",
+      "defaultHint": "A precondition in data.reason is not met; fix it and retry."
+    },
+    {
+      "name": "PROVIDER_ERROR",
+      "code": -32010,
+      "retryable": "later",
+      "defaultHint": "Game or mod code threw; check ksp.log.tail and retry later."
+    },
+    {
+      "name": "CANCELLED",
+      "code": -32011,
+      "retryable": "no",
+      "defaultHint": "The call was cancelled; start it again if still needed."
+    },
+    {
+      "name": "RATE_LIMITED",
+      "code": -32012,
+      "retryable": "yes",
+      "defaultHint": "Wait data.retryAfterMs before calling again."
+    },
+    {
+      "name": "VERSION_UNSUPPORTED",
+      "code": -32013,
+      "retryable": "no",
+      "defaultHint": "Request one of the versions in data.supported."
+    },
+    {
+      "name": "LEASE_HELD",
+      "code": -32020,
+      "retryable": "later",
+      "defaultHint": "Another actor holds this control channel; wait or ask it to release."
+    },
+    {
+      "name": "ROE_VIOLATION",
+      "code": -32021,
+      "retryable": "no",
+      "defaultHint": "The rules of engagement forbid this action."
+    },
+    {
+      "name": "STALE_DECISION",
+      "code": -32022,
+      "retryable": "yes",
+      "defaultHint": "Re-read the picture and issue the order again with the new seq."
+    },
+    {
+      "name": "BUDGET_EXHAUSTED",
+      "code": -32023,
+      "retryable": "no",
+      "defaultHint": "The spending cap was reached."
+    },
+    {
+      "name": "SLOW_CONSUMER",
+      "code": -32024,
+      "retryable": "no",
+      "defaultHint": "Read messages faster or subscribe to fewer streams."
+    },
+    {
+      "name": "NOT_IN_VIEW",
+      "code": -32025,
+      "retryable": "no",
+      "defaultHint": "The object is not visible to your team under fog of war."
+    },
+    {
+      "name": "EXECUTOR_UNAVAILABLE",
+      "code": -32026,
+      "retryable": "no",
+      "defaultHint": "No executor exists for this order type on this install."
+    },
+    {
+      "name": "KILL_SWITCH_ACTIVE",
+      "code": -32027,
+      "retryable": "later",
+      "defaultHint": "The user engaged the kill switch; only read calls work until they release it in game."
+    },
+    {
+      "name": "DUPLICATE_NAME",
+      "code": -32028,
+      "retryable": "no",
+      "defaultHint": "Choose another name or use the suggestion."
+    }
+  ],
+  "webSocketCloseCode": {
+    "rule": "4000 + (-code - 32000)",
+    "description": "WebSocket close code for a fatal protocol error: 4000 plus the distance of the JSON-RPC error code from -32000, e.g. -32001 closes with 4001."
+  }
+}

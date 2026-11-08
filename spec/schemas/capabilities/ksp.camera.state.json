@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:ksp.camera.state@1",
+  "title": "ksp.camera.state",
+  "description": "Current camera mode, target, heading, pitch, distance and whether look_at is active.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "ksp_camera_state",
+  "input": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}
