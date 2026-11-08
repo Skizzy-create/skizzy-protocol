@@ -226,6 +226,8 @@ public sealed class SizingTests : IDisposable
         yield return (sample, TestRig.View(3, 0, 34));
         var raid = SampleScene.BuildMissileRaid();
         yield return (raid, raid.View);
+        var orders = SampleScene.BuildVipsAndOrders();
+        yield return (orders, orders.View);
         var perf = PerfScene.Build(2000);
         yield return (perf, perf.View);
     }

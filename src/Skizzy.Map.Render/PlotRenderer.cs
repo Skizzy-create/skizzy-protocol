@@ -22,7 +22,7 @@ namespace Skizzy.Map.Render;
 public sealed class PlotRenderer : IDisposable
 {
     // font slots in the text cache
-    private const int SlotLabel = 0, SlotSmall = 1, SlotZone = 2, SlotBadge = 3, SlotPill = 4, SlotGlyphBase = 5;
+    private const int SlotLabel = 0, SlotSmall = 1, SlotZone = 2, SlotBadge = 3, SlotPill = 4, SlotVip = 5, SlotMarshal = 6, SlotGlyphBase = 7;
     private const int MaxGlyphPx = 24;
 
     private readonly Theme _theme;
@@ -30,6 +30,7 @@ public sealed class PlotRenderer : IDisposable
     private readonly SpriteCache _sprites;
     private readonly SKFont[] _fonts;
     private readonly float[] _middle; // baseline offset that centres text vertically, per font slot
+    private readonly float _vipDescent; // the VIP tag sits on canvas textBaseline = 'bottom'
     private readonly TextCache _text;
     private readonly RectGrid _labelGrid = new();
     private readonly Dictionary<int, string> _kmText = new();
@@ -58,7 +59,9 @@ public sealed class PlotRenderer : IDisposable
     private readonly SKPath _gridLo = new(), _gridHi = new(), _scratch = new(), _labelBacks = new(), _brackets = new();
     private readonly SegmentBatch _ringPrimary = new(), _ringSecondary = new(), _ringRadar = new();
     private readonly SegmentBatch _orderLines = new(), _routeLegs = new(), _dashes = new();
-    private readonly SKPath _orderMarks = new();
+    private readonly SKPath _orderMarks = new(), _racetracks = new(), _arrows = new(), _vipBrackets = new();
+    private readonly SegmentBatch _marshal = new(), _vipRing = new(), _vipRingSelected = new();
+    private readonly SegmentBatch[] _ownSensor = [new(), new(), new(), new()];
 
     public PlotRenderer(Theme? theme = null, FontSet? fonts = null)
     {
@@ -70,6 +73,8 @@ public sealed class PlotRenderer : IDisposable
         _fonts[SlotZone] = NewFont(fs.DisplaySemiBold, 10f);
         _fonts[SlotBadge] = NewFont(fs.UiBold, 8f);
         _fonts[SlotPill] = NewFont(fs.DataMedium, 10.5f);
+        _fonts[SlotVip] = NewFont(fs.UiBold, 9f);          // mockup: 700 9px UI
+        _fonts[SlotMarshal] = NewFont(fs.DataMedium, 9f);  // mockup: 600 9px data; the bundled mono stops at 500
         for (int px = 0; px <= MaxGlyphPx; px++) _fonts[SlotGlyphBase + px] = NewFont(fs.UiSemiBold, Math.Max(1, px));
         _middle = new float[_fonts.Length];
         for (int i = 0; i < _fonts.Length; i++)
@@ -77,6 +82,7 @@ public sealed class PlotRenderer : IDisposable
             var m = _fonts[i].Metrics;
             _middle[i] = -(m.Ascent + m.Descent) / 2f; // canvas textBaseline = 'middle'
         }
+        _vipDescent = _fonts[SlotVip].Metrics.Descent;
         _text = new TextCache(_fonts);
         _sprites = new SpriteCache(_theme, _symbols, fs.UiSemiBold, fs.UiBold);
     }
@@ -147,6 +153,7 @@ public sealed class PlotRenderer : IDisposable
         long t2 = Stopwatch.GetTimestamp(); tm.Layout = Ms(t1, t2);
 
         if (opt.Rings) DrawRings(canvas, scene, vp, state);
+        DrawMarkers(canvas, scene, vp, state);
         long t3 = Stopwatch.GetTimestamp(); tm.Rings = Ms(t2, t3);
         if (opt.Trails) DrawTrails(canvas, scene, vp, state);
         long t4 = Stopwatch.GetTimestamp(); tm.Trails = Ms(t3, t4);
@@ -322,9 +329,9 @@ public sealed class PlotRenderer : IDisposable
 
     // ---------------------------------------------------------------- per-track passes
 
-    private static void BuildSymbolBoxes(RenderState st)
+    private void BuildSymbolBoxes(RenderState st)
     {
-        RenderState.Ensure(ref st.SymbolBoxes, st.ItemCount * 2);
+        RenderState.Ensure(ref st.SymbolBoxes, st.ItemCount * 3);
         int n = 0;
         for (int i = 0; i < st.ItemCount; i++)
         {
@@ -332,9 +339,18 @@ public sealed class PlotRenderer : IDisposable
             st.SymbolBoxes[n++] = new ScreenRect(it.Sx - it.Half, it.Sy - it.Half, it.Half * 2, it.Half * 2);
             if (it.Badge)
                 st.SymbolBoxes[n++] = new ScreenRect(it.Sx + it.S / 2 - 6, it.Sy - it.S / 2 - 6, 12, 12);
+            if (it.Vip && it.Selected)
+            {
+                // the VIP tag above the brackets: labels keep clear of it like any symbol
+                var tag = _text.Get(VipTag, SlotVip);
+                float bottom = it.Sy - SymbolSizer.VipBracketRadius(it.S) - 2;
+                st.SymbolBoxes[n++] = new ScreenRect(it.Sx - tag.Width / 2 - 1, bottom - 10, tag.Width + 2, 10);
+            }
         }
         st.SymbolBoxCount = n;
     }
+
+    private const string VipTag = "VIP";
 
     /// <summary>Big first, small on top (stable: ties keep scene order).</summary>
     private static void SortBySizeDescending(RenderState st)
@@ -358,7 +374,7 @@ public sealed class PlotRenderer : IDisposable
         for (int i = 0; i < tracks.Count; i++)
         {
             var t = tracks[i];
-            if (t.Rings is not { Length: > 0 } rings || !t.Visible || t.Affiliation != Affiliation.Friend || t.Domain != TrackDomain.Surface) continue;
+            if (t.Rings is not { Length: > 0 } rings || !t.IsDrawn || t.Affiliation != Affiliation.Friend || t.Domain != TrackDomain.Surface) continue;
             float sx = vp.ToScreenX(t.X), sy = vp.ToScreenY(t.Y);
             if (!float.IsFinite(sx) || !float.IsFinite(sy)) continue;
             bool on = t.Selected;
@@ -473,20 +489,97 @@ public sealed class PlotRenderer : IDisposable
             var t = tracks[it.TrackIndex];
             if (t.TargetId == 0 || !st.IndexById.TryGetValue(t.TargetId, out int ti)) continue;
             var tg = tracks[ti];
-            if (!tg.Visible) continue;
+            if (!tg.IsDrawn) continue; // never point at a contact the side has not detected
             Dasher.Line(_targetLines[t.Affiliation == Affiliation.Friend ? 1 : 0], it.Sx, it.Sy, vp.ToScreenX(tg.X), vp.ToScreenY(tg.Y), 2, 4, _clip);
         }
         Hairline(Theme.A(_theme.Hostile, .22f)); _targetLines[0].Draw(c, _stroke);
         Hairline(Theme.A(_theme.Friend, .22f)); _targetLines[1].Draw(c, _stroke);
     }
 
+    /// <summary>
+    /// VIP markers and the "own sensor only" mark (design/23 §6.13 and §6.15, mockup <c>drawVips()</c>), drawn after the
+    /// rings and before the trails, under the symbols. A VIP gets four accent corner arcs, a faint dashed protection ring
+    /// of <see cref="PlotTrack.VipRadiusKm"/> (brighter while selected; also for a VIP just off-screen whose ring
+    /// crosses the view) and, while selected, a "VIP" tag. A track known only from one own sensor gets a dashed halo
+    /// in its affiliation colour.
+    /// </summary>
+    private void DrawMarkers(SKCanvas c, PlotScene scene, in Viewport vp, RenderState st)
+    {
+        var tracks = scene.Tracks;
+        var stats = st.LastFrame;
+        _vipRing.Reset(); _vipRingSelected.Reset(); _vipBrackets.Reset();
+        foreach (var b in _ownSensor) b.Reset();
+
+        for (int i = 0; i < tracks.Count; i++)
+        {
+            var t = tracks[i];
+            if (!t.Vip || !t.IsDrawn) continue;
+            float sx = vp.ToScreenX(t.X), sy = vp.ToScreenY(t.Y), R = t.VipRadiusKm * vp.Scale;
+            if (!float.IsFinite(sx) || !float.IsFinite(sy) || !(R > 0) || !float.IsFinite(R) || !CircleCrossesClip(sx, sy, R)) continue;
+            Dasher.Circle(t.Selected ? _vipRingSelected : _vipRing, sx, sy, R, 3, 6, _clip);
+            stats.VipRings++;
+        }
+
+        bool tags = false;
+        for (int i = 0; i < st.ItemCount; i++)
+        {
+            ref var it = ref st.Items[i];
+            if (it.OwnSensor)
+            {
+                var t = tracks[it.TrackIndex];
+                Dasher.Circle(_ownSensor[(int)t.Affiliation], it.Sx, it.Sy, SymbolSizer.OwnSensorRadius(it.S), 2, 2, _clip);
+                stats.OwnSensorMarks++;
+            }
+            if (!it.Vip) continue;
+            stats.VipMarkers++;
+            float r = SymbolSizer.VipBracketRadius(it.S);
+            var oval = new SKRect(it.Sx - r, it.Sy - r, it.Sx + r, it.Sy + r);
+            for (int q = 0; q < 4; q++) _vipBrackets.AddArc(oval, 45f + q * 90f - VipArcHalfDeg, 2 * VipArcHalfDeg);
+            tags |= it.Selected;
+        }
+
+        if (!_vipRing.IsEmpty) { Hairline(Theme.A(_theme.Accent, .16f)); _vipRing.Draw(c, _stroke); }
+        if (!_vipRingSelected.IsEmpty) { Hairline(Theme.A(_theme.Accent, .45f)); _vipRingSelected.Draw(c, _stroke); }
+        for (int a = 0; a < 4; a++)
+            if (!_ownSensor[a].IsEmpty) { Hairline(Theme.A(_theme.ForAffiliation((Affiliation)a), .75f)); _ownSensor[a].Draw(c, _stroke); }
+        if (!_vipBrackets.IsEmpty)
+        {
+            _stroke.Color = _theme.Accent;
+            _stroke.StrokeWidth = 1.5f;
+            c.DrawPath(_vipBrackets, _stroke);
+        }
+        if (tags)
+        {
+            _ink.Color = _theme.Accent;
+            var tag = _text.Get(VipTag, SlotVip);
+            for (int i = 0; i < st.ItemCount; i++)
+            {
+                ref var it = ref st.Items[i];
+                if (!it.Vip || !it.Selected || tag.Blob is null) continue;
+                // centred, canvas textBaseline 'bottom' at r + 2 above the symbol
+                c.DrawText(tag.Blob, it.Sx - tag.Width / 2, it.Sy - SymbolSizer.VipBracketRadius(it.S) - 2 - _vipDescent, _ink);
+                stats.VipTags++;
+            }
+        }
+        st.LastFrame = stats;
+    }
+
+    /// <summary>Half the sweep of each VIP corner arc: the mockup's ±0.38 rad.</summary>
+    private const float VipArcHalfDeg = 0.38f * 180f / MathF.PI;
+
+    /// <summary>
+    /// Orders (design/23 §4.10, mockup <c>drawOrders()</c>). Shared geometry is drawn once: a route as a bright path plus a
+    /// faint leg from each unit to its next point; a racetrack as a closed stadium with a direction arrow; a MARSHAL ring
+    /// astern of each base with RTB traffic. Per-unit accent dashed lines: move (plus a diamond), attack, hunt (to the
+    /// current target), defend (to the protected unit) and RTB while inbound (to the marshal point). When more than 6
+    /// orders are active, of any kind, the per-unit lines fade so a big group does not paint a thick band.
+    /// </summary>
     private void DrawOrders(SKCanvas c, PlotScene scene, in Viewport vp, RenderState st)
     {
         var tracks = scene.Tracks;
         int active = 0;
         foreach (var o in scene.Orders)
-            if (st.IndexById.TryGetValue(o.TrackId, out int ui) && tracks[ui].Visible) active++;
-        // more than 6 active orders: lines fade so a big group does not paint a thick band
+            if (UnitIndex(st, tracks, o.TrackId) >= 0) active++;
         float la = active > 6 ? .28f : .75f;
         var stats = st.LastFrame;
         stats.ActiveOrders = active;
@@ -495,19 +588,20 @@ public sealed class PlotRenderer : IDisposable
         if (active == 0) return;
 
         var accent = _theme.Accent;
-        st.RoutesDrawn.Clear();
-        _routeLegs.Reset(); _orderLines.Reset(); _orderMarks.Reset();
+        st.RoutesDrawn.Clear(); st.PatternsDrawn.Clear(); st.MarshalBases.Clear();
+        _routeLegs.Reset(); _orderLines.Reset(); _orderMarks.Reset(); _racetracks.Reset(); _arrows.Reset(); _marshal.Reset();
+
+        // drawn routes: the shared path once, bright; each unit a faint line to its next point
         foreach (var o in scene.Orders)
         {
             if (o.Type != OrderType.Route) continue;
-            if (!st.IndexById.TryGetValue(o.TrackId, out int ui) || !tracks[ui].Visible) continue;
+            int ui = UnitIndex(st, tracks, o.TrackId);
+            if (ui < 0) continue;
             var route = FindRoute(scene, o.RouteId);
             if (route is null || route.Points.Count == 0) continue;
             var u = tracks[ui];
             var nx = route.Points[Math.Clamp(o.RouteIndex, 0, route.Points.Count - 1)];
-            // each unit: a faint line to its next point (batched, stroked below)
             Dasher.Line(_routeLegs, vp.ToScreenX(u.X), vp.ToScreenY(u.Y), vp.ToScreenX(nx.X + o.RouteOffset.X), vp.ToScreenY(nx.Y + o.RouteOffset.Y), 2, 4, _clip);
-            // the shared path once, bright
             if (!st.RoutesDrawn.Add(route.Id)) continue;
             _scratch.Reset();
             for (int i = 0; i < route.Points.Count; i++)
@@ -522,31 +616,172 @@ public sealed class PlotRenderer : IDisposable
             _stroke.StrokeWidth = 1.2f;
             c.DrawCircle(vp.ToScreenX(end.X), vp.ToScreenY(end.Y), 5, _stroke);
         }
-
         _stroke.StrokeWidth = 1.2f;
         if (!_routeLegs.IsEmpty) { _stroke.Color = Theme.A(accent, .25f); _routeLegs.Draw(c, _stroke); }
+
+        // racetracks, each shared pattern once; and a MARSHAL ring for each base with RTB traffic
         foreach (var o in scene.Orders)
         {
-            if (o.Type == OrderType.Route) continue;
-            if (!st.IndexById.TryGetValue(o.TrackId, out int ui) || !tracks[ui].Visible) continue;
-            var u = tracks[ui];
-            float ax = vp.ToScreenX(u.X), ay = vp.ToScreenY(u.Y), bx, by;
-            if (o.Type == OrderType.Move) { bx = vp.ToScreenX(o.Destination.X); by = vp.ToScreenY(o.Destination.Y); }
+            if (o.Type is not (OrderType.Racetrack or OrderType.Rtb) || UnitIndex(st, tracks, o.TrackId) < 0) continue;
+            if (o.Type == OrderType.Racetrack)
+            {
+                var rt = FindRacetrack(scene, o.PatternId);
+                if (rt is null || !st.PatternsDrawn.Add(rt.Id)) continue;
+                AddRacetrack(rt, vp);
+                stats.Racetracks++;
+            }
             else
             {
-                if (!st.IndexById.TryGetValue(o.TargetTrackId, out int ti) || !tracks[ti].Visible) continue;
-                bx = vp.ToScreenX(tracks[ti].X); by = vp.ToScreenY(tracks[ti].Y);
+                int bi = UnitIndex(st, tracks, o.TargetTrackId);
+                if (bi < 0 || !st.MarshalBases.Add(o.TargetTrackId)) continue;
+                var (mx, my) = MarshalPoint(tracks[bi], o.MarshalAsternKm);
+                float qx = vp.ToScreenX(mx), qy = vp.ToScreenY(my), R = MarshalRadius(vp.Scale);
+                Dasher.Circle(_marshal, qx, qy, R, 2, 3, _clip);
+                _ink.Color = Theme.A(accent, .8f);
+                var label = _text.Get(MarshalLabel, SlotMarshal);
+                if (label.Blob is not null) c.DrawText(label.Blob, qx - label.Width / 2, qy - R - 4, _ink);
+                stats.MarshalRings++;
             }
-            // move: dashed line plus diamond; attack: dashed line to the target
+        }
+        if (!_racetracks.IsEmpty)
+        {
+            _stroke.Color = Theme.A(accent, .7f);
+            _stroke.StrokeWidth = 1.4f;
+            c.DrawPath(_racetracks, _stroke);
+            _fill.Color = Theme.A(accent, .8f);
+            c.DrawPath(_arrows, _fill);
+        }
+        if (!_marshal.IsEmpty)
+        {
+            _stroke.Color = Theme.A(accent, .55f);
+            _stroke.StrokeWidth = 1.2f;
+            _marshal.Draw(c, _stroke);
+        }
+
+        // per-unit lines
+        foreach (var o in scene.Orders)
+        {
+            if (o.Type is OrderType.Route or OrderType.Racetrack) continue;
+            int ui = UnitIndex(st, tracks, o.TrackId);
+            if (ui < 0) continue;
+            var u = tracks[ui];
+            float ax = vp.ToScreenX(u.X), ay = vp.ToScreenY(u.Y), bx, by;
+            switch (o.Type)
+            {
+                case OrderType.Move:
+                    bx = vp.ToScreenX(o.Destination.X); by = vp.ToScreenY(o.Destination.Y);
+                    break;
+                case OrderType.Rtb:
+                {
+                    if (o.RtbPhase != RtbPhase.Inbound) continue; // in the stack or landing: the ring says enough
+                    int bi = UnitIndex(st, tracks, o.TargetTrackId);
+                    if (bi < 0) continue;
+                    var (mx, my) = MarshalPoint(tracks[bi], o.MarshalAsternKm);
+                    bx = vp.ToScreenX(mx); by = vp.ToScreenY(my);
+                    break;
+                }
+                default: // Attack, Hunt (the current target; none yet = no line), Defend (the protected unit)
+                {
+                    int ti = o.TargetTrackId == 0 ? -1 : UnitIndex(st, tracks, o.TargetTrackId);
+                    if (ti < 0) continue;
+                    bx = vp.ToScreenX(tracks[ti].X); by = vp.ToScreenY(tracks[ti].Y);
+                    break;
+                }
+            }
             Dasher.Line(_orderLines, ax, ay, bx, by, 5, 4, _clip);
+            stats.OrderLines++;
             if (o.Type == OrderType.Move)
             {
                 _orderMarks.MoveTo(bx - 5, by); _orderMarks.LineTo(bx, by - 5); _orderMarks.LineTo(bx + 5, by); _orderMarks.LineTo(bx, by + 5); _orderMarks.Close();
             }
         }
         _stroke.Color = Theme.A(accent, la);
+        _stroke.StrokeWidth = 1.2f;
         _orderLines.Draw(c, _stroke);
         if (!_orderMarks.IsEmpty) c.DrawPath(_orderMarks, _stroke);
+        st.LastFrame = stats;
+    }
+
+    private const string MarshalLabel = "MARSHAL";
+
+    /// <summary>Index of a drawn (visible and detected) track by id, or -1.</summary>
+    private static int UnitIndex(RenderState st, List<PlotTrack> tracks, int id) =>
+        st.IndexById.TryGetValue(id, out int i) && tracks[i].IsDrawn ? i : -1;
+
+    /// <summary>The marshal point: <paramref name="asternKm"/> behind the base along its heading (mockup <c>marshalPt</c>).</summary>
+    internal static (float X, float Y) MarshalPoint(PlotTrack b, float asternKm)
+    {
+        float h = b.HeadingDeg * (MathF.PI / 180f);
+        if (!float.IsFinite(h)) h = 0f;
+        return (b.X - MathF.Sin(h) * asternKm, b.Y - MathF.Cos(h) * asternKm);
+    }
+
+    /// <summary>The MARSHAL ring's radius: the 3.5 km stack orbit, at least 6 px.</summary>
+    internal static float MarshalRadius(float scale) => MathF.Max(6f, 3.5f * scale);
+
+    private static PlotRacetrack? FindRacetrack(PlotScene scene, int id)
+    {
+        var list = scene.Racetracks;
+        for (int i = 0; i < list.Count; i++) if (list[i].Id == id) return list[i];
+        return null;
+    }
+
+    private const int RtLegSteps = 10, RtTurnSteps = 12; // the mockup's trackPts K1, K2
+
+    /// <summary>Points in one pattern: 11 per leg, 11 per turn (44, as the mockup).</summary>
+    internal const int RacetrackPoints = 2 * (RtLegSteps + 1) + 2 * (RtTurnSteps - 1);
+
+    /// <summary>
+    /// Point <paramref name="k"/> of the mockup's <c>trackPts(a, b, r)</c>, in km: the inbound leg A→B offset to one side
+    /// by half the width, a half circle round B, the outbound leg back towards A on the other side, a half circle round A.
+    /// Right-hand turns by default; <see cref="PlotRacetrack.TurnRight"/> = false mirrors the pattern.
+    /// </summary>
+    internal static (float X, float Y) RacetrackPoint(PlotRacetrack rt, int k)
+    {
+        float ux = rt.B.X - rt.A.X, uy = rt.B.Y - rt.A.Y, L = MathF.Sqrt(ux * ux + uy * uy);
+        if (!(L > 1e-6f)) L = 1f;
+        float s = rt.TurnRight ? 1f : -1f, r = rt.WidthKm / 2f;
+        float nx = -uy / L * s, ny = ux / L * s, an = MathF.Atan2(ny, nx);
+        if (k <= RtLegSteps)
+        {
+            float t = k / (float)RtLegSteps;
+            return (rt.A.X + nx * r + ux * t, rt.A.Y + ny * r + uy * t);
+        }
+        k -= RtLegSteps;
+        if (k < RtTurnSteps)
+        {
+            float th = an - s * MathF.PI * k / RtTurnSteps;
+            return (rt.B.X + MathF.Cos(th) * r, rt.B.Y + MathF.Sin(th) * r);
+        }
+        k -= RtTurnSteps;
+        if (k <= RtLegSteps)
+        {
+            float t = k / (float)RtLegSteps;
+            return (rt.B.X - nx * r - ux * t, rt.B.Y - ny * r - uy * t);
+        }
+        k -= RtLegSteps;
+        float th2 = an + MathF.PI - s * MathF.PI * k / RtTurnSteps;
+        return (rt.A.X + MathF.Cos(th2) * r, rt.A.Y + MathF.Sin(th2) * r);
+    }
+
+    private void AddRacetrack(PlotRacetrack rt, in Viewport vp)
+    {
+        for (int k = 0; k < RacetrackPoints; k++)
+        {
+            var (x, y) = RacetrackPoint(rt, k);
+            float sx = vp.ToScreenX(x), sy = vp.ToScreenY(y);
+            if (k == 0) _racetracks.MoveTo(sx, sy); else _racetracks.LineTo(sx, sy);
+        }
+        _racetracks.Close();
+        // direction arrow on the inbound leg (the mockup: points 5 -> 6): tip 6 px ahead, base corners 5 px at ±2.5 rad
+        var (x5, y5) = RacetrackPoint(rt, 5);
+        var (x6, y6) = RacetrackPoint(rt, 6);
+        float qx = vp.ToScreenX(x5), qy = vp.ToScreenY(y5);
+        float ang = MathF.Atan2(vp.ToScreenY(y6) - qy, vp.ToScreenX(x6) - qx);
+        _arrows.MoveTo(qx + MathF.Cos(ang) * 6, qy + MathF.Sin(ang) * 6);
+        _arrows.LineTo(qx + MathF.Cos(ang + 2.5f) * 5, qy + MathF.Sin(ang + 2.5f) * 5);
+        _arrows.LineTo(qx + MathF.Cos(ang - 2.5f) * 5, qy + MathF.Sin(ang - 2.5f) * 5);
+        _arrows.Close();
     }
 
     private static PlotRoute? FindRoute(PlotScene scene, int id)
@@ -955,7 +1190,7 @@ public sealed class PlotRenderer : IDisposable
         foreach (var arr in new[] { _trailOld, _trailNew, _dots, _mslFill, _mslStroke })
             foreach (var p in arr) p.Dispose();
         _gridLo.Dispose(); _gridHi.Dispose(); _scratch.Dispose(); _labelBacks.Dispose(); _brackets.Dispose();
-        _orderMarks.Dispose();
+        _orderMarks.Dispose(); _racetracks.Dispose(); _arrows.Dispose(); _vipBrackets.Dispose();
         _fill.Dispose(); _stroke.Dispose(); _ink.Dispose();
     }
 }

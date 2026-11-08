@@ -23,8 +23,24 @@ public struct FrameStats
     public int LabelsPlaced;
     public int LabelsCulled;
     public int ActiveOrders;
-    /// <summary>Alpha used for move/attack order lines: 0.75, or 0.28 when more than 6 orders are active.</summary>
+    /// <summary>Alpha used for per-unit order lines: 0.75, or 0.28 when more than 6 orders are active.</summary>
     public float OrderLineAlpha;
+    /// <summary>Per-unit dashed order lines drawn (move, attack, hunt, defend, RTB inbound).</summary>
+    public int OrderLines;
+    /// <summary>Racetrack patterns drawn (each shared pattern once).</summary>
+    public int Racetracks;
+    /// <summary>MARSHAL rings drawn (one per base with an RTB order).</summary>
+    public int MarshalRings;
+    /// <summary>On-screen VIP symbols given corner brackets.</summary>
+    public int VipMarkers;
+    /// <summary>VIP tags drawn (selected VIPs only).</summary>
+    public int VipTags;
+    /// <summary>VIP protection rings that cross the view.</summary>
+    public int VipRings;
+    /// <summary>On-screen tracks marked "own sensor only".</summary>
+    public int OwnSensorMarks;
+    /// <summary>Visible tracks not drawn because the viewing side has not detected them.</summary>
+    public int Undetected;
 }
 
 /// <summary>Per-stage CPU time of the last frame, in milliseconds (diagnostics; costs a few timestamps per frame).</summary>
@@ -74,6 +90,9 @@ internal struct DrawItem
     public bool Missile;
     public bool Selected;
     public bool Badge;
+    public bool Vip;
+    /// <summary>Known only from one own unit's own sensor (<see cref="TrackDetection.OwnSensor"/>).</summary>
+    public bool OwnSensor;
     /// <summary>Half-size of the symbol's footprint (for label avoidance and hit testing).</summary>
     public float Half;
     public TrackVisual Visual;
@@ -119,6 +138,8 @@ public sealed class RenderState : IDisposable
     internal int[] LabelOwner = new int[256];
     internal readonly Dictionary<long, PillAccumulator> Pills = new();
     internal readonly HashSet<int> RoutesDrawn = new();
+    internal readonly HashSet<int> PatternsDrawn = new();
+    internal readonly HashSet<int> MarshalBases = new();
     internal readonly Dictionary<int, int> IndexById = new();
 
     /// <summary>Footprints of every symbol drawn in the last frame.</summary>

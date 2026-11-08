@@ -80,11 +80,16 @@ internal static class SymbolSizer
         float minX = -CullMarginPx, maxX = vp.Width + CullMarginPx, minY = -CullMarginPx, maxY = vp.Height + CullMarginPx;
 
         st.IndexById.Clear();
+        int undetected = 0;
         for (int i = 0; i < n; i++)
         {
             var t = tracks[i];
             st.IndexById[t.Id] = i;
-            if (!t.Visible) continue;
+            if (!t.IsDrawn)
+            {
+                if (t.Visible) undetected++; // a stealth contact nobody sees: not drawn, and it takes no space
+                continue;
+            }
             float sx = vp.ToScreenX(t.X), sy = vp.ToScreenY(t.Y);
             // written so a NaN position (bad data on the wire) is culled: it would otherwise index the grid at int.MinValue
             if (!(sx > minX && sx < maxX && sy > minY && sy < maxY)) continue;
@@ -95,7 +100,12 @@ internal static class SymbolSizer
             it.Sy = sy;
             it.Missile = t.IsMissile;
             it.Selected = t.Selected;
+            it.Vip = t.Vip;
+            it.OwnSensor = t.Detection == TrackDetection.OwnSensor;
         }
+        var stats = st.LastFrame;
+        stats.Undetected = undetected;
+        st.LastFrame = stats;
         st.Pills.Clear();
         if (opt.Counts) count = GroupForCounts(tracks, items, count, st);
         st.ItemCount = count;
@@ -204,6 +214,9 @@ internal static class SymbolSizer
                 SymbolTier.Missile => 0.6f * MathF.Max(MissilePx, s) + 0.5f,
                 _ => s / 2f + 1f,
             };
+            // markers drawn around the symbol are part of its footprint, so labels clear them too
+            if (it.Vip) it.Half = MathF.Max(it.Half, VipBracketRadius(s) * .93f + 1f);
+            if (it.OwnSensor) it.Half = MathF.Max(it.Half, OwnSensorRadius(s) + 1f);
         }
     }
 
@@ -226,6 +239,12 @@ internal static class SymbolSizer
         }
         return kept;
     }
+
+    /// <summary>Radius of the VIP corner brackets (the mockup's <c>drawVips</c>: s/2 + 6).</summary>
+    public static float VipBracketRadius(float s) => s / 2f + 6f;
+
+    /// <summary>Radius of the dashed "own sensor only" halo.</summary>
+    public static float OwnSensorRadius(float s) => MathF.Max(6f, s / 2f + 3.5f);
 
     /// <summary>The mockup's dot radius: clamp(s × 0.36, 1.5, 3).</summary>
     public static float DotRadius(float s) => Math.Clamp(s * 0.36f, 1.5f, 3f);

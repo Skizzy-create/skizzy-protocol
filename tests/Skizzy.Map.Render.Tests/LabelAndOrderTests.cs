@@ -30,7 +30,7 @@ public sealed class LabelAndOrderTests : IDisposable
             }
             scenes++;
         }
-        Assert.Equal(5, scenes);
+        Assert.Equal(6, scenes);
     }
 
     [Fact]

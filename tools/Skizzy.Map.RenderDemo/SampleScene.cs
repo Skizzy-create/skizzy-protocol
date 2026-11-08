@@ -203,6 +203,122 @@ public static class SampleScene
         return scene;
     }
 
+    /// <summary>
+    /// The sample scene with the newer overlays (design/23 §6 learnings 13–15): two VIP carriers (Kestrel selected,
+    /// Osprey not), Cobras on a shared racetrack, Vipers on RTB to Kestrel (two inbound, two in the marshal stack),
+    /// Hawks 1–2 protecting Kestrel, Wasps hunting (one with no target yet), and two stealth fighters: S-01 seen by one
+    /// own sensor only, S-02 not detected at all (so not drawn).
+    /// </summary>
+    public static PlotScene BuildVipsAndOrders()
+    {
+        var scene = Build();
+        var tracks = scene.Tracks;
+        PlotTrack T(string name) => tracks.First(t => t.Name == name);
+        scene.Orders.Clear();
+        scene.Routes.Clear();
+        foreach (var t in tracks) if (t.Control == ControlState.Order) t.Control = ControlState.Mission;
+        var kestrel = T("Kestrel");
+        int id = tracks.Max(t => t.Id) + 1;
+
+        // a second carrier: a VIP that is not selected (the mockup's Osprey)
+        var osprey = new PlotTrack(id++, TrackKind.Carrier)
+        {
+            Side = Side.Blue, Affiliation = Affiliation.Friend, X = -6, Y = -34, HeadingDeg = kestrel.HeadingDeg, SpeedMps = 8,
+            Name = "Osprey", Control = ControlState.Mission, Health = 1f, Rings = kestrel.Rings, Vip = true,
+        };
+        Reckon(osprey, 20);
+        tracks.Add(osprey);
+
+        // Cobras: a racetrack south-east of the group, 32 km legs, 6 km wide, right-hand turns, stacked 300 m apart
+        var rt = new PlotRacetrack { Id = 1, A = new Vector2(40, -46), B = new Vector2(72, -46) };
+        scene.Racetracks.Add(rt);
+        // (positions keep the labels off the direction arrow, which sits mid-way along the inbound leg)
+        (float X, float Y, float Hdg)[] slots = [(66, -43, 90), (75, -46, 180), (58, -49, 270), (44, -49, 270)];
+        for (int i = 0; i < 4; i++)
+        {
+            var c = T($"Cobra {i + 1}");
+            (c.X, c.Y, c.HeadingDeg, c.AltitudeM) = (slots[i].X, slots[i].Y, slots[i].Hdg, 4500 + i * 300);
+            Reckon(c, 8);
+            c.Control = ControlState.Order;
+            scene.Orders.Add(new PlotOrder { TrackId = c.Id, Type = OrderType.Racetrack, PatternId = rt.Id });
+        }
+
+        // Cleat on station north of the carrier, clear of the marshal stack astern
+        var cleat = T("Cleat");
+        (cleat.X, cleat.Y) = (-6f, 13f);
+        Reckon(cleat, 20);
+        for (int i = 0; i < scene.Events.Count; i++)
+            if (scene.Events[i].Kind == PlotEventKind.Impact) scene.Events[i] = scene.Events[i] with { X = cleat.X, Y = cleat.Y };
+
+        // Vipers: RTB to Kestrel. 1-2 inbound (a line to the marshal point), 3-4 already orbiting in the stack.
+        float kh = kestrel.HeadingDeg * MathF.PI / 180f;
+        Vector2 mp = new(kestrel.X - MathF.Sin(kh) * 8f, kestrel.Y - MathF.Cos(kh) * 8f);
+        for (int i = 0; i < 4; i++)
+        {
+            var v = T($"Viper {i + 1}");
+            bool inbound = i < 2;
+            if (inbound)
+            {
+                v.HeadingDeg = CompassTo(v.X, v.Y, mp.X, mp.Y);
+                Reckon(v, 20);
+            }
+            else
+            {
+                double a = i == 2 ? 0.6 : 0.6 + Math.PI;
+                v.X = mp.X + (float)(Math.Cos(a) * 3.5);
+                v.Y = mp.Y + (float)(Math.Sin(a) * 3.5);
+                v.AltitudeM = 1500 + (i - 2) * 300;
+                v.HeadingDeg = CompassFromMath(a + Math.PI / 2);
+                v.Trail.Clear();
+                double step = v.SpeedMps / KmPerS / 3.5;
+                for (int k = 20; k >= 1; k--)
+                    v.Trail.Add(mp.X + (float)(Math.Cos(a - step * k) * 3.5), mp.Y + (float)(Math.Sin(a - step * k) * 3.5));
+            }
+            v.Control = ControlState.Order;
+            scene.Orders.Add(new PlotOrder { TrackId = v.Id, Type = OrderType.Rtb, TargetTrackId = kestrel.Id, RtbPhase = inbound ? RtbPhase.Inbound : RtbPhase.Marshal });
+        }
+
+        // Hawks 1-2 protect Kestrel
+        for (int i = 0; i < 2; i++)
+        {
+            var h = T($"Hawk {i + 1}");
+            h.Control = ControlState.Order;
+            scene.Orders.Add(new PlotOrder { TrackId = h.Id, Type = OrderType.Defend, TargetTrackId = kestrel.Id });
+        }
+
+        // Wasps 1-3 hunt the nearest R1 aircraft; Wasp 4 hunts but has no target yet (no line)
+        for (int i = 0; i < 4; i++)
+        {
+            var w = T($"Wasp {i + 1}");
+            w.Control = ControlState.Order;
+            scene.Orders.Add(new PlotOrder { TrackId = w.Id, Type = OrderType.Hunt, TargetTrackId = i < 3 ? T($"R1-0{i + 1}").Id : 0 });
+        }
+
+        // stealth fighters: S-01 held by one own sensor only, S-02 undetected
+        for (int i = 0; i < 2; i++)
+        {
+            var s = new PlotTrack(id++, TrackKind.Fighter)
+            {
+                Side = Side.Red, Affiliation = Affiliation.Unknown, X = 92 + i * 1.5f, Y = -16 + i, AltitudeM = 9500, SpeedMps = 240,
+                Name = $"S-0{i + 1}", Control = ControlState.Bda, Detection = i == 0 ? TrackDetection.OwnSensor : TrackDetection.None,
+            };
+            s.HeadingDeg = CompassTo(s.X, s.Y, 0, 0);
+            Reckon(s, 20);
+            tracks.Add(s);
+        }
+
+        scene.View = Viewport.Fit(-48, -60, 118, 46, 1920, 1080);
+        return scene;
+    }
+
+    /// <summary>Replace a track's trail with one dead-reckoned back along its heading.</summary>
+    private static void Reckon(PlotTrack t, int n)
+    {
+        t.Trail.Clear();
+        double h = t.HeadingDeg * Math.PI / 180, v = t.SpeedMps / KmPerS;
+        for (int k = n; k >= 1; k--) t.Trail.Add((float)(t.X - Math.Sin(h) * v * k), (float)(t.Y - Math.Cos(h) * v * k));
+    }
+
     /// <summary>Dense frame: "128 missiles inbound" on the carrier group.</summary>
     public static PlotScene BuildMissileRaid()
     {
@@ -319,6 +435,7 @@ public static class SampleScene
             cvn.Rings = [essm, radar];
             cvn.Health = 1f;
             cvn.Selected = true;
+            cvn.Vip = true; // as in the mockup's setup()
             foreach (var (name, x, y) in new[] { ("Halyard", 14.0, 9.0), ("Bowline", 14.0, -9.0), ("Cleat", -11.0, 2.0) })
             {
                 var d = Add(TrackKind.Destroyer, name, Side.Blue, Affiliation.Friend, x, y, 0, hdg, 0.008,
