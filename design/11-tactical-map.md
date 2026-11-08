@@ -1,6 +1,8 @@
 # 11 Tactical map
 
-A live, planning-capable map with military symbology, for the human **and** for agents. Decision D6: an external C# desktop application (`skizzy-map.exe`, Avalonia 11 + SkiaSharp), fed by the same native msgpack stream everything else uses, plus a thin in-game overlay and a headless renderer. TypeScript/web was rejected by the user; Avalonia keeps one language, renders 1000+ symbols at 60 fps on a Skia canvas, and reuses `Skizzy.Protocol`/`Skizzy.Client` types directly.
+A live, planning-capable map with military symbology, for the human **and** for agents. Decision D6: an external C# desktop application (`skizzy-map.exe`, Avalonia 12.1 + SkiaSharp 3.119; see the D6 update below), fed by the same native msgpack stream everything else uses, plus a thin in-game overlay and a headless renderer. TypeScript/web was rejected by the user; Avalonia keeps one language, renders 1000+ symbols at 60 fps on a Skia canvas, and reuses `Skizzy.Protocol`/`Skizzy.Client` types directly.
+
+**D6 update (2026-11-08, render-core review).** Pin exact versions: Avalonia 12.1.5, SkiaSharp 3.119.4 and Dock.Avalonia 12.1.5 (MIT; meets the §5.1 check). Avalonia 11.3 is pinned to SkiaSharp 2.88.9; only one SkiaSharp version loads per process, and the renderer uses 3.x, so the host must be Avalonia 12. Avalonia 12 targets net8/net10. The in-game overlay is IMGUI and doesn't use Skia. Do not move to SkiaSharp 4.x until Avalonia does. One renderer per UI thread (it isn't thread-safe); layout currently runs on the render thread (about 1–2 ms at 2,000 tracks), and moving it to a worker is still open.
 
 ## 1. Data
 
