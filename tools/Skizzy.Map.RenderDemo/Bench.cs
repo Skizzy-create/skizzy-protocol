@@ -27,6 +27,18 @@ internal static class Bench
         Measure(renderer, "sample theatre", scene, scene.View);
         Measure(renderer, "sample close", scene, new Viewport(3, 0, 34f, 1920, 1080));
         Measure(renderer, "2000 tracks", big, big.View);
+        // moving: every track shifts a little each frame (as in the perf test)
+        {
+            var st = new RenderState();
+            using var surface = SKSurface.Create(new SKImageInfo(1920, 1080, SKColorType.Bgra8888, SKAlphaType.Premul));
+            var warm = Stopwatch.StartNew(); int f = 0;
+            while (warm.ElapsedMilliseconds < 2000) { Move(big, f++); renderer.Render(surface.Canvas, big, big.View, st); }
+            var ms = new double[200]; var sw = new Stopwatch();
+            for (int i = 0; i < 200; i++) { Move(big, f++); sw.Restart(); renderer.Render(surface.Canvas, big, big.View, st); ms[i] = sw.Elapsed.TotalMilliseconds; }
+            Array.Sort(ms);
+            var t = st.LastTimings;
+            Console.WriteLine($"== 2000 moving: median {ms[100]:0.00} min {ms[0]:0.00} p95 {ms[190]:0.00} | layout {t.Layout:0.00} trails {t.Trails:0.00} tracks {t.Tracks:0.00} labels {t.Labels:0.00} | sprites {renderer.SpriteCount}");
+        }
         return 0;
     }
 
@@ -42,6 +54,11 @@ internal static class Bench
             if (label == "all layers") Console.WriteLine($"  [visible {fs.TracksVisible} full {fs.FullSymbols} frame {fs.Frames} dot {fs.Dots} msl {fs.Missiles} labels {fs.LabelsPlaced}]");
             Console.WriteLine($"  {label,-14} {ms,6:0.00} ms | bg {t.Background,5:0.00} layout {t.Layout,5:0.00} rings {t.Rings,5:0.00} trails {t.Trails,5:0.00} orders {t.Orders,5:0.00} tracks {t.Tracks,5:0.00} labels {t.Labels,5:0.00} ovl {t.Overlay,5:0.00}");
         }
+    }
+
+    private static void Move(PlotScene s, int f)
+    {
+        foreach (var t in s.Tracks) t.X += (f % 2 == 0 ? 1 : -1) * 0.01f;
     }
 
     public static double Time(PlotRenderer r, PlotScene scene, Viewport vp, RenderState st, int frames = 60)

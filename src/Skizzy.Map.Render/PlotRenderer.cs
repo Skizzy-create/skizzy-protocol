@@ -44,9 +44,10 @@ public sealed class PlotRenderer : IDisposable
     private SKRect _clip;
 
     // batched per-colour paths, reset every frame
-    private readonly SKPath[] _trailOld = NewPaths(4), _trailNew = NewPaths(4), _leaders = NewPaths(4);
+    private readonly SKPath[] _trailOld = NewPaths(4), _trailNew = NewPaths(4);
+    private readonly SegmentBatch[] _leaders = [new(), new(), new(), new()];
+    private readonly SegmentBatch[] _stalks = [new(), new(), new(), new(), new()];
     private readonly SKPath[] _dots = NewPaths(4), _mslFill = NewPaths(4), _mslStroke = NewPaths(4);
-    private readonly SKPath[] _stalks = NewPaths(5);
     private readonly SegmentBatch[] _targetLines = [new(), new()];
     private readonly SKPath _gridLo = new(), _gridHi = new(), _scratch = new(), _labelBacks = new(), _brackets = new();
     private readonly SegmentBatch _ringPrimary = new(), _ringSecondary = new(), _ringRadar = new();
@@ -79,6 +80,9 @@ public sealed class PlotRenderer : IDisposable
     /// happens anyway on a rotated or skewed canvas; about ten times slower on a CPU surface.
     /// </summary>
     public bool UseSprites { get; set; } = true;
+
+    /// <summary>Number of cached symbol sprites (diagnostics).</summary>
+    public int SpriteCount => _sprites.Count;
 
     public Theme Theme => _theme;
 
@@ -352,7 +356,7 @@ public sealed class PlotRenderer : IDisposable
             var (x, y) = tr[s0];
             float px = vp.ToScreenX(x), py = vp.ToScreenY(y);
             old.MoveTo(px, py);
-            // screen-space decimation: points closer than 2 px to the last one emitted add nothing visible
+            // screen-space decimation: points closer than 3 px to the last one emitted add nothing visible
             for (int k = s0 + 1; k <= mid && k < n; k++)
             {
                 (x, y) = tr[k];
@@ -385,7 +389,7 @@ public sealed class PlotRenderer : IDisposable
     private static bool Near(float ax, float ay, float bx, float by)
     {
         float dx = ax - bx, dy = ay - by;
-        return dx * dx + dy * dy < 4f;
+        return dx * dx + dy * dy < 9f;
     }
 
     private void DrawTargetLines(SKCanvas c, PlotScene scene, in Viewport vp, RenderState st)
@@ -505,8 +509,7 @@ public sealed class PlotRenderer : IDisposable
                 if (len > 0)
                 {
                     float y0 = it.Sy + (it.Tier == SymbolTier.Dot ? 2f : it.S * .35f);
-                    var p = _stalks[Theme.AltitudeBand(t.AltitudeM)];
-                    p.MoveTo(it.Sx, y0); p.LineTo(it.Sx, y0 + len);
+                    _stalks[Theme.AltitudeBand(t.AltitudeM)].Add(it.Sx, y0, it.Sx, y0 + len);
                 }
             }
             if (it.Tier is SymbolTier.Frame or SymbolTier.Full && t.SpeedMps > 20f)
@@ -515,16 +518,14 @@ public sealed class PlotRenderer : IDisposable
                 float h = t.HeadingDeg * (MathF.PI / 180f), dx = MathF.Sin(h), dy = -MathF.Cos(h);
                 float len = MathF.Max(it.S * .7f, MathF.Min(46f, t.SpeedMps / 1000f * 45f * vp.Scale));
                 float r0 = it.S * .5f;
-                var p = _leaders[(int)t.Affiliation];
-                p.MoveTo(it.Sx + dx * r0, it.Sy + dy * r0);
-                p.LineTo(it.Sx + dx * (r0 + len), it.Sy + dy * (r0 + len));
+                _leaders[(int)t.Affiliation].Add(it.Sx + dx * r0, it.Sy + dy * r0, it.Sx + dx * (r0 + len), it.Sy + dy * (r0 + len));
             }
         }
         _stroke.StrokeWidth = _hair;
         for (int b = 0; b < 5; b++)
-            if (!_stalks[b].IsEmpty) { _stroke.Color = Theme.A(_theme.ForAltitudeBand(b), .6f); c.DrawPath(_stalks[b], _stroke); }
+            if (!_stalks[b].IsEmpty) { _stroke.Color = Theme.A(_theme.ForAltitudeBand(b), .6f); _stalks[b].Draw(c, _stroke); }
         for (int a = 0; a < 4; a++)
-            if (!_leaders[a].IsEmpty) { _stroke.Color = Theme.A(_theme.ForAffiliation((Affiliation)a), .6f); c.DrawPath(_leaders[a], _stroke); }
+            if (!_leaders[a].IsEmpty) { _stroke.Color = Theme.A(_theme.ForAffiliation((Affiliation)a), .6f); _leaders[a].Draw(c, _stroke); }
 
         // pass 2: symbols, big first (small marks on top)
         var baseMatrix = c.TotalMatrix;
@@ -887,7 +888,7 @@ public sealed class PlotRenderer : IDisposable
         _sprites.Dispose();
         _symbols.Dispose();
         foreach (var f in _fonts) f.Dispose();
-        foreach (var arr in new[] { _trailOld, _trailNew, _leaders, _dots, _mslFill, _mslStroke, _stalks })
+        foreach (var arr in new[] { _trailOld, _trailNew, _dots, _mslFill, _mslStroke })
             foreach (var p in arr) p.Dispose();
         _gridLo.Dispose(); _gridHi.Dispose(); _scratch.Dispose(); _labelBacks.Dispose(); _brackets.Dispose();
         _orderMarks.Dispose();

@@ -31,7 +31,7 @@ internal sealed class RectGrid
 
     public void Add(in ScreenRect r)
     {
-        RenderState.Ensure(ref _rects, _rectCount + 1);
+        if (_rectCount == _rects.Length) Array.Resize(ref _rects, _rects.Length * 2); // grow, keeping what is stored
         int idx = _rectCount++;
         _rects[idx] = r;
         CellRange(r, out int x0, out int y0, out int x1, out int y1);

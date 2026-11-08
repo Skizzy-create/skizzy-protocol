@@ -166,6 +166,7 @@ public sealed class RenderState : IDisposable
         }
     }
 
+    /// <summary>Make sure a scratch buffer holds at least n items. Contents are NOT preserved (use before refilling).</summary>
     internal static void Ensure<T>(ref T[] a, int n)
     {
         if (a.Length < n) a = new T[Math.Max(n, a.Length * 2)];
