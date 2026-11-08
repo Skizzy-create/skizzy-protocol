@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using Skizzy.Client;
 using Skizzy.Map.Render.Model;
+using Skizzy.Protocol.Errors;
 using Skizzy.Protocol.Json;
 
 namespace Skizzy.Map.Data.Live;
@@ -129,12 +130,13 @@ public class HostDataSource : IDataSource
                         await client.CallAsync("host.stats", JsonValue.Obj(), TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
                         _rttMs = sw.Elapsed.TotalMilliseconds;
                     }
-                    catch (SkizzyClientException) { _rttMs = null; }
+                    catch (Exception e) when (IsCallError(e)) { _rttMs = null; }
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
-            catch (Exception e) when (e is SkizzyClientException or IOException or System.Net.WebSockets.WebSocketException or InvalidOperationException or TimeoutException or ObjectDisposedException or OperationCanceledException)
+            catch (Exception e) when (e is not OutOfMemoryException)
             {
+                // anything else (protocol errors included) drops the connection and retries: the loop must never die
                 SetState(SourceState.Reconnecting, "Not connected: " + Short(e.Message) + " · retrying");
             }
             finally
@@ -148,6 +150,9 @@ public class HostDataSource : IDataSource
             catch (OperationCanceledException) { return; }
         }
     }
+
+    /// <summary>A call that failed at the host (SkizzyError: protocol error) or in the client (SkizzyClientException).</summary>
+    private static bool IsCallError(Exception e) => e is SkizzyClientException or SkizzyError or TimeoutException;
 
     private Endpoint EndpointWithUrl()
     {
@@ -186,7 +191,7 @@ public class HostDataSource : IDataSource
                 }
             _inbox.Enqueue(() => _catalog = list);
         }
-        catch (SkizzyClientException) { }
+        catch (Exception e) when (IsCallError(e)) { }
     }
 
     private async Task SubscribeAsync(SkizzyClient client, CancellationToken ct)
@@ -201,7 +206,7 @@ public class HostDataSource : IDataSource
             SetState(SourceState.Online, "Live · tactical stream");
             return;
         }
-        catch (SkizzyClientException) { }
+        catch (Exception e) when (IsCallError(e)) { }
 
         while (!ct.IsCancellationRequested && client.IsConnected)
         {
@@ -217,7 +222,7 @@ public class HostDataSource : IDataSource
                 StreamKind = "query";
                 var cols = res.GetStringList("columns");
                 var rows = res.GetArr("rows");
-                double ut = res.GetDouble("ut", double.NaN);
+                double ut = res.GetDouble("ut", res.GetObj("meta")?.GetDouble("ut", double.NaN) ?? double.NaN);
                 _inbox.Enqueue(() =>
                 {
                     if (cols is not null) _columns = cols.ToArray();
@@ -226,9 +231,10 @@ public class HostDataSource : IDataSource
                 SetState(SourceState.Online, "Live · vessel stream 5 Hz (M0)");
                 return;
             }
-            catch (SkizzyClientException e)
+            catch (Exception e) when (IsCallError(e))
             {
-                SetState(SourceState.Online, "Connected · " + (e.Code == "unavailable" ? "waiting for the flight scene" : Short(e.Message)));
+                bool unavailable = e is SkizzyClientException { Code: "unavailable" } || e is SkizzyError { Kind: var k } && ErrorKinds.Name(k) == "unavailable";
+                SetState(SourceState.Online, "Connected · " + (unavailable ? "waiting for the flight scene" : Short(e.Message)));
                 await Task.Delay(TimeSpan.FromSeconds(3), ct).ConfigureAwait(false);
             }
         }
