@@ -131,9 +131,10 @@ namespace Skizzy.C2
 
         /// <summary>
         /// Friendly weapon managers of <paramref name="side"/> engaging <paramref name="target"/>
-        /// (<c>TargetInfo.NumFriendliesEngaging</c>), or missiles of that side in flight at it.
+        /// (<c>TargetInfo.NumFriendliesEngaging</c>), or missiles of that side in flight at it, not counting
+        /// <paramref name="exceptUnit"/>'s own weapon manager (the asking unit must not see its own engagement).
         /// </summary>
-        int FriendliesEngaging(string side, uint target);
+        int FriendliesEngaging(string side, uint target, uint exceptUnit);
     }
 
     /// <summary>

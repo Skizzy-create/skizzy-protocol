@@ -486,12 +486,13 @@ namespace Skizzy.C2.Fake
             return !Allies.Contains(a + "|" + b) && !Allies.Contains(b + "|" + a);
         }
 
-        public int FriendliesEngaging(string side, uint target)
+        public int FriendliesEngaging(string side, uint target, uint exceptUnit)
         {
             int n = 0;
             for (int i = 0; i < List.Count; i++)
             {
                 var u = List[i];
+                if (u.Id == exceptUnit) continue;
                 if (u.S.Alive && u.S.Side == side && u.CurrentTarget == target) n++;
                 else if (u.S.Alive && u.S.IsMissile && u.S.Side == side && u.S.MissileTarget == target) n++;
             }

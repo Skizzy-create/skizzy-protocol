@@ -130,6 +130,12 @@ namespace Skizzy.C2
         public bool SetVip(uint unit, bool vip)
         {
             var r = Rec(unit);
+            if (r == null || r.S.Side == null)
+            {
+                _now = _world.Now;
+                RefreshUnits();
+                r = Rec(unit);
+            }
             if (r == null || r.S.Side == null) return false;
             var p = Side(r.S.Side);
             if (vip) p.Vips.Add(unit); else p.Vips.Remove(unit);

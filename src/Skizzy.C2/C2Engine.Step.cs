@@ -13,6 +13,9 @@ namespace Skizzy.C2
         /// <summary>An engage-on-contact divert ends when the unit's own sensors have not held the contact for this long.</summary>
         public double ContactLostS = 5;
 
+        /// <summary>Escort aim point: the slot projected along the leader's track by this many seconds.</summary>
+        public double EscortLeadS = 10;
+
         private readonly object _advanceOwner = new object();
         private readonly List<GeoPoint> _ptScratch2 = new List<GeoPoint>();
 
@@ -306,7 +309,7 @@ namespace Skizzy.C2
                 var m = AliveRec(p.HostileMissiles[i]);
                 if (m == null || r.InBackoff(m.Id, _now)) continue;
                 bool mine = r.Claim == m.Id;
-                if (!mine && (p.ClaimCount(m.Id) > 0 || _world.FriendliesEngaging(p.Side, m.Id) > 0)) continue;
+                if (!mine && (p.ClaimCount(m.Id) > 0 || _world.FriendliesEngaging(p.Side, m.Id, r.Id) > 0)) continue;
                 double dd = Dist(r, m);
                 if (dd > mreach) continue;
                 int v = IsVipThreat(p, m, 1.0) ? 0 : 1;
@@ -734,7 +737,11 @@ namespace Skizzy.C2
             double lateral = (air ? d.FormationSpacingAirKm : d.FormationSpacingSurfaceKm) * 1000;
             var slot = Patterns.EscortSlot(_geo, l.S.Pos, l.S.HeadingDeg, uo.Slot, uo.StationDistM, uo.MarshalSlot, lateral);
             slot.Alt = air ? uo.Alt : 0;
-            Follow(uo, slot, d.RefeedKm * 1000);
+            // aim where the slot will be, so the escort keeps flying with a moving package
+            var aim = l.S.SpeedMps > 1 ? _geo.Destination(slot, l.S.HeadingDeg, l.S.SpeedMps * EscortLeadS) : slot;
+            aim.Alt = slot.Alt;
+            bool completed = ReferenceEquals(r.RouteOwner, uo) && r.RouteCompleted;
+            Follow(uo, aim, completed ? 200 : d.RefeedKm * 1000);
             if (air)
             {
                 WantOnePoint(r, uo, uo.RouteVersion, uo.FedAnchor, 1000f);
