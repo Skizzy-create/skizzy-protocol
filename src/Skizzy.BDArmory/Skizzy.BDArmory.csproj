@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The C2 engine's binding to BDArmory (in game). net48, NoStdLib, KSP's Managed folder only (02 §1 build guard).
+    Core/ is Unity-free and is also compiled (by link) into tests/Skizzy.Ksp.Tests. Ksp/ holds the KSP/BDArmory layer;
+    the typed Overdrive hook calls (Ksp/HookCalls.cs) only run when the runtime probe finds the hook.
+    BDArmory.dll comes from the git-ignored refs/ folder (scripts/copy-refs.ps1); it is never committed or shipped.
+  -->
+  <Import Project="..\..\build\KSP.props" />
+  <Import Project="..\..\build\KSP.Unity.props" />
+  <PropertyGroup>
+    <RootNamespace>Skizzy.Bda</RootNamespace>
+    <AssemblyName>Skizzy.BDArmory</AssemblyName>
+    <SkizzyBdaRef>$(SkizzyRepoRoot)refs\BDArmory.dll</SkizzyBdaRef>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="BDArmory"><HintPath>$(SkizzyBdaRef)</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Skizzy.C2.Ksp\Skizzy.C2.Ksp.csproj" Private="false" />
+  </ItemGroup>
+  <Target Name="SkizzyCheckBdaRef" BeforeTargets="ResolveAssemblyReferences;PrepareForBuild">
+    <Error Condition="!Exists('$(SkizzyBdaRef)')"
+           Text="refs\BDArmory.dll is missing. Run scripts\copy-refs.ps1 -Source &lt;an Overdrive-hooks BDArmory.dll&gt; (refs\ is git-ignored; BDArmory is never committed or shipped)." />
+  </Target>
+</Project>
