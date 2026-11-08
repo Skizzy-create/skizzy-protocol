@@ -146,3 +146,16 @@ These were recorded by the user on 2026-11-08 and must hold in the real system:
     - Each unit resolves its own base. Units with no base refuse with a reason (point 10).
     - Aircraft hold at the marshal point because BDArmory cannot land on a carrier.
     - Spec in `09-c2-multi-agent.md` §2.1.1.
+12. **Fighters and drones engage missiles when no aircraft are in view** (user request, 2026-11-08; mockup v9).
+    - Air-defence target priority for own aircraft and drones:
+      1. threats to a VIP
+      2. hostile aircraft
+      3. anti-ship missiles and attack drones, one missile per threat, with the gun up close
+    - In the real system this is a doctrine field: `airEngageMissiles: when_no_air (default) | always | never`. It maps to BDArmory's interceptor and missile-targeting settings on the weapon manager (F2/F4 filters decide the order).
+    - Mockup v9 measured at T+700 s: 24 AAMs fired at missiles or drones, 12 air intercepts. v8 had none.
+13. **VIPs and protect orders** (user request, 2026-11-08; mockup v9).
+    - **Mark VIP:** V key or the Unit panel button, on any own units. Kestrel starts as a VIP in the demo.
+    - **Effect of VIP status:** every shooter (fighters, drones, ship SAMs) ranks threats to a VIP first. A threat is a missile aimed at it, or a hostile aircraft or drone within 40 km of it.
+    - **Protect order:** select units, then right-click one of your own units. That unit becomes a VIP. Aircraft orbit it at 7–10 km and engage anything within 40 km of it; ships take stations around it. When the VIP is lost, the protectors report and go back to their mission.
+    - **On the plot:** four accent corner brackets around the symbol, a faint 40 km protection ring, and the "VIP" tag only when the unit is selected (so it doesn't collide with labels).
+    - **In the real system:** `defend_unit {unit, radius}` (`09-c2-multi-agent.md` §2.1) plus a side-level `vip` flag that feeds WTA priority.

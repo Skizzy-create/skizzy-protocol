@@ -341,7 +341,7 @@ function setup(){
   stats={exp:{blue:{'SM-2':0,ESSM:0,AAM:0,CIWS:0},red:{ASM:0,Drones:0}},lost:{blue:{},red:{}},intercepts:0,hits:0,ciws:0,ff:0};
   rep={};
   const ship=(kind,name,x,y,extra)=>add(Object.assign({side:'blue',kind,name,x,y,alt:0,hdg:.12,spd:K[kind].spd,hp:100,ctrl:'Mission',mission:'Sea control ALPHA',doctrine:'Free',emcon:'Active'},extra));
-  ship('cvn','Kestrel',0,0,{mag:{ESSM:[16,16],CIWS:[2,2]},channels:2});
+  ship('cvn','Kestrel',0,0,{mag:{ESSM:[16,16],CIWS:[2,2]},channels:2,vip:true});
   ship('ddg','Halyard',14,9,{mag:{'SM-2':[32,32],ESSM:[8,8],CIWS:[1,1]},channels:4});
   ship('ddg','Bowline',14,-9,{mag:{'SM-2':[32,32],ESSM:[8,8],CIWS:[1,1]},channels:4});
   ship('ddg','Cleat',-11,2,{mag:{'SM-2':[24,24],ESSM:[8,8],CIWS:[1,1]},channels:3});
@@ -384,6 +384,26 @@ let unread=0,dirtyBot=true;
 const STEP=.1;
 function simulate(dt){acc+=dt;let n=0;while(acc>=STEP&&n<400){step(STEP);acc-=STEP;n++;}}
 function nearest(o,pred,maxD){let b=null,bd=maxD;for(const t of objs){if(!t.alive||t===o||!pred(t))continue;const d=dist(o,t);if(d<bd){bd=d;b=t;}}return b;}
+const VIP_R=40;
+const freeT=x=>!(x.engagedBy&&byId.get(x.engagedBy)?.alive);
+const isMslThreat=x=>x.side==='red'&&(x.kind==='asm'||(x.kind==='uav'&&x.idState==='hostile'));
+function vipList(){return objs.filter(v=>v.alive&&v.vip&&v.side==='blue');}
+function threatensVip(x,vips){if(x.side!=='red'||!x.alive)return false;if(x.kind==='asm')return !!byId.get(x.target)?.vip;
+  if(x.kind==='bmr'||x.kind==='ftr'||x.kind==='uav')return x.idState==='hostile'&&vips.some(v=>dist(v,x)<VIP_R);return false;}
+// target choice for blue fighters and drones: threats to VIPs first, then aircraft, then anti-ship missiles and attack drones when no aircraft are in view
+function airTarget(o){const vips=vipList(),ucav=o.kind==='ucav';
+  if(vips.length){const t=nearest(o,x=>threatensVip(x,vips)&&(x.kind!=='asm'||freeT(x)),ucav?60:120);if(t)return t;}
+  const a=posture==='Proactive'
+    ?(nearest(o,x=>x.side==='red'&&x.kind==='bmr'&&x.idState==='hostile'&&x.state!=='egress',230)||nearest(o,x=>x.side==='red'&&x.kind==='ftr'&&x.idState==='hostile',75))
+    :nearest(o,x=>x.side==='red'&&(x.kind==='ftr'||x.kind==='bmr')&&x.idState==='hostile',75);
+  if(a)return a;
+  return nearest(o,x=>isMslThreat(x)&&freeT(x),ucav?45:80);}
+// fire at a target: AAM in range, or the gun against missiles and drones up close
+function engageAir(o,t,dt,cool){
+  if(o.aam>0&&dist(o,t)<(o.kind==='ucav'?20:42)&&simT>o.cool&&freeT(t)){launch('aam',o,t,'AAM');o.aam--;stats.exp.blue.AAM++;o.cool=simT+(cool||3.5);report(o,'AAM',1);}
+  if((t.kind==='asm'||t.kind==='uav')&&t.alive&&dist(o,t)<1.6&&rnd()<.25*dt){t.alive=false;stats.intercepts++;event('ciws',t.x,t.y);report(o,'Gun',1);
+    logMsg('intercept',`${o.name} shot down ${t.kind==='asm'?'missile':'drone'} ${t.name} with its gun.`,t.x,t.y);}
+}
 const blueShips=()=>objs.filter(o=>o.alive&&o.side==='blue'&&(o.kind==='cvn'||o.kind==='ddg'));
 function orbit(o,dt){const c=o.orbit,a=Math.atan2(o.y-c.y,o.x-c.x),d=Math.hypot(o.x-c.x,o.y-c.y);steerTo(o,a+Math.PI/2+(d-c.r)*.05,.35,dt);}
 function launch(kind,from,target,weapon){
@@ -407,12 +427,8 @@ function think(o,dt){
   case 'ftr':case 'ucav':
     if(o.side==='blue'){
       o.fuel=Math.max(0,o.fuel-dt*.00008);
-      const t=posture==='Proactive'
-        ?(nearest(o,x=>x.side==='red'&&x.kind==='bmr'&&x.idState==='hostile'&&x.state!=='egress',230)||nearest(o,x=>x.side==='red'&&x.kind==='ftr'&&x.idState==='hostile',75))
-        :nearest(o,x=>x.side==='red'&&(x.kind==='ftr'||x.kind==='bmr')&&x.idState==='hostile',75);
-      if(t){steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.5,dt);
-        if(o.aam>0&&dist(o,t)<(o.kind==='ucav'?20:42)&&simT>o.cool&&!(t.engagedBy&&byId.get(t.engagedBy)?.alive)){launch('aam',o,t,'AAM');o.aam--;stats.exp.blue.AAM++;o.cool=simT+3.5;report(o,'AAM',1);}
-      }else orbit(o,dt);
+      const t=airTarget(o);
+      if(t){steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.5,dt);engageAir(o,t,dt);}else orbit(o,dt);
     }else{
       if(o.state==='escort'){steerTo(o,Math.atan2(-o.y,-o.x)+o.off,.2,dt);
         const thr=objs.some(m=>m.alive&&m.kind==='aam'&&m.target===o.id)||nearest(o,x=>x.side==='blue'&&x.kind==='ftr',40);
@@ -438,7 +454,7 @@ function think(o,dt){
   case 'sam':case 'aam':{let t=byId.get(o.target);
     if(o.ff&&!o.ffDone&&simT-o.born>3){const f=nearest(o,x=>x.side===o.side&&x.id!==o.shooter&&!K[x.kind].missile,25);
       if(f){if(t&&t.engagedBy===o.id)t.engagedBy=null;o.target=f.id;o.ffDone=true;t=f;}}
-    if(!t||!t.alive){const n=nearest(o,x=>x.side!==o.side&&(o.kind==='sam'?(x.kind==='asm'||x.kind==='uav'||x.kind==='ftr'||x.kind==='bmr'):(x.kind==='ftr'||x.kind==='bmr'))&&!(x.engagedBy&&byId.get(x.engagedBy)?.alive),14);
+    if(!t||!t.alive){const n=nearest(o,x=>x.side!==o.side&&(o.kind==='sam'?(x.kind==='asm'||x.kind==='uav'||x.kind==='ftr'||x.kind==='bmr'):(x.kind==='ftr'||x.kind==='bmr'||x.kind==='asm'||x.kind==='uav'))&&!(x.engagedBy&&byId.get(x.engagedBy)?.alive),14);
       if(!n){o.alive=false;break;}o.target=n.id;n.engagedBy=o.id;t=n;}
     steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),3,dt);
     if(simT-o.born>(o.kind==='sam'?80:60)){o.alive=false;break;}
@@ -447,7 +463,7 @@ function think(o,dt){
       else{logMsg('damage',`Friendly fire: ${o.name} hit ${t.name}.`,t.x,t.y);killObj(t,'friendly fire');}
       if(pauseOnLaunch){paused=true;showBanner(`Friendly fire: ${o.name} hit ${t.name}. One missile in ${Math.round(1/opt.ff).toLocaleString()} is set to go astray.`);syncPlay();}
       break;}
-    if(dist(o,t)<.45){o.alive=false;const pk=o.kind==='sam'?(t.kind==='asm'?.72:.8):.62;
+    if(dist(o,t)<.45){o.alive=false;const pk=o.kind==='sam'?(t.kind==='asm'?.72:.8):(t.kind==='asm'||t.kind==='uav'?.55:.62);
       if(rnd()<pk){killObj(t);if(t.kind==='asm'||t.kind==='uav'){stats.intercepts++;event('intercept',t.x,t.y);}else event('kill',t.x,t.y);t.alive=false;}
       else{t.engagedBy=null;event('miss',t.x,t.y);}}
   }break;
@@ -469,15 +485,27 @@ function doOrder(o,dt){
       o.spd=o.kind==='ssn'?.009:.012;steerTo(o,Math.atan2(od.y-o.y,od.x-o.x),.03,dt);return true;}
     if(d<5){if(!od.arrived){od.arrived=true;logMsg('orders',`${o.name} on station, orbiting the ordered point.`,o.x,o.y);}o.orbit={x:od.x,y:od.y,r:5};orbit(o,dt);}
     else steerTo(o,Math.atan2(od.y-o.y,od.x-o.x),.5,dt);
-    if((o.kind==='ftr'||o.kind==='ucav')&&o.aam>0){const t=nearest(o,x=>x.side==='red'&&(x.kind==='ftr'||x.kind==='bmr')&&x.idState==='hostile',30);
+    if((o.kind==='ftr'||o.kind==='ucav')&&o.aam>0){const t=nearest(o,x=>x.side==='red'&&(x.kind==='ftr'||x.kind==='bmr')&&x.idState==='hostile',30)||nearest(o,x=>isMslThreat(x)&&freeT(x),25);
       if(t&&simT>o.cool&&!(t.engagedBy&&byId.get(t.engagedBy)?.alive)){launch('aam',o,t,'AAM');o.aam--;stats.exp.blue.AAM++;o.cool=simT+3.5;report(o,'AAM',1);}}
     return true;
   }
+  if(od.type==='defend'){
+    const v=byId.get(od.unit);
+    if(!v||!v.alive){logMsg('orders',`${o.name}: ${v?v.name:'the protected unit'} is lost. Returning to ${o.mission}.`,o.x,o.y);o.order=null;if(o.ctrl==='Order')releaseUnit(o);return false;}
+    if(K[o.kind].domain==='air'){
+      const t=nearest(v,x=>x.side==='red'&&((x.kind==='asm'&&freeT(x))||((x.kind==='ftr'||x.kind==='bmr'||x.kind==='uav')&&x.idState==='hostile')),VIP_R);
+      if(t){steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.55,dt);engageAir(o,t,dt);}
+      else{o.orbit={x:v.x,y:v.y,r:od.r||8};orbit(o,dt);}
+      return true;}
+    const tx=v.x+(od.ox||0),ty=v.y+(od.oy||0),d=Math.hypot(tx-o.x,ty-o.y);
+    if(d<.8){o.spd=v.spd||.002;steerTo(o,v.hdg,.03,dt);}else{o.spd=o.kind==='ssn'?.009:.012;steerTo(o,Math.atan2(ty-o.y,tx-o.x),.03,dt);}
+    return true;}
   if(od.type==='attack'){
     const t=byId.get(od.target);
     if(!t||!t.alive){logMsg('orders',`${o.name}: target ${t?t.name:''} destroyed.${o.ctrl==='Order'?' Returning to '+o.mission+'.':''}`,o.x,o.y);o.order=null;if(o.ctrl==='Order')releaseUnit(o);return false;}
     if(o.kind==='ftr'||o.kind==='ucav'){steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.55,dt);
       if(o.aam>0&&dist(o,t)<(o.kind==='ucav'?20:42)&&simT>o.cool){launch('aam',o,t,'AAM');o.aam--;stats.exp.blue.AAM++;o.cool=simT+3;report(o,'AAM',1);}
+      engageAir(o,t,dt,3);
       if(o.aam===0){logMsg('orders',`${o.name}: out of missiles, returning to ${o.mission}.`,o.x,o.y);o.order=null;if(o.ctrl==='Order')releaseUnit(o);}
       return true;}
     return false;
@@ -485,7 +513,7 @@ function doOrder(o,dt){
   return false;
 }
 function selfDefend(o){
-  if((o.kind==='ftr'||o.kind==='ucav')&&o.aam>0){const t=nearest(o,x=>x.side==='red'&&(x.kind==='ftr'||x.kind==='bmr')&&x.idState==='hostile',30);
+  if((o.kind==='ftr'||o.kind==='ucav')&&o.aam>0){const t=nearest(o,x=>x.side==='red'&&(x.kind==='ftr'||x.kind==='bmr')&&x.idState==='hostile',30)||nearest(o,x=>isMslThreat(x)&&freeT(x),25);
     if(t&&simT>o.cool&&!(t.engagedBy&&byId.get(t.engagedBy)?.alive)){launch('aam',o,t,'AAM');o.aam--;stats.exp.blue.AAM++;o.cool=simT+3.5;report(o,'AAM',1);}}
 }
 function doRoute(o,dt){
@@ -508,6 +536,26 @@ function issueRoute(pts){
   renderUnit();
 }
 function releaseUnit(u){u.ctrl=u.prevCtrl||'Mission';u.order=null;if(u.home)u.orbit=u.home;if(K[u.kind].domain!=='air')u.spd=K[u.kind].spd;}
+function issueDefend(v){
+  const units=[...sel].map(id=>byId.get(id)).filter(u=>u&&u.alive&&u.side==='blue'&&!K[u.kind].missile&&u!==v);
+  if(!units.length){toast('Select the units that should protect it first, then right-click the unit to protect.');return;}
+  const wasVip=v.vip;v.vip=true;
+  const ships=units.filter(u=>K[u.kind].domain!=='air');let i=0;
+  for(const u of units){
+    if(u.ctrl!=='Order'&&u.ctrl!=='Manual')u.prevCtrl=u.ctrl;if(!u.home&&u.orbit)u.home=u.orbit;
+    const a=ships.length?(i/ships.length)*Math.PI*2:0;
+    u.order={type:'defend',unit:v.id,r:7+(u.id%3)*1.5,ox:Math.cos(a)*3,oy:Math.sin(a)*3};if(K[u.kind].domain!=='air')i++;
+    if(u.ctrl!=='Manual')u.ctrl='Order';}
+  const n=units.length;
+  logMsg('orders',`${n>4?n+' units':units.map(u=>u.name).join(', ')}: protect ${v.name}${wasVip?'':' (now marked VIP)'}. They stay with it and engage anything that comes within ${VIP_R} km.`,v.x,v.y);
+  renderUnit();}
+function toggleVip(){
+  const us=[...sel].map(id=>byId.get(id)).filter(u=>u&&u.alive&&u.side==='blue'&&!K[u.kind].missile);
+  if(!us.length){toast('Select one or more of your own units, then press V or Mark VIP.');return;}
+  const on=!us.every(u=>u.vip);for(const u of us)u.vip=on;
+  const names=us.length>4?us.length+' units':us.map(u=>u.name).join(', ');
+  logMsg('orders',on?`${names} marked VIP. Fighters, drones and ships now give threats to ${us.length>1?'them':'it'} priority.`:`${names}: VIP protection removed.`,us[0].x,us[0].y);
+  renderUnit();}
 function issueOrder(wx,wy,target){
   const units=[...sel].map(id=>byId.get(id)).filter(u=>u&&u.alive&&u.side==='blue'&&!K[u.kind].missile);
   if(!units.length){toast('Select one or more of your own units first, then right-click where they should go.');return;}
@@ -542,13 +590,14 @@ function drawOrders(){
     const e=toS(od.pts[od.pts.length-1][0],od.pts[od.pts.length-1][1]);g.beginPath();g.arc(e[0],e[1],5,0,7);g.stroke();}
   if(rdrag&&rdrag.moved){g.setLineDash([]);g.strokeStyle=COL.accent;g.lineWidth=1.8;g.beginPath();rdrag.pts.forEach((p,i)=>{const s=toS(p[0],p[1]);i?g.lineTo(s[0],s[1]):g.moveTo(s[0],s[1]);});g.stroke();g.lineWidth=1.2;}
   for(const o of objs){if(!o.alive||!o.order||o.order.type==='route')continue;const a=toS(o.x,o.y);let b;
-    if(o.order.type==='move')b=toS(o.order.x,o.order.y);else{const t=byId.get(o.order.target);if(!t||!t.alive)continue;b=toS(t.x,t.y);}
+    if(o.order.type==='move')b=toS(o.order.x,o.order.y);else{const t=byId.get(o.order.type==='defend'?o.order.unit:o.order.target);if(!t||!t.alive)continue;b=toS(t.x,t.y);}
     g.strokeStyle=rgba(COL.accent,la);g.setLineDash([5,4]);g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.stroke();
     if(o.order.type==='move'){g.setLineDash([]);g.beginPath();g.moveTo(b[0]-5,b[1]);g.lineTo(b[0],b[1]-5);g.lineTo(b[0]+5,b[1]);g.lineTo(b[0],b[1]+5);g.closePath();g.stroke();}}
   g.restore();
 }
 
 function shipsFire(){
+  const vips=vipList();
   for(const s of objs){
     if(!s.alive||s.side!=='blue'||(s.kind!=='ddg'&&s.kind!=='cvn'))continue;
     if(s.doctrine==='Hold'||s.emcon==='Passive')continue;
@@ -561,9 +610,9 @@ function shipsFire(){
       const msl=t.kind==='asm'||t.kind==='uav';
       if(!msl){if(s.doctrine==='Tight'&&t.idState!=='hostile')continue;if(t.idState==='unknown')continue;}
       const d=dist(s,t),r=t.alt<100?38:(posture==='Proactive'?90:60);
-      if(d<=r)c.push([d,t]);
+      if(d<=r)c.push([d,t,vips.length&&threatensVip(t,vips)?0:1]);
     }
-    c.sort((a,b)=>a[0]-b[0]);
+    c.sort((a,b)=>a[2]-b[2]||a[0]-b[0]);
     if(s.order&&s.order.type==='attack'){const pt=byId.get(s.order.target);
       if(pt&&pt.alive&&!(pt.engagedBy&&byId.get(pt.engagedBy)?.alive)&&dist(s,pt)<=(pt.alt<100?38:60)){const i=c.findIndex(x=>x[1]===pt);if(i>=0)c.splice(i,1);c.unshift([dist(s,pt),pt]);}}
     for(const [d,t] of c){if(free<=0)break;
@@ -706,6 +755,7 @@ function draw(){
     it.s=s;it.tier=msl?(s>=5?'msl':'dot'):(s>=16?'full':s>=8?'small':'dot');
   }
   if(opt.rings)drawRings(shown);
+  drawVips(shown);
   if(opt.trails)for(const it of shown)drawTrail(it);
   if(opt.lines)drawTargetLines(shown);
   if(replayIdx==null)drawOrders();
@@ -743,6 +793,13 @@ function drawZones(){
   g.fillStyle=rgba(COL.text,.55);g.fillText('BULLSEYE ANVIL',be[0]+8,be[1]-8);
   g.restore();
 }
+function drawVips(shown){g.save();
+  for(const it of shown){const o=it.o;if(!o.vip||!o.alive)continue;const r=(it.s||10)/2+6;
+    g.setLineDash([]);g.lineWidth=1.5;g.strokeStyle=COL.accent;
+    for(let q=0;q<4;q++){const a=q*Math.PI/2+Math.PI/4;g.beginPath();g.arc(it.sx,it.sy,r,a-.38,a+.38);g.stroke();}
+    if(sel.has(o.id)){g.font=`700 9px ${F_UI}`;g.fillStyle=COL.accent;g.textAlign='center';g.textBaseline='bottom';g.fillText('VIP',it.sx,it.sy-r-2);}
+    g.setLineDash([3,6]);g.lineWidth=1;g.strokeStyle=rgba(COL.accent,sel.has(o.id)?.45:.16);g.beginPath();g.arc(it.sx,it.sy,VIP_R*view.scale,0,7);g.stroke();}
+  g.restore();g.textAlign='left';g.textBaseline='alphabetic';}
 function drawRings(shown){
   g.save();
   for(const it of shown){const o=it.o;if(o.side!=='blue'||(o.kind!=='ddg'&&o.kind!=='cvn'))continue;
@@ -863,7 +920,7 @@ let drag=null,hover=null;
 function pick(sx,sy){let b=null,bd=1e9;for(const it of drawList){if(it.sx==null)continue;const d=Math.hypot(it.sx-sx,it.sy-sy);const r=Math.max(7,(it.s||6)/2+4);if(d<r&&d<bd){bd=d;b=it;}}return b;}
 let pendingMove=false,boxSel=null;
 let lastCtx=0,rdrag=null,suppressCtx=0;
-cv.addEventListener('contextmenu',e=>{e.preventDefault();const now=performance.now();if(now-lastCtx<400||now-suppressCtx<600||(rdrag&&rdrag.moved))return;lastCtx=now;const it=pick(e.offsetX,e.offsetY);const [wx,wy]=toW(e.offsetX,e.offsetY);issueOrder(wx,wy,it&&it.o.side==='red'?it.o:null);});
+cv.addEventListener('contextmenu',e=>{e.preventDefault();const now=performance.now();if(now-lastCtx<400||now-suppressCtx<600||(rdrag&&rdrag.moved))return;lastCtx=now;const it=pick(e.offsetX,e.offsetY);const [wx,wy]=toW(e.offsetX,e.offsetY);if(it&&it.o.side==='blue'&&!K[it.o.kind].missile&&!sel.has(it.o.id)&&[...sel].some(id=>byId.get(id)?.side==='blue'))issueDefend(it.o);else issueOrder(wx,wy,it&&it.o.side==='red'?it.o:null);});
 cv.addEventListener('pointerdown',e=>{if(e.button===2){cv.setPointerCapture(e.pointerId);rdrag={pts:[toW(e.offsetX,e.offsetY)],sx:e.offsetX,sy:e.offsetY,lx:e.offsetX,ly:e.offsetY,moved:false};return;}cv.setPointerCapture(e.pointerId);drag={x:e.offsetX,y:e.offsetY,cx:view.cx,cy:view.cy,moved:false,box:e.shiftKey};});
 cv.addEventListener('pointermove',e=>{
   if(rdrag){if(Math.hypot(e.offsetX-rdrag.sx,e.offsetY-rdrag.sy)>10)rdrag.moved=true;
@@ -901,6 +958,7 @@ window.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.ta
   if(e.key===' '){e.preventDefault();togglePlay();}
   else if(e.key==='f'||e.key==='F')fitAll();
   else if(e.key==='Escape'){sel.clear();renderUnit();}
+  else if(e.key==='v'||e.key==='V'){toggleVip();}
   else if(e.key===']'){sizeSel(1.25);}else if(e.key==='['){sizeSel(.8);}
   else if(/^Digit[1-9]$/.test(e.code)){const d=e.code.slice(5);
     if(e.altKey){e.preventDefault();const ids=[...sel].filter(i=>byId.get(i)?.side==='blue');if(!ids.length){toast('Select your units first, then press Alt+'+d+'.');return;}
@@ -977,13 +1035,13 @@ function renderUnit(){
   if(!ids.length){el.innerHTML=`<div class="unit"><p class="note">Click a track on the plot or in the list. Shift-click adds to the selection. [ and ] shrink or enlarge the selected symbols.</p></div>`;return;}
   const o=byId.get(primary&&sel.has(primary)?primary:ids[0]);const c=byId.get(1);const blue=o.side==='blue';
   const ctrlCls=(o.ctrl==='Manual'||o.ctrl==='Order')?'manual':o.ctrl==='Agent'?'agent':'';
-  const ctrlTxt=o.ctrl==='Order'?(o.order&&o.order.type==='attack'?'Your order · attack':'Your order · move'):o.ctrl==='Manual'?'Manual · you':o.ctrl==='Agent'?'Agent':o.ctrl==='Mission'?'Mission':o.ctrl==='Script'?'Script':'BDArmory AI';
+  const ctrlTxt=o.ctrl==='Order'?(o.order&&o.order.type==='attack'?'Your order · attack':o.order&&o.order.type==='defend'?'Your order · protect '+(byId.get(o.order.unit)?.name||''):'Your order · move'):o.ctrl==='Manual'?'Manual · you':o.ctrl==='Agent'?'Agent':o.ctrl==='Mission'?'Mission':o.ctrl==='Script'?'Script':'BDArmory AI';
   let h=`<div class="unit"><div class="uh"><span id="symSlot"></span><div><h3>${esc(o.name)}</h3><p>${K[o.kind].cls} · ${blue?'Blue':'Red'}${o.alive?'':' · <span class="win">lost</span>'}</p></div></div>`;
   if(ids.length>1)h+=`<p class="note">${ids.length} tracks selected. Size buttons apply to all of them.</p>`;
   if(ids.length>1&&ids.some(i=>byId.get(i).side==='blue'))h+=`<div class="sec"><span class="lbl">Make a group from the selection</span><div class="ctl"><input id="grpName" placeholder="Group name, e.g. Strike A" autocomplete="off"><button class="btn acc" data-act="mkgroup">Make group</button></div><span class="note">Tip: Alt+1…9 puts the selection on a number key. Press the number to select the group again.</span></div>`;
   if(blue){h+=`<div class="ctl"><span class="cstate ${ctrlCls}">${ctrlTxt}</span><span class="note">${esc(o.mission||'')}</span></div>
-    <div class="ctl">${(o.ctrl==='Manual'||o.ctrl==='Order')?`<button class="btn acc" data-act="release">Return to mission</button>`:`<button class="btn acc" data-act="take">Take control</button>`}<button class="btn" data-act="send" aria-pressed="${pendingMove}">Send to…</button><button class="btn ghost" data-act="fly">Fly in KSP</button><button class="btn ghost" data-act="center">Center</button></div>
-    <p class="note">Right-click the plot to send the selected units there. Right-click a hostile to attack it. Shift-drag to box-select several units.</p>`;}
+    <div class="ctl">${(o.ctrl==='Manual'||o.ctrl==='Order')?`<button class="btn acc" data-act="release">Return to mission</button>`:`<button class="btn acc" data-act="take">Take control</button>`}<button class="btn" data-act="send" aria-pressed="${pendingMove}">Send to…</button><button class="btn" data-act="vip" aria-pressed="${!!o.vip}">${o.vip?'VIP ✓':'Mark VIP'}</button><button class="btn ghost" data-act="fly">Fly in KSP</button><button class="btn ghost" data-act="center">Center</button></div>
+    <p class="note">Right-click the plot to send the selected units there. Right-click a hostile to attack it. Right-click one of your own units to make the selection protect it. V marks the selection as VIP. Shift-drag to box-select several units.</p>`;}
   else h+=`<div class="ctl"><span class="cstate" style="color:${o.idState==='unknown'?COL.unknown:COL.hostile}">${o.idState==='unknown'?'Unknown':'Hostile'}</span><button class="btn ghost" data-act="center">Center</button></div>`;
   h+=`<div class="kv"><div><span class="lbl">Brg</span><b>${pad3(brgOf(c,o))}</b></div><div><span class="lbl">Rng km</span><b>${dist(c,o).toFixed(1)}</b></div><div><span class="lbl">${K[o.kind].domain==='sub'?'Depth':'Alt'}</span><b>${altText(o)||'surface'}</b></div>
     <div><span class="lbl">Hdg</span><b>${pad3(hdgDeg(o))}</b></div><div><span class="lbl">Speed</span><b>${Math.round(o.spd*1000)} m/s</b></div><div><span class="lbl">RCS m²</span><b>${K[o.kind].rcs>=1?Math.round(K[o.kind].rcs).toLocaleString():K[o.kind].rcs}</b></div></div>`;
@@ -1003,6 +1061,7 @@ $('#unit').addEventListener('click',e=>{const b=e.target.closest('button');if(!b
   if(a==='take'){for(const id of ids){const u=byId.get(id);if(u.side==='blue'){if(u.ctrl!=='Order'&&u.ctrl!=='Manual')u.prevCtrl=u.ctrl;u.order=null;u.ctrl='Manual';}}logMsg('orders',`You took control of ${ids.map(i=>byId.get(i).name).join(', ')}. The mission is suspended, not cancelled.`,o.x,o.y);}
   else if(a==='release'){for(const id of ids){const u=byId.get(id);if(u.ctrl==='Manual'||u.ctrl==='Order')releaseUnit(u);}logMsg('orders',`${o.name} returned to ${o.mission}. The mission re-plans from the unit's position.`,o.x,o.y);}
   else if(a==='mkgroup'){const v=($('#grpName')||{}).value;makeGroup((v||'').trim()||`Group ${String.fromCharCode(65+(grpSeq++%26))}`,ids);document.activeElement&&document.activeElement.blur();}
+  else if(a==='vip'){toggleVip();return;}
   else if(a==='send'){pendingMove=!pendingMove;if(pendingMove)toast('Click the plot where the selected units should go, or click a hostile to attack it.');}
   else if(a==='fly'){toast(`In the real build this makes ${o.name} the active vessel in KSP so you can fly it yourself. The map keeps tracking it.`);}
   else if(a==='center')center(o);
