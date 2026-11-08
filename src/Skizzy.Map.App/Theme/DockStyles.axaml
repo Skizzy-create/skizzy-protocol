@@ -1,0 +1,24 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:dc="using:Dock.Avalonia.Controls">
+  <!-- Docking chrome tuned toward the mockup's panels: Saira headers (.ph h2), quiet uppercase tabs (.tab). -->
+  <Style Selector="dc|ToolChromeControl /template/ TextBlock#PART_Title">
+    <Setter Property="FontFamily" Value="{DynamicResource FontDisplay}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="LetterSpacing" Value="1.76" />
+    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+  </Style>
+  <Style Selector="dc|ToolTabStripItem">
+    <Setter Property="FontFamily" Value="{DynamicResource FontDisplay}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="LetterSpacing" Value="1.54" />
+  </Style>
+  <Style Selector="dc|DocumentTabStripItem">
+    <Setter Property="FontFamily" Value="{DynamicResource FontDisplay}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="LetterSpacing" Value="1.54" />
+  </Style>
+</Styles>

@@ -10,15 +10,16 @@ public class SpikeTests
     [AvaloniaFact]
     public void Plot_draws_through_the_skia_lease_in_headless_mode()
     {
-        var w = new SpikeWindow();
-        w.Surface.Scene = SampleScene.Build();
-        w.Surface.View = w.Surface.Scene.View;
+        var surface = new Plot.PlotSurface { Renderer = new Render.PlotRenderer() };
+        surface.Scene = SampleScene.Build();
+        surface.View = surface.Scene.View;
+        var w = new Avalonia.Controls.Window { Width = 1280, Height = 800, Content = new Plot.PlotControl { Surface = surface } };
         w.Show();
         Dispatcher.UIThread.RunJobs();
         var frame = w.CaptureRenderedFrame();
         Assert.NotNull(frame);
-        Assert.False(w.Surface.NoSkia);
-        Assert.True(w.Surface.FramesDrawn > 0);
+        Assert.False(surface.NoSkia);
+        Assert.True(surface.FramesDrawn > 0);
         var dir = Path.Combine(AppContext.BaseDirectory, "spike");
         Directory.CreateDirectory(dir);
         frame!.Save(Path.Combine(dir, "plot.png"), new Avalonia.Media.Imaging.PngBitmapEncoderOptions());

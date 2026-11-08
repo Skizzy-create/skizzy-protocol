@@ -1,8 +1,12 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:dock="using:Dock.Avalonia.Themes.Fluent"
              x:Class="Skizzy.Map.App.App"
              RequestedThemeVariant="Dark">
   <Application.Styles>
-    <FluentTheme />
+    <FluentTheme DensityStyle="Compact" />
+    <dock:DockFluentTheme />
+    <StyleInclude Source="avares://skizzy-map/Theme/Styles.axaml" />
+    <StyleInclude Source="avares://skizzy-map/Theme/DockStyles.axaml" />
   </Application.Styles>
 </Application>

@@ -1,0 +1,395 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    The mockup's CSS (design/mockups/command-screen-v1.html) as Avalonia styles. Class names follow the CSS:
+    btn / ghost / acc, tg, chip, seg, tab, lbl, pill, panel, ph, note. Colours are DynamicResources from
+    Theme/Palette.cs so dark and light switch live.
+  -->
+  <Styles.Resources>
+    <FontFamily x:Key="FontDisplay">avares://skizzy-map/Assets/Fonts#Saira SemiCondensed</FontFamily>
+    <FontFamily x:Key="FontUi">avares://skizzy-map/Assets/Fonts#IBM Plex Sans Condensed</FontFamily>
+    <FontFamily x:Key="FontData">avares://skizzy-map/Assets/Fonts#IBM Plex Mono</FontFamily>
+
+    <!-- .btn: raised control; ghost = transparent; acc = accent outline; a checked toggle = aria-pressed -->
+    <ControlTheme x:Key="SkzButton" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource Ink3Brush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource LineHiBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      <Setter Property="FontFamily" Value="{DynamicResource FontUi}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="PART_Border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}" Foreground="{TemplateBinding Foreground}"
+                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover">
+        <Setter Property="BorderBrush" Value="{DynamicResource TextFaintBrush}" />
+      </Style>
+      <Style Selector="^:pressed">
+        <Setter Property="Background" Value="{DynamicResource BtnPressedBrush}" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Opacity" Value="0.42" />
+        <Setter Property="Cursor" Value="Arrow" />
+      </Style>
+      <Style Selector="^.ghost">
+        <Setter Property="Background" Value="Transparent" />
+      </Style>
+      <Style Selector="^.acc">
+        <Setter Property="BorderBrush" Value="{DynamicResource AccBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+      </Style>
+      <Style Selector="^.icon">
+        <Setter Property="Padding" Value="8,3" />
+        <Setter Property="MinWidth" Value="30" />
+      </Style>
+      <!-- .ph .x: the panel close cross -->
+      <Style Selector="^.x">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="2,0" />
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
+      </Style>
+      <Style Selector="^.x:pointerover">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="SkzToggle" TargetType="ToggleButton">
+      <Setter Property="Background" Value="{DynamicResource Ink3Brush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource LineHiBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      <Setter Property="FontFamily" Value="{DynamicResource FontUi}" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="PART_Border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}" Foreground="{TemplateBinding Foreground}"
+                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover">
+        <Setter Property="BorderBrush" Value="{DynamicResource TextFaintBrush}" />
+      </Style>
+      <Style Selector="^:checked">
+        <Setter Property="Background" Value="{DynamicResource BtnPressedBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BtnPressedBorderBrush}" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Opacity" Value="0.42" />
+      </Style>
+      <Style Selector="^.ghost">
+        <Setter Property="Background" Value="Transparent" />
+      </Style>
+      <Style Selector="^.ghost:checked">
+        <Setter Property="Background" Value="{DynamicResource BtnPressedBrush}" />
+      </Style>
+
+      <!-- .tg: plot toolbar and panel toggles -->
+      <Style Selector="^.tg">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="8,3" />
+        <Setter Property="FontSize" Value="11.5" />
+        <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+      </Style>
+      <Style Selector="^.tg:checked">
+        <Setter Property="Background" Value="{DynamicResource Ink3Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TextFaintBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      </Style>
+
+      <!-- .chip: pill filters with a count -->
+      <Style Selector="^.chip">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="Padding" Value="9,2" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+      </Style>
+      <Style Selector="^.chip:checked">
+        <Setter Property="Background" Value="{DynamicResource Ink3Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TextFaintBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      </Style>
+
+      <!-- .seg button: segmented control segments (the Border around them draws the outline) -->
+      <Style Selector="^.seg">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="FontFamily" Value="{DynamicResource FontData}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+      </Style>
+      <Style Selector="^.seg:pointerover">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      </Style>
+      <Style Selector="^.seg:checked">
+        <Setter Property="Background" Value="{DynamicResource Ink3Brush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      </Style>
+      <Style Selector="^.seg.ui">
+        <Setter Property="FontFamily" Value="{DynamicResource FontUi}" />
+      </Style>
+
+      <!-- .tab: bottom panel tabs -->
+      <Style Selector="^.tab">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0,0,0,2" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="Padding" Value="8,2,8,4" />
+        <Setter Property="FontFamily" Value="{DynamicResource FontDisplay}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
+      </Style>
+      <Style Selector="^.tab:checked">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      </Style>
+    </ControlTheme>
+  </Styles.Resources>
+
+  <Style Selector="Button.btn">
+    <Setter Property="Theme" Value="{StaticResource SkzButton}" />
+  </Style>
+  <Style Selector="ToggleButton.btn, ToggleButton.tg, ToggleButton.chip, ToggleButton.seg, ToggleButton.tab">
+    <Setter Property="Theme" Value="{StaticResource SkzToggle}" />
+  </Style>
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource Ink0Brush}" />
+    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    <Setter Property="FontFamily" Value="{DynamicResource FontUi}" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <!-- type -->
+  <Style Selector="TextBlock.lbl">
+    <Setter Property="FontFamily" Value="{DynamicResource FontDisplay}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="9.5" />
+    <Setter Property="LetterSpacing" Value="1.5" />
+    <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBlock.h2">
+    <Setter Property="FontFamily" Value="{DynamicResource FontDisplay}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="LetterSpacing" Value="1.76" />
+    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBlock.note">
+    <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.data">
+    <Setter Property="FontFamily" Value="{DynamicResource FontData}" />
+    <Setter Property="FontSize" Value="10.5" />
+  </Style>
+  <Style Selector="TextBlock.dim">
+    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+  </Style>
+  <Style Selector="TextBlock.faint">
+    <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
+  </Style>
+  <Style Selector="TextBlock.win">
+    <Setter Property="Foreground" Value="{DynamicResource CritBrush}" />
+  </Style>
+
+  <!-- brand and clock -->
+  <Style Selector="TextBlock.brand">
+    <Setter Property="FontFamily" Value="{DynamicResource FontDisplay}" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="LetterSpacing" Value="2.1" />
+  </Style>
+  <Style Selector="TextBlock.ut">
+    <Setter Property="FontFamily" Value="{DynamicResource FontData}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="LetterSpacing" Value="0.3" />
+  </Style>
+
+  <!-- .pill -->
+  <Style Selector="Border.pill">
+    <Setter Property="CornerRadius" Value="999" />
+    <Setter Property="Padding" Value="10,3" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineHiBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.pill > TextBlock">
+    <Setter Property="FontFamily" Value="{DynamicResource FontDisplay}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="10.5" />
+    <Setter Property="LetterSpacing" Value="1.26" />
+  </Style>
+  <Style Selector="Border.pill.war">
+    <Setter Property="BorderBrush" Value="{DynamicResource WarBorderBrush}" />
+    <Setter Property="Background" Value="{DynamicResource WarFillBrush}" />
+  </Style>
+  <Style Selector="Border.pill.war > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource HostileBrush}" />
+  </Style>
+  <Style Selector="Border.pill.seat">
+    <Setter Property="BorderBrush" Value="{DynamicResource SeatBorderBrush}" />
+  </Style>
+  <Style Selector="Border.pill.seat > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+  </Style>
+  <Style Selector="Border.pill.ok > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource OkBrush}" />
+  </Style>
+  <Style Selector="Border.pill.warn > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource WarnBrush}" />
+  </Style>
+  <Style Selector="Border.pill.crit > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource CritBrush}" />
+  </Style>
+
+  <!-- .seg container -->
+  <Style Selector="Border.seg">
+    <Setter Property="BorderBrush" Value="{DynamicResource LineHiBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.segsep">
+    <Setter Property="Width" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource LineBrush}" />
+  </Style>
+  <Style Selector="Border.sep">
+    <Setter Property="Width" Value="1" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="Background" Value="{DynamicResource LineHiBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- panels -->
+  <Style Selector="Border.panel">
+    <Setter Property="Background" Value="{DynamicResource Ink1Brush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="Border.ph">
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="10,8" />
+  </Style>
+  <Style Selector="Border.chips">
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="10,8" />
+  </Style>
+  <Style Selector="Border.overlay">
+    <Setter Property="Background" Value="{DynamicResource OverlayBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+  </Style>
+
+  <!-- inputs (.tsel, .unit input, .compose) -->
+  <Style Selector="TextBox.inp">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="MinHeight" Value="26" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ComboBox.tsel">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Padding" Value="6,2,4,2" />
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ComboBoxItem">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="MinHeight" Value="26" />
+  </Style>
+  <Style Selector="Slider.acc">
+    <Setter Property="MinHeight" Value="20" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="MenuItem">
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+  <Style Selector="ToolTip">
+    <Setter Property="FontSize" Value="11.5" />
+  </Style>
+  <!-- lists: the log, the command palette (rows pad themselves) -->
+  <Style Selector="ListBox">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+  <Style Selector="ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+  </Style>
+  <Style Selector="ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Ink3Brush}" />
+  </Style>
+  <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter, ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBoxItem:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource RowSelectedBrush}" />
+  </Style>
+  <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+  </Style>
+  <Style Selector="ListBox.log ListBoxItem">
+    <Setter Property="BorderBrush" Value="{DynamicResource LineSoftBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="10,4" />
+  </Style>
+  <Style Selector="ListBox.log ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBox.log ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Ink3Brush}" />
+  </Style>
+  <Style Selector="SelectableTextBlock">
+    <Setter Property="SelectionBrush" Value="{DynamicResource RowSelectedBrush}" />
+  </Style>
+  <Style Selector="CheckBox">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="MinHeight" Value="24" />
+  </Style>
+</Styles>
