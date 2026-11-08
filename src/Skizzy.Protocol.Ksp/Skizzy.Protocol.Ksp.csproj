@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- In-game build of src/Skizzy.Protocol (same sources). net48, NoStdLib, KSP's Managed folder only. -->
+  <Import Project="..\..\build\KSP.props" />
+  <PropertyGroup>
+    <RootNamespace>Skizzy.Protocol</RootNamespace>
+    <AssemblyName>Skizzy.Protocol</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Skizzy.Protocol\**\*.cs" Exclude="..\Skizzy.Protocol\obj\**;..\Skizzy.Protocol\bin\**" LinkBase="Shared" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Skizzy.Host" />
+  </ItemGroup>
+</Project>

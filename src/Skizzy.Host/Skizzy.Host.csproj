@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The in-game host plugin. net48, NoStdLib, compiled against KSP's Managed folder.
+       Core/ is Unity-free and is also compiled (by link) into src/Skizzy.Host.Core for CI and the fake host. -->
+  <Import Project="..\..\build\KSP.props" />
+  <Import Project="..\..\build\KSP.Unity.props" />
+  <PropertyGroup>
+    <RootNamespace>Skizzy.Host</RootNamespace>
+    <AssemblyName>Skizzy.Host</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Skizzy.Protocol.Ksp\Skizzy.Protocol.Ksp.csproj" Private="false" />
+  </ItemGroup>
+</Project>

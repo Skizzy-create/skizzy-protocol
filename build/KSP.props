@@ -1,0 +1,47 @@
+<Project>
+  <!--
+    Build guard for assemblies that run inside KSP (02-architecture.md §1, "Build guard").
+    They compile with NoStdLib against KSP's own Managed folder, so any API missing from
+    Unity 2019.4's Mono profile is a compile error instead of a MissingMethodException in game.
+    KSPDIR comes from Directory.Build.props.user or the KSPDIR environment variable.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <KSPManaged>$([MSBuild]::EnsureTrailingSlash('$(KSPDIR)'))KSP_x64_Data\Managed</KSPManaged>
+    <NoStdLib>true</NoStdLib>
+    <NoCompilerStandardLib>true</NoCompilerStandardLib>
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+    <ImplicitlyExpandNETStandardFacades>false</ImplicitlyExpandNETStandardFacades>
+    <ImplicitlyExpandDesignTimeFacades>false</ImplicitlyExpandDesignTimeFacades>
+    <AddAdditionalExplicitAssemblyReferences>false</AddAdditionalExplicitAssemblyReferences>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>false</GenerateBindingRedirectsOutputType>
+    <AssignTargetPathsDependsOn></AssignTargetPathsDependsOn>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <DefineConstants>$(DefineConstants);SKIZZY_KSP</DefineConstants>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
+    <DebugType Condition="'$(Configuration)' != 'Release'">portable</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Only used so the SDK can resolve a framework directory; implicit references are disabled. -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="mscorlib"><HintPath>$(KSPManaged)\mscorlib.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="System"><HintPath>$(KSPManaged)\System.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="System.Core"><HintPath>$(KSPManaged)\System.Core.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+  <Target Name="SkizzyCheckKspDir" BeforeTargets="ResolveAssemblyReferences;PrepareForBuild">
+    <Error Condition="'$(KSPDIR)' == ''"
+           Text="KSPDIR is not set. Copy Directory.Build.props.user.example to Directory.Build.props.user and set KSPDIR to your KSP 1.12 folder, or set the KSPDIR environment variable. (Only the in-game projects need it; build ci.slnf to skip them.)" />
+    <Error Condition="'$(KSPDIR)' != '' And !Exists('$(KSPManaged)\Assembly-CSharp.dll')"
+           Text="KSPDIR='$(KSPDIR)' does not contain KSP_x64_Data\Managed\Assembly-CSharp.dll." />
+  </Target>
+</Project>

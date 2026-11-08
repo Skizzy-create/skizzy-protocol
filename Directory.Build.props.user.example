@@ -1,0 +1,11 @@
+<!--
+  Copy this file to "Directory.Build.props.user" (same folder; that name is git-ignored)
+  and point KSPDIR at your KSP 1.12.x install. Alternatively set the KSPDIR environment
+  variable. Only the in-game projects (Skizzy.Protocol.Ksp, Skizzy.Host) need it; everything
+  else (tests, CLI, bridge, fake host) builds without KSP.
+-->
+<Project>
+  <PropertyGroup>
+    <KSPDIR>C:\Path\To\Kerbal Space Program</KSPDIR>
+  </PropertyGroup>
+</Project>
