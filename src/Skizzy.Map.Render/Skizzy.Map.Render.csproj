@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <RootNamespace>Skizzy.Map.Render</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pinned to the SkiaSharp that Avalonia 12.1.x depends on, so Skizzy.Map can host this without a version split. -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- OFL fonts, bundled. The map never fetches fonts at runtime. -->
+    <EmbeddedResource Include="Fonts\**\*.ttf" LogicalName="Skizzy.Map.Render.Fonts.%(Filename)%(Extension)" />
+    <None Include="Fonts\**\*.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Skizzy.Map.Render.Tests" />
+  </ItemGroup>
+
+</Project>
