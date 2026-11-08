@@ -69,6 +69,27 @@ public sealed class RendererTests : IDisposable
     }
 
     [Fact]
+    public void Counts_view_is_off_by_default_and_groups_only_hostile_missiles_and_drones()
+    {
+        var raid = SampleScene.BuildMissileRaid();
+        var st = new RenderState();
+        _rig.Render(raid, raid.View, st);
+        int all = st.LastFrame.TracksVisible;
+        Assert.Empty(st.Pills);
+
+        st.Options.Counts = true;
+        _rig.Render(raid, raid.View, st);
+        int grouped = 0;
+        foreach (var p in st.Pills.Values) grouped += p.N;
+        Assert.True(st.Pills.Count > 0);
+        Assert.Equal(all - grouped, st.LastFrame.TracksVisible);
+        Assert.True(grouped >= 128, "the 128 ASMs and the drones are grouped");
+        // friendly SAMs and the ships are never grouped
+        foreach (var t in raid.Tracks)
+            if (t.Affiliation == Affiliation.Friend) Assert.True(st.TryGetSymbol(t.Id, out _, out _), $"{t.Name} must stay drawn");
+    }
+
+    [Fact]
     public void Hit_test_finds_the_track_under_the_cursor()
     {
         var scene = SampleScene.Build();
