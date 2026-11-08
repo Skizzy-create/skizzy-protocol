@@ -66,6 +66,8 @@ namespace Skizzy.C2
         public double PatrolLeashKm = 55;
         public double SelfDefenceFighterKm = 25;
         public double SelfDefenceOverrideS = 15;
+        /// <summary>Self-defence F1 is sticky for its duration, so the AI turns into a threat still outside its missile envelope.</summary>
+        public bool SelfDefenceSticky = true;
 
         public double ClassRangeFighterKm = 45, ClassRangeDroneKm = 25, ClassRangeAewKm = 175, ClassRangeShipKm = 150, ClassRangeBomberKm = 45;
         public double OwnRadarFighterKm = 45, OwnRadarDroneKm = 25, OwnRadarBomberKm = 45;
@@ -188,6 +190,7 @@ namespace Skizzy.C2
             Num("patrolLeashKm", d => d.PatrolLeashKm, (d, v) => d.PatrolLeashKm = v);
             Num("selfDefenceFighterKm", d => d.SelfDefenceFighterKm, (d, v) => d.SelfDefenceFighterKm = v);
             Num("selfDefenceOverrideS", d => d.SelfDefenceOverrideS, (d, v) => d.SelfDefenceOverrideS = v);
+            Bool("selfDefenceSticky", d => d.SelfDefenceSticky, (d, v) => d.SelfDefenceSticky = v);
             Num("classificationRangeKm.fighter", d => d.ClassRangeFighterKm, (d, v) => d.ClassRangeFighterKm = v);
             Num("classificationRangeKm.drone", d => d.ClassRangeDroneKm, (d, v) => d.ClassRangeDroneKm = v);
             Num("classificationRangeKm.aew", d => d.ClassRangeAewKm, (d, v) => d.ClassRangeAewKm = v);

@@ -145,7 +145,9 @@ namespace Skizzy.C2
     {
         /// <summary>
         /// F1: <c>wm.SetOverrideTarget(targetInfo, durationS, sticky)</c>. <paramref name="durationS"/> &lt;= 0 means
-        /// until cleared. Re-assigning the same target only refreshes duration and stickiness (no loss event).
+        /// until cleared. Re-assigning the same target only refreshes duration and stickiness (no loss event). When the
+        /// target cannot be resolved to a TargetInfo of the unit's team, the binding raises
+        /// <see cref="IHookEvents.OnOverrideLost"/>(unit, target, NotEngageable) instead of failing silently.
         /// </summary>
         void SetOverrideTarget(uint unit, uint target, float durationS, bool sticky);
 

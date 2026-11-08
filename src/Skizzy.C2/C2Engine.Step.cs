@@ -59,7 +59,7 @@ namespace Skizzy.C2
             // 3. the F1 assignment
             if (_wc != WeaponsControl.Hold)
             {
-                if (!WantOverride(r, r.SelfDef, false, (float)r.Doc.SelfDefenceOverrideS)
+                if (!WantOverride(r, r.SelfDef, r.Doc.SelfDefenceSticky, (float)r.Doc.SelfDefenceOverrideS)
                     && !WantOverride(r, r.Divert, true, 0)
                     && !WantOverride(r, _orderTarget, _orderSticky, 0))
                     WantOverride(r, r.VipThreat, air, 0);
@@ -1092,8 +1092,9 @@ namespace Skizzy.C2
         /// <summary>
         /// Rows 5, 8, 13: Hold = F3 Hold. Free = F3 Free, no filter, except that a unit staying on task (onContact task
         /// during move_to, move_route or engage) or protecting a VIP gets Tight with a filter. Tight = F3 Tight with the
-        /// filter. The filter admits the task's targets, close threats (hostiles inside <c>selfDefenceFighterKm</c>) and
-        /// the current assignment (a filter rejection drops even a sticky F1). Missiles are never filtered by BDA.
+        /// filter. The filter admits the task's targets, close threats (hostile fighters and drones inside
+        /// <c>selfDefenceFighterKm</c>; any hostile aircraft for ships) and the current assignment (a filter rejection
+        /// drops even a sticky F1). Missiles are never filtered by BDA.
         /// </summary>
         private void ComputeFire(UnitRec r, SidePicture p)
         {
@@ -1138,12 +1139,14 @@ namespace Skizzy.C2
                 }
             }
             for (int i = 0; i < w.Secondary.Count; i++) allow.Add(w.Secondary[i]);
-            // close threats
+            // close threats: hostile fighters and drones inside selfDefenceFighterKm (any hostile aircraft for surface units)
             double close = r.Doc.SelfDefenceFighterKm * 1000;
+            bool selfAir = UnitClasses.IsAircraft(r.S.Class);
             for (int i = 0; i < p.Hostiles.Count; i++)
             {
                 var t = AliveRec(p.Hostiles[i]);
-                if (t != null && Dist(r, t) <= close) allow.Add(t.Id);
+                if (t == null || Dist(r, t) > close) continue;
+                if (selfAir ? UnitClasses.IsAirCombat(t.S.Class) : UnitClasses.IsAircraftTarget(t.S.Class)) allow.Add(t.Id);
             }
             if (r.SelfDef != 0) allow.Add(r.SelfDef);
             if (r.Divert != 0) allow.Add(r.Divert);
