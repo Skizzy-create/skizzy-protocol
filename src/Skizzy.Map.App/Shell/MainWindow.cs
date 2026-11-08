@@ -69,7 +69,7 @@ public sealed class MainWindow : Window
         AddHandler(KeyDownEvent, OnKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         Opened += (_, _) => { if (AutoFrames) StartFrameLoop(); foreach (var m in _app.Maps) m.FitAll(animate: false); };
         Closing += (_, _) => SaveSession();
-        Closed += (_, _) => { LayersView.NewMapRequested -= _layouts.AddMap; _frameLoop = false; };
+        Closed += (_, _) => { LayersView.NewMapRequested -= _layouts.AddMap; _frameLoop = false; _layouts.CloseFloating(); };
     }
 
     private enum ThemeName { Dark, Light }

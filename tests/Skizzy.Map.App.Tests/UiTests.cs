@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -137,6 +138,31 @@ public class ShellTests
     }
 
     [AvaloniaFact]
+    public void FloatingPanelComesBackInItsOwnWindow()
+    {
+        using var h = new UiHarness();
+        var layouts = h.Win.Layouts;
+        var tool = ShellDockFactory.FindById(layouts.Root!, ShellDockFactory.Health)!;
+        layouts.Factory.FloatDockable(tool);
+        h.Pump(2);
+        Assert.Single(layouts.Root!.Windows!);
+        var saved = layouts.Capture("floating");
+        Assert.Single(saved.Panels!.Windows);
+        Assert.Contains(ShellDockFactory.Health, saved.Panels.Windows[0].Items);
+
+        h.Win.ResetLayout();
+        h.Pump(2);
+        Assert.Empty(layouts.Root!.Windows ?? []);
+        Assert.True(layouts.Apply(saved));
+        h.Pump(2);
+        var wins = layouts.Root!.Windows!;
+        Assert.Single(wins);
+        Assert.Contains(ShellDockFactory.Walk(wins[0].Layout), d => d.Id == ShellDockFactory.Health);
+        Assert.True(layouts.IsVisible(ShellDockFactory.Health));
+        Assert.Single(h.App.Maps); // replacing the layout kept the map window
+    }
+
+    [AvaloniaFact]
     public void PanelsToggleFromTheTopBar()
     {
         using var h = new UiHarness();
@@ -167,6 +193,64 @@ public class SelectionTests
         h.Pump(2);
         Assert.Empty(h.App.Selection);
         Assert.False(map.Sync.Find(1)!.Selected);
+    }
+
+    private static Avalonia.Point OnWindow(UiHarness h, MapView view, double x, double y)
+    {
+        var (sx, sy) = view.ViewModel.ToScreen((float)x, (float)y);
+        return view.Plot.TranslatePoint(new Avalonia.Point(sx, sy), h.Win)!.Value;
+    }
+
+    [AvaloniaFact]
+    public void ClickOnTheMapSelectsAndShiftDragBoxSelects()
+    {
+        using var h = new UiHarness();
+        var view = h.Find<MapView>()!;
+        var map = view.ViewModel;
+        var kestrel = h.App.Data.Get(1)!;
+        var (kx, ky) = h.App.Data.PositionOf(kestrel, h.App.Data.ViewTime);
+        map.SetView((float)kx, (float)ky, 6f, animate: false);
+        h.Pump(4);
+
+        var p = OnWindow(h, view, kx, ky);
+        h.Win.MouseDown(p, Avalonia.Input.MouseButton.Left);
+        h.Win.MouseUp(p, Avalonia.Input.MouseButton.Left);
+        h.Pump(2);
+        Assert.Equal(1, h.App.Primary);
+        Assert.Single(h.App.Selection);
+
+        h.App.ClearSelection();
+        var a = OnWindow(h, view, kx - 30, ky + 30);
+        var b = OnWindow(h, view, kx + 30, ky - 30);
+        h.Win.MouseDown(a, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.Shift);
+        h.Win.MouseMove(new Avalonia.Point((a.X + b.X) / 2, (a.Y + b.Y) / 2), Avalonia.Input.RawInputModifiers.Shift | Avalonia.Input.RawInputModifiers.LeftMouseButton);
+        h.Win.MouseMove(b, Avalonia.Input.RawInputModifiers.Shift | Avalonia.Input.RawInputModifiers.LeftMouseButton);
+        h.Win.MouseUp(b, Avalonia.Input.MouseButton.Left, Avalonia.Input.RawInputModifiers.Shift);
+        h.Pump(2);
+        Assert.Contains(1, h.App.Selection);
+        Assert.True(h.App.Selection.Count >= 3, $"{h.App.Selection.Count} selected");
+        Assert.All(h.App.Selection, id => Assert.Equal(Side.Blue, h.App.Data.Get(id)!.Side)); // own units preferred
+    }
+
+    [AvaloniaFact]
+    public void DragPansAndWheelZooms()
+    {
+        using var h = new UiHarness();
+        var view = h.Find<MapView>()!;
+        var map = view.ViewModel;
+        map.SetView(0, 0, 4f, animate: false);
+        h.Pump(2);
+        var c = view.Plot.TranslatePoint(new Avalonia.Point(map.Width / 2, map.Height / 2), h.Win)!.Value;
+        h.Win.MouseDown(c, Avalonia.Input.MouseButton.Left);
+        h.Win.MouseMove(c + new Avalonia.Point(40, 0), Avalonia.Input.RawInputModifiers.LeftMouseButton);
+        h.Win.MouseMove(c + new Avalonia.Point(80, 0), Avalonia.Input.RawInputModifiers.LeftMouseButton);
+        h.Win.MouseUp(c + new Avalonia.Point(80, 0), Avalonia.Input.MouseButton.Left);
+        h.Pump(30);
+        Assert.Equal(-20, map.CenterX, 1); // 80 px right at 4 px/km moves the view 20 km west
+        Assert.Empty(h.App.Selection); // a drag is not a click
+        h.Win.MouseWheel(c, new Avalonia.Vector(0, 2));
+        h.Pump(40);
+        Assert.True(map.Scale > 4.5f, $"scale {map.Scale}");
     }
 
     [AvaloniaFact]
@@ -215,6 +299,30 @@ public class FilterTests
         h.Pump(2);
         Assert.All(table.Rows, r => Assert.True(h.App.Data.Get(r.Id)!.IsMissile));
         h.App.SetTrackFilter(TrackFilter.All);
+    }
+
+    [AvaloniaFact]
+    public void TrackListSortsByAnyColumnBothWays()
+    {
+        using var h = new UiHarness();
+        var table = h.Find<TracksView>()!.Table;
+        h.Pump(2);
+        // default: range, nearest first
+        Assert.Equal(TrackColumn.Rng, table.Sort);
+        Assert.True(table.Rows.Zip(table.Rows.Skip(1)).All(p => p.First.Rng <= p.Second.Rng + 1e-9));
+        table.SortBy(TrackColumn.Spd);
+        h.Pump(1);
+        var spd = table.Rows.Select(r => r.Spd).ToList();
+        var sorted = table.Descending ? spd.OrderByDescending(v => v).ToList() : spd.OrderBy(v => v).ToList();
+        Assert.Equal(sorted, spd);
+        bool desc = table.Descending;
+        table.SortBy(TrackColumn.Spd); // same column again flips the direction
+        h.Pump(1);
+        Assert.NotEqual(desc, table.Descending);
+        table.SortBy(TrackColumn.Track);
+        h.Pump(1);
+        var names = table.Rows.Select(r => r.Name).ToList();
+        Assert.Equal(table.Descending ? names.OrderByDescending(n => n, StringComparer.OrdinalIgnoreCase).ToList() : names.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList(), names);
     }
 
     [AvaloniaFact]

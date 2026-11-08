@@ -65,6 +65,7 @@ public sealed class DockSnapshot
         if (root.Windows is { } wins)
             foreach (var w in wins)
             {
+                w.Save(); // the host window's current position and size into the model
                 var items = ShellDockFactory.Walk(w.Layout).Where(d => d is ITool or IDocument).Select(d => d.Id).Where(i => !string.IsNullOrEmpty(i)).ToList();
                 if (items.Count == 0) continue;
                 var active = ShellDockFactory.Walk(w.Layout).OfType<IDock>().Select(d => d.ActiveDockable).FirstOrDefault(a => a is ITool or IDocument)?.Id;

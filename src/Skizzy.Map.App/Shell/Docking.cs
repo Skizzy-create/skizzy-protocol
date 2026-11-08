@@ -104,9 +104,13 @@ public sealed class ShellDockFactory : Factory
         base.InitLayout(layout);
     }
 
+    /// <summary>Set while a layout replaces another: closing its windows must not drop map windows the new one keeps.</summary>
+    public bool Replacing { get; set; }
+
     public override void OnDockableClosed(IDockable? dockable)
     {
         base.OnDockableClosed(dockable);
+        if (Replacing) return;
         if (dockable is Document d && d.Id.StartsWith("map:", StringComparison.Ordinal))
         {
             var m = _app.Maps.FirstOrDefault(x => x.Id == d.Id);
@@ -238,8 +242,21 @@ public sealed class LayoutManager
 
     private void Install(IRootDock root)
     {
+        if (!ReferenceEquals(Root, root)) CloseFloating();
         Factory.InitLayout(root);
         _dock.Layout = root;
+    }
+
+    /// <summary>Closes the current layout's floating windows (a new layout replaces them; the app is closing).</summary>
+    public void CloseFloating()
+    {
+        if (Root?.Windows is not { Count: > 0 } wins) return;
+        Factory.Replacing = true;
+        try
+        {
+            foreach (var w in wins.ToList()) w.Exit();
+        }
+        finally { Factory.Replacing = false; }
     }
 
     public SavedLayout Capture(string name)

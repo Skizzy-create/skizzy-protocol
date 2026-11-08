@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
@@ -39,6 +40,8 @@ public partial class App : Application
             string kind = Arg("--source") ?? settings.Current.Source.Kind;
             if (kind is "fake" or "live") win.UseSource(kind);
             desktop.MainWindow = win;
+            // floating panels are windows too: closing the main window ends the app
+            desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
             desktop.ShutdownRequested += (_, _) => app.Source.Dispose();
         }
         base.OnFrameworkInitializationCompleted();
