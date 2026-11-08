@@ -8,6 +8,7 @@ using Skizzy.Map.RenderDemo;
 // Headless renderer demo: draws the mockup's sample scene at three zoom levels plus a dense
 // "128 missiles inbound" frame, and writes PNGs. Usage: skizzy-render-demo [outputDir]
 if (args.Length > 0 && args[0] == "bench") return Bench.Run();
+if (args.Length > 0 && args[0] == "perf") return Bench.Perf();
 string outDir = args.Length > 0 ? args[0] : Path.Combine(FindRepoRoot(), "docs", "render-samples");
 Directory.CreateDirectory(outDir);
 const int W = 1920, H = 1080;
