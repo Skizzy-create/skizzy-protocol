@@ -1,0 +1,8 @@
+<Project>
+  <!--
+    The map test projects pin their own test packages (the render tests use xunit 2.9.3 / runner 3.1.5, the app tests
+    xunit v3 for Avalonia.Headless.XUnit). Import the repository root props directly so tests/Directory.Build.props
+    (M0's shared xunit 2.9.2 references) does not add duplicate PackageReference items (NU1504).
+  -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../../'))" />
+</Project>
