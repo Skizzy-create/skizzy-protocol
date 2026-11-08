@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    FakeBda: a deterministic, stepped world that implements IC2World + IBdaControl with the semantics of the
+    BDArmory Overdrive hooks (F1-F6b, F9, F10 as documented in BDArmory Overdrive/HOOKS.md), plus simple
+    kinematics, radar, guard-mode target selection and missiles. Used by the C2 scenario tests and demos.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Skizzy.C2.Fake</AssemblyName>
+    <RootNamespace>Skizzy.C2.Fake</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Skizzy.C2\Skizzy.C2.csproj" />
+  </ItemGroup>
+</Project>

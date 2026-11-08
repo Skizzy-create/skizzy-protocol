@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Skizzy.C2\Skizzy.C2.csproj" />
+    <ProjectReference Include="..\..\src\Skizzy.C2.Fake\Skizzy.C2.Fake.csproj" />
+  </ItemGroup>
+</Project>
