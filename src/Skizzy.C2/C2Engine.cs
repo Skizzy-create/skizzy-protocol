@@ -75,6 +75,7 @@ namespace Skizzy.C2
         private readonly List<GeoPoint> _ptScratch = new List<GeoPoint>();
         private readonly Dictionary<uint, int> _marshalSeq = new Dictionary<uint, int>();
 
+        private HookSet _hooks = HookSet.All;
         private int _nextOrderId = 1;
         private int _routeSerial;
         private double _now;
@@ -286,6 +287,58 @@ namespace Skizzy.C2
             return side != null && _sides.TryGetValue(side, out p) ? p : null;
         }
 
+        /// <summary>
+        /// Adds a line per known unit (missiles only with <paramref name="missiles"/>), optionally of one side, in the
+        /// order the binding first reported them. Main thread; no per-unit allocation.
+        /// </summary>
+        public void ListUnits(List<UnitBrief> into, string side = null, bool missiles = false)
+        {
+            for (int i = 0; i < _unitList.Count; i++)
+            {
+                var r = _unitList[i];
+                if (r.S.IsMissile && !missiles) continue;
+                if (side != null && r.S.Side != side) continue;
+                ResolveDoctrine(r, false);
+                into.Add(new UnitBrief
+                {
+                    Id = r.Id,
+                    Name = r.Name,
+                    Side = r.S.Side,
+                    Class = r.S.Class,
+                    Group = r.S.Group,
+                    C2Group = r.Group,
+                    Alive = r.Alive,
+                    Present = r.Present,
+                    AiActive = r.S.AiActive,
+                    HasWeaponManager = r.S.HasWeaponManager,
+                    Landed = r.S.Landed,
+                    IsBase = r.S.IsBase,
+                    MissilesReady = r.S.MissilesReady,
+                    MissilesMax = r.S.MissilesMax,
+                    Task = TaskName(r),
+                    Order = OrderIdOf(r),
+                    WeaponsControl = r.Doc.WeaponsControl,
+                    FireAuthority = r.Have.Fire,
+                });
+            }
+        }
+
+        /// <summary>Adds every side (BDA team) the engine has seen, in first-seen order.</summary>
+        public void ListSides(List<string> into)
+        {
+            for (int i = 0; i < _sideList.Count; i++)
+                if (!string.IsNullOrEmpty(_sideList[i].Side)) into.Add(_sideList[i].Side);
+        }
+
+        /// <summary>The side-level doctrine in force (defaults overlaid with the side layer). A fresh copy.</summary>
+        public DoctrineValues SideDoctrine(string side)
+        {
+            return _doctrine.Resolve(side, null, 0);
+        }
+
+        /// <summary>Which Overdrive hooks the binding reports (the engine refuses orders that need missing ones).</summary>
+        public HookSet Hooks => _world.Hooks;
+
         public UnitView GetUnitView(uint unit)
         {
             var r = Rec(unit);
@@ -349,6 +402,7 @@ namespace Skizzy.C2
         public void Tick()
         {
             _now = _world.Now;
+            _hooks = _world.Hooks;
             if (!_ticked)
             {
                 _geo = new Geo(_world.BodyRadius);
@@ -417,9 +471,33 @@ namespace Skizzy.C2
                 r.Present = true;
                 if (s.Alive) r.LastSeenUt = _now;
                 else if (!r.Dead) MarkDead(r);
-                if (oldSide != s.Side) r.DocVersion = -1;
+                if (oldSide != s.Side)
+                {
+                    r.DocVersion = -1;
+                    if (oldSide != null && !r.Dead) SideChanged(r, oldSide);
+                }
                 if (s.Side != null) Side(s.Side);
             }
+        }
+
+        /// <summary>
+        /// A unit changed BDA team: its orders, hold and behaviours belong to the old side, so they end (reported), and
+        /// the old side's VIP flag goes. The new side commands it from scratch.
+        /// </summary>
+        private void SideChanged(UnitRec r, string oldSide)
+        {
+            string text = r.Name + ": changed team from " + oldSide + " to " + (r.S.Side ?? "none") + "; its orders ended.";
+            if (r.Engage != null) EndUnitOrder(r, r.Engage, OrderStatus.Cancelled, Reasons.TeamChanged, text, false);
+            if (r.Move != null) EndUnitOrder(r, r.Move, OrderStatus.Cancelled, Reasons.TeamChanged, text, false);
+            r.Hold = null;
+            r.Divert = 0;
+            r.SelfDef = 0;
+            r.Advance = 0;
+            r.VipThreat = 0;
+            r.Claim = 0;
+            SidePicture old;
+            if (_sides.TryGetValue(oldSide, out old)) old.Vips.Remove(r.Id);
+            Emit(C2EventKind.Info, "orders", oldSide, 0, r.Id, Reasons.TeamChanged, text);
         }
 
         private void ProcessHookEvents()
@@ -471,6 +549,8 @@ namespace Skizzy.C2
                                 r.BackoffUntil = _now + TargetLostS;
                                 break;
                             case OverrideLostReason.Filtered:
+                            case OverrideLostReason.NotHostile:
+                                // NotHostile: a team change on either side; the picture stops counting it as hostile
                                 r.BackoffTarget = lost;
                                 r.BackoffUntil = _now + NotEngageableBackoffS;
                                 break;

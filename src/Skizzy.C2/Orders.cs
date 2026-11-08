@@ -87,6 +87,7 @@ namespace Skizzy.C2
         public const string Cancelled = "cancelled";
         public const string Released = "released";
         public const string Winchester = "winchester";
+        public const string TeamChanged = "team_changed";
     }
 
     /// <summary>

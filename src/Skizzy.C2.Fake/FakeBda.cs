@@ -32,6 +32,8 @@ namespace Skizzy.C2.Fake
         public readonly List<uint> Secondary = new List<uint>();
         public bool SecondaryOnly;
         public bool EngageMissiles;
+        /// <summary>The setting before the engine first changed it (null: not changed), restored by RestoreEngageMissiles.</summary>
+        public bool? EngageMissilesBaseline;
         public bool RangeMax;
         public double NextShot;
 
@@ -663,7 +665,18 @@ namespace Skizzy.C2.Fake
         {
             Calls.Add("Missiles " + unit + " " + on);
             var u = Live(unit);
-            if (u != null) u.EngageMissiles = on;
+            if (u == null) return;
+            if (!u.EngageMissilesBaseline.HasValue) u.EngageMissilesBaseline = u.EngageMissiles;
+            u.EngageMissiles = on;
+        }
+
+        public void RestoreEngageMissiles(uint unit)
+        {
+            Calls.Add("Missiles " + unit + " restore");
+            var u = Live(unit);
+            if (u == null || !u.EngageMissilesBaseline.HasValue) return;
+            u.EngageMissiles = u.EngageMissilesBaseline.Value;
+            u.EngageMissilesBaseline = null;
         }
 
         public void SetMissileRangeMax(uint unit, bool extended)

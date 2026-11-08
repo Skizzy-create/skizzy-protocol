@@ -108,8 +108,10 @@ namespace Skizzy.C2
         public bool HasSecondary;
         public readonly List<uint> Secondary = new List<uint>();
 
+        /// <summary>Nothing of the engine's is left on the unit (the missile-engagement setting included: it is restored, row 12).</summary>
         public bool IsStock =>
-            Fire == FireAuthorityMode.Free && !Filter && Override == 0 && Route == RouteKind.None && !Yield && Leash == 0 && !RangeMax && !HasSecondary;
+            Fire == FireAuthorityMode.Free && !Filter && Override == 0 && Route == RouteKind.None && !Yield && Leash == 0 && !RangeMax && !HasSecondary &&
+            !EngageMissilesKnown;
     }
 
     /// <summary>Everything the engine keeps about one unit.</summary>

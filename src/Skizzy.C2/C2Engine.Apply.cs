@@ -85,12 +85,22 @@ namespace Skizzy.C2
                 if (w.HasSecondary) h.Secondary.AddRange(w.Secondary);
             }
 
-            // row 12
-            if (w.SetEngageMissiles && (!h.EngageMissilesKnown || h.EngageMissiles != w.EngageMissiles))
+            // row 12; when the engine stops driving it (release, side no longer managed) the captured setting comes back
+            if (w.SetEngageMissiles)
             {
-                _ctl.SetEngageMissiles(id, w.EngageMissiles);
-                h.EngageMissilesKnown = true;
-                h.EngageMissiles = w.EngageMissiles;
+                if (!h.EngageMissilesKnown || h.EngageMissiles != w.EngageMissiles)
+                {
+                    _ctl.SetEngageMissiles(id, w.EngageMissiles);
+                    h.EngageMissilesKnown = true;
+                    h.EngageMissiles = w.EngageMissiles;
+                }
+            }
+            else if (h.EngageMissilesKnown)
+            {
+                _ctl.RestoreEngageMissiles(id);
+                h.EngageMissilesKnown = false;
+                h.EngageMissiles = false;
+                r.MissilesKnown = false;
             }
 
             // row 25

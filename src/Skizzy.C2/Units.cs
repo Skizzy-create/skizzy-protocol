@@ -160,4 +160,37 @@ namespace Skizzy.C2
 
         public bool IsArmed => MissilesMax > 0 || HasGuns;
     }
+
+    /// <summary>
+    /// One line of a unit list (the in-game C2 window, a future <c>c2.unit.list</c>): a value copy of what the engine
+    /// knows about a unit, filled without per-unit allocation (<see cref="C2Engine.ListUnits"/>).
+    /// </summary>
+    public struct UnitBrief
+    {
+        public uint Id;
+        public string Name;
+        public string Side;
+        public UnitClass Class;
+        /// <summary>The binding's grouping (callsign group from the vessel name); may be null.</summary>
+        public string Group;
+        /// <summary>The C2 group set with <see cref="C2Engine.SetGroup"/>; may be null.</summary>
+        public string C2Group;
+        public bool Alive;
+        /// <summary>Loaded and reported by the binding this tick (false: out of physics range, or gone).</summary>
+        public bool Present;
+        public bool AiActive;
+        public bool HasWeaponManager;
+        public bool Landed;
+        public bool IsBase;
+        public int MissilesReady;
+        public int MissilesMax;
+        /// <summary>What drives the unit now: an order type, "hold", "advance", "vip_priority" or "guard".</summary>
+        public string Task;
+        /// <summary>The order driving the unit (engagement first), 0 = none.</summary>
+        public int Order;
+        /// <summary>Effective doctrine weapons control.</summary>
+        public WeaponsControl WeaponsControl;
+        /// <summary>F3 fire authority the engine last applied.</summary>
+        public FireAuthorityMode FireAuthority;
+    }
 }
