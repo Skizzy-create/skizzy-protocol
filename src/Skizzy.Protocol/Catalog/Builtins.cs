@@ -62,7 +62,7 @@ namespace Skizzy.Protocol.Catalog
             var modules = S.Obj("Which part modules. Fields are then read from each module (Tier 0 KSPFields).")
                 .Prop("type", S.StrOrList("module class names, e.g. ModuleHullBreach, MissileFire"))
                 .Closed();
-            return S.Obj("Selector (04 §2): vessels, optional parts and modules.")
+            return S.Obj("Selector (04 \u00a72): vessels, optional parts and modules.")
                 .Prop("vessels", vessels)
                 .Prop("parts", parts)
                 .Prop("modules", modules)
@@ -148,7 +148,7 @@ namespace Skizzy.Protocol.Catalog
                     .Closed(), Core);
 
             var perf = Def("host.selfcheck.perf", Safety.Read, "host", "Skizzy", Affinity.Main, Any,
-                "Runs a performance gate (02 §8.3) and reports measured numbers against the budget. gate=idle: per-frame host cost with this " +
+                "Runs a performance gate (02 \u00a78.3) and reports measured numbers against the budget. gate=idle: per-frame host cost with this " +
                 "client connected and idle (budget < 0.1 ms) plus the last idle-probe result; gate=screenshot: N captures at 1024 px measuring " +
                 "main-thread ms (budget <= 3 ms async readback, <= 30 ms fallback) and Texture2D/RenderTexture counts before/after; gate=log: a " +
                 "synthetic log of `vessels` targets x 3 fields at 10 Hz measuring sampler ms per FixedUpdate (budget <= 0.2 ms). Long-running: returns an op.",
@@ -263,7 +263,7 @@ namespace Skizzy.Protocol.Catalog
             yield return get;
 
             var query = Def("ksp.query", Safety.Read, "ksp.read", "Squad", Affinity.Main, FlightScenes,
-                "Bulk read with one selector instead of many calls (04 §2): vessels (active, loaded, handles, nameLike, type), optional parts " +
+                "Bulk read with one selector instead of many calls (04 \u00a72): vessels (active, loaded, handles, nameLike, type), optional parts " +
                 "and modules (type), and the fields to read. Vessel fields: " + VesselFieldList() + ". Module fields are the module's KSPField " +
                 "names (see ksp.module.describe). aggregate: perVessel (one row per vessel; module fields reduced with `reduce`), perModule or perPart.",
                 S.Obj()
@@ -342,7 +342,7 @@ namespace Skizzy.Protocol.Catalog
                 saveSchema.Closed(), Core);
 
             yield return Def("ksp.camera.set_mode", Safety.Control, "ksp.camera", "Squad", Affinity.Main, FlightScenes,
-                "Sets the flight camera mode (13 §1.2): follow (auto mode on the target), orbit (heading/pitch/distance), chase (behind the " +
+                "Sets the flight camera mode (13 \u00a71.2): follow (auto mode on the target), orbit (heading/pitch/distance), chase (behind the " +
                 "velocity vector), free (stays in place), look_at (keeps `to` behind the target in view), locked. Never changes the active vessel.",
                 S.Obj()
                     .Prop("mode", S.Enum("camera mode", "follow", "orbit", "chase", "free", "look_at", "auto", "orbital", "locked"), true)
@@ -374,7 +374,7 @@ namespace Skizzy.Protocol.Catalog
 
             // ---------------- log v0 ----------------
             var start = Def("rec.log.start", Safety.Control, "rec", "Skizzy", Affinity.Main, FlightScenes,
-                "Starts logging fields to CSV or JSONL (12 §1.1) at a fixed rate or on change, from a ksp.query-style selector. " +
+                "Starts logging fields to CSV or JSONL (12 \u00a71.1) at a fixed rate or on change, from a ksp.query-style selector. " +
                 "Writes Skizzy/logs/<date>/<name>.<csv|jsonl> under the KSP folder with columns ut, frame, wallUtc, vessel, vesselName " +
                 "(+ part, module for perModule) and the fields. Returns {log, path, columns}. Stop with rec.log.stop.",
                 S.Obj()

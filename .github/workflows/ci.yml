@@ -1,0 +1,64 @@
+# CI for everything that builds without the game (ci.slnf). The in-game projects (src/Skizzy.Host,
+# src/Skizzy.Protocol.Ksp) compile against KSP's Managed folder and are built locally with KSPDIR set;
+# their runtime checks are the in-game checklist (docs/M0-checklist.md) and host.debug.spike.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_NOLOGO: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build (no KSP)
+        run: dotnet build ci.slnf -c Release
+
+      - name: Test (protocol, host core on FakeKsp incl. allocation asserts, CLI and MCP bridge)
+        run: dotnet test ci.slnf -c Release --no-build --logger "trx" --results-directory TestResults
+
+      - name: JSON Schemas and catalog are in sync with the code
+        run: dotnet run --project tools/Skizzy.SpecExport -c Release --no-build -- --check
+
+      - name: No non-ASCII string literals in C# sources
+        shell: pwsh
+        run: |
+          $bad = Get-ChildItem -Recurse -Include *.cs -Path src,tests,tools |
+            Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } |
+            Select-String -Pattern '"[^"]*[^\x00-\x7F][^"]*"' |
+            Where-Object { $_.Line.TrimStart() -notmatch '^(//|\*|///)' }
+          if ($bad) { $bad | ForEach-Object { Write-Host "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }; exit 1 }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Python client tests (against FakeHost)
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "clients/python[test]"
+          $env:SKIZZY_FAKEHOST = (Resolve-Path tools/Skizzy.FakeHost/bin/Release/net10.0/skizzy-fakehost.dll).Path
+          python -m pytest clients/python/tests -q
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
+          if-no-files-found: ignore

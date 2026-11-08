@@ -244,7 +244,7 @@ namespace Skizzy.Host.Tests
                 string text = File.ReadAllText(f);
                 var ms = tag.Matches(text);
                 if (ms.Count == 0) continue;
-                Assert.True(text.IndexOf("using System.Linq", StringComparison.Ordinal) < 0, f + " has skizzy:hot paths and must not use LINQ (02 §2.3)");
+                Assert.True(text.IndexOf("using System.Linq", StringComparison.Ordinal) < 0, f + " has skizzy:hot paths and must not use LINQ (02 \u00a72.3)");
                 // src/Skizzy.Host/Ksp is the Unity layer: it cannot run under .NET 10, so its hot paths are measured in game
                 // (host.stats timings, host.selfcheck.perf, idle probe) instead of by an allocation assert here.
                 bool unityLayer = f.Contains(Path.DirectorySeparatorChar + "Skizzy.Host" + Path.DirectorySeparatorChar + "Ksp" + Path.DirectorySeparatorChar);

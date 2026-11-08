@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Python sync client for skizzy-protocol, the JSON-RPC-over-WebSocket control protocol for Kerbal Space Program"
 readme = "README.md"
 requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
 dependencies = ["websockets>=12"]
 
 [project.optional-dependencies]

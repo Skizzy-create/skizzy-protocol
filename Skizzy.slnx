@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Skizzy.Cli/Skizzy.Cli.csproj" />
+    <Project Path="src/Skizzy.Client/Skizzy.Client.csproj" />
+    <Project Path="src/Skizzy.Host.Core/Skizzy.Host.Core.csproj" />
+    <Project Path="src/Skizzy.Host/Skizzy.Host.csproj" />
+    <Project Path="src/Skizzy.Protocol.Ksp/Skizzy.Protocol.Ksp.csproj" />
+    <Project Path="src/Skizzy.Protocol/Skizzy.Protocol.csproj" />
+    <Project Path="src/Skizzy.Sim/Skizzy.Sim.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Skizzy.Cli.Tests/Skizzy.Cli.Tests.csproj" />
+    <Project Path="tests/Skizzy.Host.Tests/Skizzy.Host.Tests.csproj" />
+    <Project Path="tests/Skizzy.Protocol.Tests/Skizzy.Protocol.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Skizzy.FakeHost/Skizzy.FakeHost.csproj" />
+    <Project Path="tools/Skizzy.SpecExport/Skizzy.SpecExport.csproj" />
+  </Folder>
+</Solution>

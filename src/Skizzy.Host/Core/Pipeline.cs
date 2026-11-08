@@ -46,13 +46,13 @@ namespace Skizzy.Host.Core
                 string clientKind = client.GetString("kind", "sdk");
                 if (!Actors.IsClientKind(clientKind)) throw SkizzyError.InvalidParam("/client/kind", "client.kind must be one of map, bridge, sdk, cli");
                 string actorKind = actor.GetString("kind", clientKind == "bridge" ? "llm" : "script");
-                if (actorKind == "orchestrator") throw SkizzyError.InvalidParam("/actor/kind", "actor.kind 'orchestrator' was removed (03 §2); use llm");
+                if (actorKind == "orchestrator") throw SkizzyError.InvalidParam("/actor/kind", "actor.kind 'orchestrator' was removed (03 \u00a72); use llm");
                 if (!Actors.IsKind(actorKind)) throw SkizzyError.InvalidParam("/actor/kind", "actor.kind must be one of human, llm, script, behaviour, harness");
                 string role = actor.GetString("role") ?? Actors.DefaultRole(actorKind);
                 if (!Actors.IsRole(role)) throw SkizzyError.InvalidParam("/actor/role", "unknown role '" + CompactText.SafeName(role) + "'");
                 if (!Actors.IsRoleAllowed(actorKind, role))
                     throw new SkizzyError(ErrorKind.PermissionDenied, "actor kind '" + actorKind + "' cannot take role '" + role + "'", "role_clamp",
-                        "Pick a role allowed for this actor kind (15 §2).", JsonValue.Obj().Set("role", role));
+                        "Pick a role allowed for this actor kind (15 \u00a72).", JsonValue.Obj().Set("role", role));
 
                 var perm = _perm;
                 var view = p.GetObj("view");
