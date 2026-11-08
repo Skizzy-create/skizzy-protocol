@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The C2 orders and doctrine engine (24-ksp-parity.md Phase v1, rows 3-10, 12-14, 17, 21-28).
+    Unity-free and dependency-free. This build (netstandard2.0) serves tests, FakeBda and tools;
+    src/Skizzy.C2.Ksp compiles the same sources for KSP (net48, NoStdLib).
+    The game binding implements IC2World + IBdaControl over the BDArmory Overdrive hooks and
+    forwards hook events to IHookEvents (C2Engine implements it).
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>Skizzy.C2</AssemblyName>
+    <RootNamespace>Skizzy.C2</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Skizzy.C2.Tests" />
+    <InternalsVisibleTo Include="Skizzy.C2.Fake" />
+  </ItemGroup>
+</Project>

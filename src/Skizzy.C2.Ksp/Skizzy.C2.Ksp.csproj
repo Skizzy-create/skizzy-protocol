@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- In-game build of src/Skizzy.C2 (same sources). net48, NoStdLib, KSP's Managed folder only (02 §1 build guard). -->
+  <Import Project="..\..\build\KSP.props" />
+  <PropertyGroup>
+    <RootNamespace>Skizzy.C2</RootNamespace>
+    <AssemblyName>Skizzy.C2</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Skizzy.C2\**\*.cs" Exclude="..\Skizzy.C2\obj\**;..\Skizzy.C2\bin\**" LinkBase="Shared" />
+  </ItemGroup>
+</Project>
