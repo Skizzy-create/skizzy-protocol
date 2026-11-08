@@ -39,8 +39,14 @@ public sealed class PlotRenderer : IDisposable
     private readonly SKPaint _stroke = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1f };
     private readonly SKPaint _ink = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
 
-    /// <summary>Stroke width for 1 px lines: 0 (Skia's fast hairline) when the canvas is unscaled, else 1.</summary>
+    /// <summary>
+    /// Stroke width for 1 px lines: 0 (Skia's hairline, one device pixel, several times cheaper than a stroked path)
+    /// when the canvas carries a uniform scale up to 2 (any normal DPI), else 1. Set per frame with
+    /// <see cref="_hairGain"/>; use <see cref="Hairline"/> to set the paint.
+    /// </summary>
     private float _hair = 1f;
+    /// <summary>Device pixels per logical pixel when hairlines stand in for 1 px lines (1 on an unscaled canvas).</summary>
+    private float _hairGain = 1f;
     private SKRect _clip;
 
     // batched per-colour paths, reset every frame
@@ -108,7 +114,13 @@ public sealed class PlotRenderer : IDisposable
         long t0 = Stopwatch.GetTimestamp();
         var tm = new FrameTimings();
         var cm = canvas.TotalMatrix;
-        _hair = MathF.Abs(cm.ScaleX - 1f) < 0.01f && MathF.Abs(cm.ScaleY - 1f) < 0.01f && cm.SkewX == 0 && cm.SkewY == 0 ? 0f : 1f;
+        // A 1 px line on a 1.5x (150 % DPI) canvas is 1.5 device pixels wide; stroking that as a path made the trails
+        // and rings of a 2,000-track frame cost ~3x more. Up to 2x, draw a hairline instead and raise its alpha by the
+        // scale, which keeps the line's weight (coverage) the same.
+        bool uniform = cm.SkewX == 0 && cm.SkewY == 0 && cm.Persp0 == 0 && cm.Persp1 == 0 && MathF.Abs(cm.ScaleX - cm.ScaleY) < 1e-3f;
+        if (uniform && MathF.Abs(cm.ScaleX - 1f) < 0.01f) { _hair = 0f; _hairGain = 1f; }
+        else if (uniform && cm.ScaleX >= 0.5f && cm.ScaleX <= 2.01f) { _hair = 0f; _hairGain = cm.ScaleX; }
+        else { _hair = 1f; _hairGain = 1f; }
         _clip = new SKRect(0, 0, vp.Width, vp.Height);
         canvas.Save();
         canvas.ClipRect(_clip);
@@ -160,6 +172,23 @@ public sealed class PlotRenderer : IDisposable
 
     private static double Ms(long a, long b) => (b - a) * 1000.0 / Stopwatch.Frequency;
 
+    /// <summary>
+    /// Sets <see cref="_stroke"/> for a 1 px line of <paramref name="color"/>: a hairline with its alpha scaled by the
+    /// device scale where that is possible, else a real 1 px stroke (an opaque colour cannot be made heavier).
+    /// </summary>
+    private void Hairline(SKColor color)
+    {
+        _stroke.StrokeWidth = _hair;
+        _stroke.Color = color;
+        if (_hairGain == 1f) return;
+        float a = color.Alpha * _hairGain;
+        if (a > 255.5f) _stroke.StrokeWidth = 1f;
+        else _stroke.Color = color.WithAlpha((byte)(a + .5f));
+    }
+
+    /// <summary>The device-scale handling chosen for the last frame (for tests).</summary>
+    internal (float Width, float Gain) HairlineMode => (_hair, _hairGain);
+
     // ---------------------------------------------------------------- background
 
     private static ReadOnlySpan<int> NiceSteps => [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
@@ -198,9 +227,8 @@ public sealed class PlotRenderer : IDisposable
             var p = y % (st * 5) == 0 ? _gridHi : _gridLo;
             p.MoveTo(0, sy); p.LineTo(vp.Width, sy);
         }
-        _stroke.StrokeWidth = _hair;
-        _stroke.Color = _theme.Grid; c.DrawPath(_gridLo, _stroke);
-        _stroke.Color = _theme.GridHi; c.DrawPath(_gridHi, _stroke);
+        Hairline(_theme.Grid); c.DrawPath(_gridLo, _stroke);
+        Hairline(_theme.GridHi); c.DrawPath(_gridHi, _stroke);
         for (long x = (long)Math.Ceiling(x0 / st) * st; x <= x1; x += st)
         {
             float sx = MathF.Round(vp.ToScreenX(x)) + .5f;
@@ -280,8 +308,7 @@ public sealed class PlotRenderer : IDisposable
                 case ZoneKind.Bullseye:
                 {
                     float cx = vp.ToScreenX(z.Center.X), cy = vp.ToScreenY(z.Center.Y);
-                    _stroke.Color = Theme.A(col, .28f);
-                    _stroke.StrokeWidth = _hair;
+                    Hairline(Theme.A(col, .28f));
                     foreach (var r in z.RadiiKm) c.DrawCircle(cx, cy, r * vp.Scale, _stroke);
                     c.DrawLine(cx - 6, cy, cx + 6, cy, _stroke);
                     c.DrawLine(cx, cy - 6, cx, cy + 6, _stroke);
@@ -328,7 +355,6 @@ public sealed class PlotRenderer : IDisposable
     {
         var tracks = scene.Tracks;
         _ringPrimary.Reset(); _ringSecondary.Reset(); _ringRadar.Reset();
-        _stroke.StrokeWidth = _hair;
         for (int i = 0; i < tracks.Count; i++)
         {
             var t = tracks[i];
@@ -357,7 +383,7 @@ public sealed class PlotRenderer : IDisposable
                 if (on)
                 {
                     if (!CircleCrossesClip(sx, sy, R)) continue;
-                    _stroke.Color = Theme.A(_theme.Friend, primary ? .5f : .4f);
+                    Hairline(Theme.A(_theme.Friend, primary ? .5f : .4f));
                     c.DrawCircle(sx, sy, R, _stroke);
                     _ink.Color = Theme.A(_theme.Friend, .7f);
                     if (primary) DrawText(c, r.Label, SlotSmall, sx + R * .71f + 4, sy - R * .71f, _ink);
@@ -366,10 +392,9 @@ public sealed class PlotRenderer : IDisposable
                 else Dasher.Circle(primary ? _ringPrimary : _ringSecondary, sx, sy, R, 2, 4, _clip);
             }
         }
-        _stroke.StrokeWidth = _hair;
-        if (!_ringPrimary.IsEmpty) { _stroke.Color = Theme.A(_theme.Friend, .16f); _ringPrimary.Draw(c, _stroke); }
-        if (!_ringSecondary.IsEmpty) { _stroke.Color = Theme.A(_theme.Friend, .12f); _ringSecondary.Draw(c, _stroke); }
-        if (!_ringRadar.IsEmpty) { _stroke.Color = Theme.A(_theme.Friend, .35f); _ringRadar.Draw(c, _stroke); }
+        if (!_ringPrimary.IsEmpty) { Hairline(Theme.A(_theme.Friend, .16f)); _ringPrimary.Draw(c, _stroke); }
+        if (!_ringSecondary.IsEmpty) { Hairline(Theme.A(_theme.Friend, .12f)); _ringSecondary.Draw(c, _stroke); }
+        if (!_ringRadar.IsEmpty) { Hairline(Theme.A(_theme.Friend, .35f)); _ringRadar.Draw(c, _stroke); }
     }
 
     private void DrawTrails(SKCanvas c, PlotScene scene, in Viewport vp, RenderState st)
@@ -414,12 +439,11 @@ public sealed class PlotRenderer : IDisposable
             }
             recent.LineTo(it.Sx, it.Sy);
         }
-        _stroke.StrokeWidth = _hair;
         for (int a = 0; a < 4; a++)
         {
             var col = _theme.ForAffiliation((Affiliation)a);
-            if (!_trailOld[a].IsEmpty) { _stroke.Color = Theme.A(col, .12f); c.DrawPath(_trailOld[a], _stroke); }
-            if (!_trailNew[a].IsEmpty) { _stroke.Color = Theme.A(col, .4f); c.DrawPath(_trailNew[a], _stroke); }
+            if (!_trailOld[a].IsEmpty) { Hairline(Theme.A(col, .12f)); c.DrawPath(_trailOld[a], _stroke); }
+            if (!_trailNew[a].IsEmpty) { Hairline(Theme.A(col, .4f)); c.DrawPath(_trailNew[a], _stroke); }
         }
     }
 
@@ -452,9 +476,8 @@ public sealed class PlotRenderer : IDisposable
             if (!tg.Visible) continue;
             Dasher.Line(_targetLines[t.Affiliation == Affiliation.Friend ? 1 : 0], it.Sx, it.Sy, vp.ToScreenX(tg.X), vp.ToScreenY(tg.Y), 2, 4, _clip);
         }
-        _stroke.StrokeWidth = _hair;
-        _stroke.Color = Theme.A(_theme.Hostile, .22f); _targetLines[0].Draw(c, _stroke);
-        _stroke.Color = Theme.A(_theme.Friend, .22f); _targetLines[1].Draw(c, _stroke);
+        Hairline(Theme.A(_theme.Hostile, .22f)); _targetLines[0].Draw(c, _stroke);
+        Hairline(Theme.A(_theme.Friend, .22f)); _targetLines[1].Draw(c, _stroke);
     }
 
     private void DrawOrders(SKCanvas c, PlotScene scene, in Viewport vp, RenderState st)
@@ -567,11 +590,10 @@ public sealed class PlotRenderer : IDisposable
                 _leaders[(int)t.Affiliation].Add(it.Sx + dx * r0, it.Sy + dy * r0, it.Sx + dx * (r0 + len), it.Sy + dy * (r0 + len));
             }
         }
-        _stroke.StrokeWidth = _hair;
         for (int b = 0; b < 5; b++)
-            if (!_stalks[b].IsEmpty) { _stroke.Color = Theme.A(_theme.ForAltitudeBand(b), .6f); _stalks[b].Draw(c, _stroke); }
+            if (!_stalks[b].IsEmpty) { Hairline(Theme.A(_theme.ForAltitudeBand(b), .6f)); _stalks[b].Draw(c, _stroke); }
         for (int a = 0; a < 4; a++)
-            if (!_leaders[a].IsEmpty) { _stroke.Color = Theme.A(_theme.ForAffiliation((Affiliation)a), .6f); _leaders[a].Draw(c, _stroke); }
+            if (!_leaders[a].IsEmpty) { Hairline(Theme.A(_theme.ForAffiliation((Affiliation)a), .6f)); _leaders[a].Draw(c, _stroke); }
 
         // pass 2: symbols, big first (small marks on top)
         var baseMatrix = c.TotalMatrix;
@@ -853,8 +875,7 @@ public sealed class PlotRenderer : IDisposable
         if (hoverItem >= 0)
         {
             ref var h = ref st.Items[hoverItem];
-            _stroke.Color = Theme.A(_theme.Accent, .6f);
-            _stroke.StrokeWidth = _hair;
+            Hairline(Theme.A(_theme.Accent, .6f));
             c.DrawCircle(h.Sx, h.Sy, MathF.Max(7f, h.S / 2 + 4), _stroke);
         }
     }
@@ -863,8 +884,7 @@ public sealed class PlotRenderer : IDisposable
     {
         int km = NiceStep(vp.Scale, 90, 100, 30);
         float px = km * vp.Scale, x = 14, y = vp.Height - 66;
-        _stroke.Color = _theme.TextDim;
-        _stroke.StrokeWidth = _hair;
+        Hairline(_theme.TextDim);
         _scratch.Reset();
         _scratch.MoveTo(x, y); _scratch.LineTo(x + px, y);
         _scratch.MoveTo(x, y - 4); _scratch.LineTo(x, y + 4);

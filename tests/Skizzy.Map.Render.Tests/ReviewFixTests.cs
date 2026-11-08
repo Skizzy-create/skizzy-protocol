@@ -172,6 +172,56 @@ public sealed class ReviewFixTests : IDisposable
         Assert.True(Brightness((int)ringX, (int)ringY, 2) > 40, "the selected ship's SM-2 ring must cross the screen");
     }
 
+    /// <summary>
+    /// On a 150 % DPI canvas 1 px lines are drawn as hairlines (one device pixel) with alpha x1.5 instead of stroked
+    /// 1.5 px paths: the same weight on screen for about a third of the cost.
+    /// </summary>
+    [Theory]
+    [InlineData(1f, 0f, 1f)]
+    [InlineData(1.25f, 0f, 1.25f)]
+    [InlineData(1.5f, 0f, 1.5f)]
+    [InlineData(2f, 0f, 2f)]
+    [InlineData(3f, 1f, 1f)]
+    public void Scaled_canvases_keep_the_weight_of_1px_lines(float k, float width, float gain)
+    {
+        float reference = TrailWeight(1f);
+        float weight = TrailWeight(k);
+        Assert.Equal((width, gain), _rig.Renderer.HairlineMode);
+        _out.WriteLine($"k {k}: {weight:0.0} per logical px (1x: {reference:0.0})");
+        Assert.InRange(weight / reference, 0.85f, 1.15f);
+    }
+
+    /// <summary>Integrated brightness across a straight trail, per logical pixel, on a canvas scaled by <paramref name="k"/>.</summary>
+    private float TrailWeight(float k)
+    {
+        var scene = new PlotScene();
+        var ddg = TestRig.Track(1, TrackKind.Destroyer, 0, 0);
+        ddg.Trail.Clear();
+        for (int i = 20; i >= 0; i--) ddg.Trail.Add(-i * 2f, 0); // a straight trail along y = 0, 40 km long
+        scene.Tracks.Add(ddg);
+        var st = new RenderState();
+        var o = st.Options; o.Grid = o.ScaleBar = o.Labels = o.Rings = false;
+        int w = (int)(400 * k), h = (int)(200 * k);
+        using var surface = SKSurface.Create(new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Premul));
+        var vp = new Viewport(-20, 0, 5, 400, 200); // trail spans logical x 100..300, y 100
+        surface.Canvas.Save(); surface.Canvas.Scale(k);
+        _rig.Renderer.Render(surface.Canvas, scene, vp, st);
+        surface.Canvas.Restore();
+
+        // across the recent half of the trail
+        using var img = surface.Snapshot();
+        using var bmp = SKBitmap.FromImage(img);
+        var sea = _rig.Renderer.Theme.Sea;
+        int x = (int)(230 * k);
+        float sum = 0;
+        for (int y = (int)(90 * k); y < (int)(110 * k); y++)
+        {
+            var p = bmp.GetPixel(x, y);
+            sum += (p.Red - sea.Red) + (p.Green - sea.Green) + (p.Blue - sea.Blue);
+        }
+        return sum / k;
+    }
+
     private float Brightness(int x, int y, int r)
     {
         var sea = _rig.Renderer.Theme.Sea;
