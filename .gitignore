@@ -1,0 +1,24 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+TestResults/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+
+# Local-only KSP / BDArmory reference DLLs (licence: never commit game or mod binaries)
+refs/
+
+# Runtime files a dev install might create next to the source tree
+**/PluginData/auth.token
+**/PluginData/permissions.cfg
+**/PluginData/settings.cfg
+**/PluginData/audit/
+
+# Local dev config
+_LocalDev/
+*.local.props
