@@ -38,6 +38,25 @@
     <Reference Include="System.Core"><HintPath>$(KSPManaged)\System.Core.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 
+  <!--
+    Microsoft.NETFramework.ReferenceAssemblies adds its own hint-less <Reference Include="mscorlib" />, which RAR
+    resolves from the targeting pack and which silently wins over KSP's mscorlib above. Drop it, then assert that
+    the framework assemblies the compiler sees really come from KSP's Managed folder (the point of the guard).
+  -->
+  <Target Name="SkizzyUseKspMscorlib" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Reference.Identity)' == 'mscorlib' And '%(Reference.HintPath)' == ''" />
+    </ItemGroup>
+  </Target>
+  <Target Name="SkizzyAssertKspFramework" AfterTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <_SkizzyForeignFramework Include="@(ReferencePath)"
+          Condition="('%(Filename)' == 'mscorlib' Or '%(Filename)' == 'System' Or '%(Filename)' == 'System.Core') And !$([System.String]::Copy('%(FullPath)').StartsWith('$(KSPManaged)', System.StringComparison.OrdinalIgnoreCase))" />
+    </ItemGroup>
+    <Error Condition="'@(_SkizzyForeignFramework)' != ''"
+           Text="Build guard: framework assembly resolved outside KSP's Managed folder: @(_SkizzyForeignFramework). The in-game projects must compile against KSP's own mscorlib/System/System.Core." />
+  </Target>
+
   <Target Name="SkizzyCheckKspDir" BeforeTargets="ResolveAssemblyReferences;PrepareForBuild">
     <Error Condition="'$(KSPDIR)' == ''"
            Text="KSPDIR is not set. Copy Directory.Build.props.user.example to Directory.Build.props.user and set KSPDIR to your KSP 1.12 folder, or set the KSPDIR environment variable. (Only the in-game projects need it; build ci.slnf to skip them.)" />
