@@ -130,7 +130,7 @@ The host's **report engine** turns events the TPE, BDA adapter and C2 engine alr
 
 | Family | Types | Default executor |
 |---|---|---|
-| Movement | `move_to`, `move_route`, `patrol_area`, `loiter {center, radius, alt}`, `follow {leader, slot}`, `formation {template}`, `hold_position`, `return_to {point|carrier}`, `set_depth`, `set_speed_limit`, `set_alt_band` | in-game (BDA commands + holds, `06-flight-control.md`) |
+| Movement | `move_to`, `move_route`, `patrol_area`, `loiter {center, radius, alt}`, `follow {leader, slot}`, `formation {template}`, `hold_position`, `return_to {point|carrier}`, `rtb` (§2.1.1), `set_depth`, `set_speed_limit`, `set_alt_band` | in-game (BDA commands + holds, `06-flight-control.md`) |
 | Engagement | `engage {track}`, `engage_all {filter}`, `defend_sector {sector, priorities}`, `defend_unit {unit, radius}`, `intercept {track}`, `screen {main_body, bearings}`, `escort {unit}`, `suppress {zone}`, `strike {target, package}`, `attack_position {pos}` | in-game (assignments, fire authority, BDA `CommandAttack`) |
 | Fire control | `weapons_hold`, `weapons_tight`, `weapons_free`, `set_roe {profile}`, `missile_budget {per_track, total}`, `salvo_policy {size, stagger}` | in-game (WM fields, F3 hook) |
 | Sensors | `emcon {level}`, `radar {on|off}`, `sonar {passive|active|off}`, `irst`, `datalink {on|off}` (comms model) | in-game |
@@ -139,6 +139,39 @@ The host's **report engine** turns events the TPE, BDA adapter and C2 engine alr
 | Meta | `report {what, interval}`, `claim {order}` (an actor takes execution), `stand_down` | — |
 
 Every order type has a JSON Schema, preconditions (`requires: ["lease:steer", "ammo:missile>0"]`), an **achievement test** (`move_to`: within radius; `engage`: track dead or `maxMissilesPerTrack` spent or lost; `defend_sector`: open-ended until superseded), progress fields, and failure reasons.
+
+#### 2.1.1 RTB: one-click return to base (user request, 2026-11-08)
+
+`rtb` is a first-class order, not only a doctrine action. It can target the **selection, a group, a mission, or all of a side's units** in one call.
+
+```
+c2.order.issue {type:"rtb", units|group|mission|side:"Blue", filter?:{domain:air|surface|subsurface}, base?:<ref>, weapons?:"hold"|"tight"|"free"}
+```
+
+- **Base resolution, per unit.**
+  1. the explicit `base` argument
+  2. the unit's mission `recover` field
+  3. the unit's home: the carrier or airfield it launched from, or its spawn point for ships
+  4. the nearest friendly carrier or airfield
+
+  If none of these exists, that unit **refuses** with `NO_BASE`. Refusals are reported per unit at issue time, never silently (`23-visual-design.md` §6 point 10).
+- **What units do.**
+  - **Aircraft** fly to the base's marshal point and hold there in a stack. Each aircraft gets its own altitude slot, 300 m apart.
+  - BDArmory's pilot AI cannot land on a carrier, so landing and recovery stay manual or use the P2 `recover` adapter. The report says "on station at marshal".
+  - **Ships and subs** return to their home station or port point and hold.
+  - **Missiles** in flight are not affected.
+- **Weapons during transit.** The default is `tight`: return fire and engage assigned or identified threats only. Self-defence is always allowed.
+- **Priority and scope.**
+  - It supersedes the unit's current movement and engagement orders. Missions are suspended, not cancelled, so "Return to mission" resumes them.
+  - Scope `side` needs the seat or the referee. A delegate with a cluster lease can only RTB its own cluster.
+- **Reports.** Each unit reports `rtb {reason:"ordered"}`, then `on_station` at marshal or home. The group report rolls these up, for example "Cobra flight RTB, 3/4 at marshal, Cobra 2 refused: no base".
+- **Map and in-game.** Covered in `23-visual-design.md` §5:
+  - the **RTB** button in the Unit panel
+  - **R**: RTB the selection
+  - **Shift+R**: RTB all, with a confirm strip
+  - a right-click menu entry
+  - in-game, a Skizzy toolbar entry "RTB selected / RTB all" that works with nothing but the host running (no AI client needed)
+- **MCP.** The `c2_order` tool accepts `type:"rtb"`. The compact form is `rtb Cobra` or `rtb all air`.
 
 ### 2.2 Lifecycle
 

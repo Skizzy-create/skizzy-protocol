@@ -96,9 +96,11 @@ These implement `11-tactical-map.md` §2.1 and add what the mockup proved.
 | **Alt+1…9** | put the selection on a number key |
 | **1…9** | select that group again |
 | `[` / `]` | shrink / enlarge the selected symbols (per-item override) |
+| **R** | RTB the selection (`09-c2-multi-agent.md` §2.1.1) |
+| **Shift+R** | RTB all own units; a confirm strip shows the count and where they are going; Enter confirms, Esc cancels |
 | Space | pause |
 | Esc | clear the selection |
-| Take control / Return to mission / Send to… / Fly in KSP / Center | Unit panel controls |
+| Take control / Return to mission / Send to… / **RTB** / Fly in KSP / Center | Unit panel controls; the right-click menu on own units also offers RTB |
 
 - **Panels:** drag the edges to resize. Hide and show from the top bar. Layout is remembered. Reset layout restores the defaults.
 - **Timeline:** scrub back for replay; Live returns. Event ticks are drawn on the bar.
@@ -140,3 +142,7 @@ These were recorded by the user on 2026-11-08 and must hold in the real system:
     - Rule 1 — **validate on issue.** When an order is given, check whether each unit can carry it out: weapons, fuel, damage, range, current lease holder. Show the result straight away ("Cobra 1–4: no missiles left, attack refused. Send them home?"). Never accept an order and then discard it.
     - Rule 2 — **orders outrank posture and mission behaviour.** This matches the precedence bands: commander 800 beats behaviour 300 and BDA 0. Only self-defence may interrupt an order, and when it does it is logged.
     - Rule 3 — **every order ends with a report.** Completed, refused, aborted, or overridden (by whom and why) goes in the message log and the unit panel.
+11. **RTB for the selection or everyone** (user request, 2026-11-08). This is a one-click order: the R and Shift+R keys, the Unit panel button and the right-click menu.
+    - Each unit resolves its own base. Units with no base refuse with a reason (point 10).
+    - Aircraft hold at the marshal point because BDArmory cannot land on a carrier.
+    - Spec in `09-c2-multi-agent.md` §2.1.1.
