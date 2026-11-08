@@ -1,17 +1,26 @@
-# skizzy-protocol: specification draft 0.1
+# skizzy-protocol: specification draft 0.2
 
 **Wire format and contract API** for making Kerbal Space Program 1.12.x and its mods controllable by AI agents and other programs.
 
 | | |
 |---|---|
-| Status | **Draft 0.1**, unstable; anything may change before 1.0 |
-| Date | 2026-11-07 |
+| Status | **Draft 0.2**, unstable; anything may change before 1.0. The wire version stays `0.1` until the first breaking change. |
+| Date | 2026-11-08 (draft 0.1: 2026-11-07) |
 | Companion | [`PLAN.md`](PLAN.md): architecture, rationale and roadmap |
 | Licence | Spec text CC-BY 4.0. Code listings in §12.1 and §12.4 are CC0 1.0. |
 
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119.
 
-"skizzy-protocol" is the working name, with "Kerbal Uplink" proposed (see PLAN §2). Only the handshake identifier (§5.1) carries the name. A host MUST accept both `"skizzy-protocol"` and any alias it advertises.
+"skizzy-protocol" is the name (decided 2026-11-08, PLAN §2). Only the handshake identifier (§5.1) carries the name. A host MUST accept both `"skizzy-protocol"` and any alias it advertises.
+
+**Changes in draft 0.2:**
+- capability **areas** with host-side enable switches (§8.6)
+- per-target permission resolution (§6.3)
+- image values (§9)
+- full-JSON text blocks in the MCP projection (§14)
+- new built-in namespaces `ksp.flight.`, `ksp.camera.`, `ksp.editor.` and `craft.` (§13)
+- the reference bridge is now C#, on the ModelContextProtocol C# SDK 2.3.0
+- protocol types are shared through `Skizzy.Protocol`, multi-targeted to net48 and netstandard2.0
 
 ---
 
@@ -22,11 +31,12 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119
 | **Host** | The in-game plugin (`Skizzy.Host.dll`). It owns the socket, the catalog, the permission engine, the audit log and the main-thread dispatcher. There is exactly one per KSP process. |
 | **Provider** | A component that contributes capabilities to the host's catalog. It can be built in (`ksp.*`, `host.*`), Tier 0 (reflection), Tier 1 (annotations), Tier 2 (duck-typed attributes in a mod) or Tier 3 (a contract DLL or the JSON-delegate ABI). |
 | **Client** | Anything that connects to the host over the wire: an MCP bridge, a script, a dashboard, a test runner. |
-| **Bridge** | A client that re-exposes the host through another protocol, such as MCP (§14). |
+| **Bridge** | A client that re-exposes the host through another protocol, such as MCP (§14). The reference bridge is `skizzy-mcp` (C#, .NET 10). |
 
 ## 2. Concepts
 
-- **Capability.** A named, typed operation, for example `bda.start_competition`. It has an input schema, an optional output schema, a safety level, scene availability, thread affinity, and flags (`longRunning`, `idempotent`).
+- **Capability.** A named, typed operation, for example `bda.start_competition`. It has an input schema, an optional output schema, a safety level, scene availability, thread affinity, an **area**, and flags (`longRunning`, `idempotent`).
+- **Area.** A named group of capabilities that the user switches on or off in the host, for example `bdarmory` or `ksp.flight` (§8.6). A disabled area contributes nothing to the catalog.
 - **Resource.** Read-only data addressed by URI or URI template, for example `ksp://vessel/{handle}`.
 - **Stream.** A named, sampled data source delivered as `stream.data` notifications, for example `bda.engagement`.
 - **Event.** A named, discrete occurrence delivered as `event` notifications and kept in a ring buffer, for example `bda.vessel_killed`.
@@ -44,7 +54,7 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119
 - Subprotocol: a client SHOULD offer `Sec-WebSocket-Protocol: skizzy.v0`. A host MUST select `skizzy.v0` if offered.
 
 ### 3.2 Authentication and request hygiene
-1. The host generates a token of at least 256 bits of CSPRNG output, base64url-encoded. It stores the token at `GameData/Skizzy/PluginData/auth.token`, readable by the local user.
+1. The host generates a token of at least 256 bits of CSPRNG output, base64url-encoded. It stores the token at `GameData/SkizzyProtocol/PluginData/auth.token`, readable by the local user.
 2. A client MUST present the token in the upgrade request as `Authorization: Bearer <token>`.
 3. If a client cannot set headers, it MAY instead send the token as `params.token` in `session.hello`. The host MUST then accept no other method before a successful `session.hello`, and MUST close the connection after one failed attempt.
 4. The host MUST reject (HTTP 403) any upgrade request that carries an `Origin` header not in its configured allow-list. The allow-list is empty by default, which blocks web pages from reaching the socket.
@@ -63,6 +73,10 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119
 | `maxInflight` (per session) | 32 |
 | `maxSubscriptions` (per session) | 64 |
 | `idleTimeoutSec` | 600 |
+| `maxQueuedJobs` (host) | 512 |
+| `maxOutboundQueueBytes` (per connection; a slower client is disconnected) | 16 777 216 |
+| `maxHandshakeBytes` | 8 192 |
+| `sessionRateLimit` (calls per minute, all capabilities) | 600 |
 
 - Hosts SHOULD send WebSocket pings every 30 s. Clients MUST answer with pongs (standard behaviour of WebSocket libraries).
 
@@ -126,6 +140,7 @@ Response:
   "features":["ops","streams","events","events.poll","confirm.game","confirm.client"],
   "limits":{"maxMessageBytes":4194304,"maxInflight":32,"maxSubscriptions":64,"maxConnections":4},
   "catalogRevision":42,
+  "areas":{"ksp.read":true,"ksp.module":false,"bdarmory":true,"ksp.flight":false,"ksp.camera":false,"ksp.editor":false,"craft":false},
   "grants":{"summary":[{"mod":"Squad","read":"allow"},{"mod":"BDArmory","read":"allow","control":"allow","cheat":"allow","destructive":"ask"}]},
   "meta":{"ut":204511.32,"fixedFrame":9123345,"scene":"FLIGHT","paused":false,"warp":{"mode":"none","rate":1},"catalogRevision":42}
 }}
@@ -159,7 +174,7 @@ This request carries no params. The host cancels the session's subscriptions. Op
 
 | Method | Params | Result |
 |---|---|---|
-| `host.stats` | — | `{budgetMs, usedMsP50, usedMsP99, queueDepth, inflight, sessions, worstCapabilities:[{name, ms}], streamsDegraded}` |
+| `host.stats` | — | `{budgetMs, usedMsP50, usedMsP99, queueDepth, inflight, sessions, worstCapabilities:[{name, ms}], streamsDegraded, idleMode: "syncContext"\|"polling", autoDisabled:[names]}` |
 | `host.state` | — | `{scene, paused, warp, activeVessel, competition?}`. The same object is pushed as the `host.state` notification on change. |
 
 ### 6.2 Catalog
@@ -185,10 +200,12 @@ Notification `catalog.changed`: `{revision, added:[names], removed:[names], chan
 
 The host processes a `cap.call` in this order (normative):
 1. Envelope and size checks.
-2. Resolve the capability. Unknown names return `-32601`.
+2. Resolve the capability. Unknown names return `-32601`. A name that belongs to a **disabled area** also returns `-32601`, with `data:{reason:"area_disabled", area}` and a hint to enable the area in game (§8.6).
 3. Validate `args` against `inputSchema`. Failures return `INVALID_PARAMS` with JSON-pointer `data.errors`.
-4. Scene availability. Failures return `UNAVAILABLE_IN_SCENE`.
+4. Scene availability. Failures return `UNAVAILABLE_IN_SCENE`. Capabilities that are fail-closed (`api_missing`) or auto-disabled (`auto_disabled`) return `PRECONDITION_FAILED` here with that `reason`.
 5. **Permission evaluation** (§8). The result is `deny` (`PERMISSION_DENIED`), `ask` (confirmation, §8.4) or `allow`.
+   - For a capability whose permission subject depends on its arguments (`x-skz-perTargetPermission: true`, for example `ksp.module.set` on a module of mod X, or `ksp.module.invoke` of an event classified `destructive`), the host first runs a side-effect-free **resolver** on the main thread. The resolver returns `(mod, level, summary)`, and policy is evaluated for that pair.
+   - The summary is used in confirmation prompts.
 6. Rate limit. Failures return `RATE_LIMITED`.
 7. Preconditions (`requires`). Failures return `PRECONDITION_FAILED`.
 8. Enqueue by affinity (`main`/`fixed`), or execute directly (`snapshot`/`any`).
@@ -302,6 +319,8 @@ Hosts MUST cap result size, break cycles, and audit the full path.
 | `description` | string | ✓ | Written for an LLM: what it does, when to use it, side effects, units |
 | `safety` | enum | ✓ | `read`, `control`, `destructive`, `cheat` or `unsafe` (§8.1) |
 | `scenes` | string[] | ✓ | `GameScenes` names, or `["ANY"]` |
+| `area` | string | ✓ (host-filled) | The capability area (§8.6), for example `ksp.read` or `bdarmory` |
+| `mod` | string | ✓ (host-filled) | The permission subject: the mod id that `MOD` rules match, for example `Squad` or `BDArmory`. `*` means it is resolved per target (`x-skz-perTargetPermission`). |
 | `affinity` | enum | ✓ | `main`, `fixed`, `snapshot` or `any` |
 | `longRunning` | bool | | Default false |
 | `idempotent` | bool | | Default false |
@@ -310,7 +329,7 @@ Hosts MUST cap result size, break cycles, and audit the full path.
 | `outputSchema` | JSON Schema 2020-12 | | |
 | `examples` | array | | `[{args, description}]` |
 | `permission` | object | ✓ (host-filled) | `{state: allow\|ask\|deny, source}` for *this session* |
-| `availability` | object | ✓ (host-filled) | `{available: bool, reason?}` for the current scene and state |
+| `availability` | object | ✓ (host-filled) | `{available: bool, reason?}` for the current scene and state. `reason` is one of `scene`, `transition`, `api_missing`, `auto_disabled` or `kill_switch`. |
 | `x-skz-*` | any | | Extension metadata such as units, step and labels |
 
 ### 7.3 Resource, stream and event descriptors
@@ -369,6 +388,26 @@ The host MUST append one record per request (allowed or not) with:
 - who confirmed it (game, client or n/a)
 - the status, error kind and duration
 
+### 8.6 Areas (normative)
+- A host MUST group capabilities into **areas** and MUST let the local user enable or disable each area, through configuration or in-game UI.
+- Areas MUST NOT be changeable through any wire method.
+- Every area except stock read (`ksp.read`) MUST be disabled by default.
+- When an area is disabled, the host MUST NOT register its capabilities, subscribe to game events on its behalf, or run per-frame work for it.
+- Changing an area emits `catalog.changed`.
+- The reference host defines these areas:
+
+| Area | Contents |
+|---|---|
+| `ksp.read` | stock read capabilities (on by default) |
+| `ksp.module` | Tier-0 writes, events and actions |
+| `bdarmory` | the BDArmory provider |
+| `ksp.flight` | flight control |
+| `ksp.camera` | vision |
+| `ksp.editor` | VAB/SPH construction |
+| `craft` | headless `.craft` files |
+
+Area switches and permission policy are independent; a call must pass both.
+
 ---
 
 ## 9. Handles and value encoding
@@ -391,6 +430,7 @@ Capabilities whose schema marks a property `x-skz-handle: vessel` MUST also acce
 | Time | `ut` (seconds of universal time, double). Wall-clock values are ISO 8601 UTC strings, with the suffix `Utc` in key names. |
 | Enums | strings (names) |
 | NaN and ±Infinity | `null`, with sibling `"<key>$nonFinite":"NaN"\|"+Inf"\|"-Inf"` |
+| Images | `{"x-skz-kind":"image","mimeType":"image/jpeg"\|"image/png","width":…,"height":…,"bytes":…,"dataBase64":"…"}`. A bridge SHOULD map this to its native image type (MCP: an image content block). |
 | Localized text | resolved strings. The raw `#LOC` key MAY appear in `x-skz-locKey`. |
 
 ---
@@ -414,7 +454,7 @@ Errors use the JSON-RPC `error` object, with `data.kind` as the stable machine-r
 | -32006 | `BUSY` | yes | Queue full: `{retryAfterMs}` |
 | -32007 | `TIMEOUT` | yes | `{timeoutMs, op?}` |
 | -32008 | `CONFLICT` | no | State conflict, for example a competition already running or guard mode on: `{detail}` |
-| -32009 | `PRECONDITION_FAILED` | maybe | `{reason: "paused"\|"vessel_packed"\|"bda_api_changed"\|..., detail}` |
+| -32009 | `PRECONDITION_FAILED` | maybe | `{reason: "paused"\|"vessel_packed"\|"bda_api_changed"\|"api_missing"\|"auto_disabled"\|"event_inactive"\|"too_large"\|..., detail}` |
 | -32010 | `PROVIDER_ERROR` | maybe | An exception in mod code: `{provider, exceptionType, message}`. No stack trace unless the host is in debug mode. |
 | -32011 | `CANCELLED` | no | `{reason: "client"\|"scene_change"\|"kill_switch"\|"timeout"}` |
 | -32012 | `RATE_LIMITED` | yes | `{retryAfterMs, limit}` |
@@ -545,6 +585,8 @@ namespace YourMod.SkizzyIntegration
 9. **Events.** A `static event` or a static delegate field tagged `[SkizzyEvent]` is subscribed by the host using a dynamically built delegate of the event's type. The arguments are serialized as `data` (one argument: the value; several: `{arg0, arg1, …}` or the parameter names when available).
 
 ### 12.3 Tier 3a: `Skizzy.Contract.dll` (MIT; hard reference)
+
+> **Interim (M1–M3).** Until `Skizzy.Contract.dll` ships in M4, the project's own providers (the BDArmory shim) use the equivalent `Skizzy.Host.Api` surface inside `Skizzy.Host.dll`: `ICapabilityProvider`, `CapabilitySpec`, `CallContext`. They share the same shapes, and `SkizzyException` comes from `Skizzy.Protocol`. Third-party mods should wait for the contract DLL or use Tier 2.
 
 ```csharp
 // API outline: signatures only (bodies omitted). Targets net48; references mscorlib, System,
@@ -747,7 +789,8 @@ SKIZZY_ANNOTATIONS
 | Prefix | Owner |
 |---|---|
 | `session.`, `host.`, `catalog.`, `cap.`, `op.`, `stream.`, `events.`, `permissions.`, `reflect.`, `sim.` | Core protocol methods (§5–6) |
-| `ksp.` | The host's built-in stock provider (vessels, parts, modules, action groups, staging, time, scene, logs, config) |
+| `ksp.` | The host's built-in stock provider (vessels, parts, modules, action groups, staging, time, scene, logs, config). It includes `ksp.flight.`, `ksp.camera.` and `ksp.editor.`, each in its own area. |
+| `craft.` | The host's headless `.craft` file tools (area `craft`) |
 | `<providerId>.` | Mod providers, for example `bda.`/`bdarmory.` (BDArmory) or `hullbreach.`. A provider id must match `^[a-z][a-z0-9_]{1,31}$`. |
 | `x_<anything>.` | Experimental or private. Never shown to MCP clients unless explicitly enabled. |
 
@@ -759,11 +802,13 @@ BDArmory capabilities use the short alias `bda.` because it is the de-facto comm
 
 A conforming MCP bridge:
 
-1. **Speaks MCP 2026-07-28.** It implements `server/discover`, accepts `_meta` protocol versions, and SHOULD also negotiate 2025-11-25 for older clients.
+1. **Speaks MCP 2026-07-28.** It implements `server/discover`, accepts `_meta` protocol versions, and SHOULD also negotiate 2025-11-25 for older clients. The reference bridge gets both from the ModelContextProtocol C# SDK 2.3.0.
 2. **Exposes each allowed capability as a tool.**
    - The name is the capability name with `.` replaced by `_`. If the result exceeds 64 characters it is truncated to 56 and suffixed `_` + a 7-character hash. The resulting name MUST match `^[a-zA-Z0-9_-]{1,64}$`.
    - The original name is in `_meta["skizzy/capability"]`.
-   - `inputSchema` and `outputSchema` are copied. Results return `structuredContent` (the `value`) plus one text block summarising it in at most about 400 characters.
+   - `inputSchema` and `outputSchema` are copied.
+   - Results return `structuredContent` (the `value`, wrapped as `{"value": …}` when it is not a JSON object) **plus one text block with the same JSON**, capped at 64 KB with a truncation notice. Draft 0.1's 400-character summary is withdrawn, because several clients, Claude Code among them, feed only text content to the model.
+   - A value of kind `image` (§9) becomes an image content block plus a JSON text block holding the remaining metadata.
 3. **Sets annotations:**
    - `readOnlyHint = (safety == read)`
    - `destructiveHint = safety ∈ {destructive, cheat, unsafe}`
@@ -782,6 +827,9 @@ A conforming MCP bridge:
 9. **Maps resources** one-to-one, including templates. `resourceSubscriptions` on `subscriptions/listen` map to host streams, throttled so that `notifications/resources/updated` is sent at most once per second per URI.
 10. **Treats game text as data.** Game-sourced strings (vessel names, craft descriptions, log lines) MUST NOT be placed into tool `description` fields.
 11. **Offers toolsets** (`core`, `bda`, `bda-advanced`, `universal-write`, `deep`, `+<providerId>`) and the progressive-disclosure pair `skizzy_search_capabilities` / `skizzy_call`, so the default tool count stays at about 40.
+    - Area switches already bound the catalog: with everything off except stock read, the default list is about 13 tools.
+    - The reference bridge in 0.2 projects every non-denied capability and adds `--max-tools` as a cap. The remainder stays reachable through `skizzy_call`.
+12. **Is robust to the game being absent.** When the host is unreachable, the core tools MUST still be listed. `skizzy_status` reports `connected:false` with a hint, and other calls return a tool error naming the cause: connection refused, token rejected, or version mismatch.
 
 ---
 
@@ -792,6 +840,7 @@ A conforming MCP bridge:
 - [ ] Never touches Unity or KSP objects off the main thread (verified with debug assertions).
 - [ ] Every `cap.call` follows the order in §6.3. Every request is audited.
 - [ ] The default policy is deny except Squad `read`. No wire method can grant permissions. `unsafe` cannot be granted remotely.
+- [ ] Every area except `ksp.read` is off by default. Disabled areas register nothing, and areas cannot be changed over the wire.
 - [ ] Handles are invalidated on scene change. A stale module handle returns `NOT_FOUND {reason:"stale"}`.
 - [ ] Operations report timeouts in UT, survive client disconnects, and are cancelled on scene change.
 - [ ] Streams degrade (and report it) instead of exceeding the budget. Paused state is signalled.
@@ -836,7 +885,7 @@ import asyncio, itertools, json, pathlib
 import websockets  # pip install websockets (v14+)
 
 KSP = pathlib.Path(r"D:\Epic Games\KerbalSpaceProgram\English")
-TOKEN = (KSP / "GameData/Skizzy/PluginData/auth.token").read_text().strip()
+TOKEN = (KSP / "GameData/SkizzyProtocol/PluginData/auth.token").read_text().strip()
 
 async def main():
     ids = itertools.count(1)
