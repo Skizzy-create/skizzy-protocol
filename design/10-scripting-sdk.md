@@ -4,6 +4,8 @@ Scripts are first-class actors. Python first (`pip install skizzy`), C# second (
 
 ## 1. Python SDK (`skizzy`, P0)
 
+**[R] Staging.** M0 ships `skizzy` 0.1: a small synchronous JSON client (`skizzy.connect()`, `sk.call(name, **args)`, `sk.watch(selector, hz)`, `sk.log.start/stop`, `sk.shot()`), REPL/notebook helpers and the `skizzy call|watch|log|shot` CLI, so the user can script against KSP from day one without Claude Code (`21-user-experience.md` §4). The typed, async, msgpack SDK below is M4.
+
 Packages: `skizzy.client` (transport), `skizzy.models` (typed records generated from the protocol schemas), `skizzy.tactical` (track mirror, BRAA/geometry, filters), `skizzy.c2` (orders, leases, groups, doctrine), `skizzy.flight` (holds, setpoint batches, routes, formations), `skizzy.bda`, `skizzy.craft`, `skizzy.rec` (recordings), `skizzy.sim` (mini-sim), `skizzy.agents` (LLM orchestrator), `skizzy.templates`.
 
 ```python
@@ -24,7 +26,7 @@ async def main():
             for i, d in enumerate(drones.members):
                 hdg, spd, alt = my_swarm_law(i, d, threats, tick.ut)
                 batch.add(d, heading=hdg, speed=spd, altitude=alt)
-            await sk.flight.setpoint_batch(batch)                # one msgpack frame, fixed-affinity job
+            await sk.flight.setpoint_batch(batch, deadman_ms=500) # one msgpack frame, fixed-affinity job; silence > 500 ms → hold_last
             if picture.events.pop("missile.inbound"):
                 await sk.flight.setpoint_batch(evade(drones, threats))
 
@@ -41,11 +43,11 @@ Same surface, `netstandard2.0` + `net10.0`: `SkizzyClient.ConnectAsync(options)`
 
 ## 3. Script supervisor (P1) — [ADDED]
 
-`skizzy run script.py --actor swarm-script --restart on-failure --cpu 1 --mem 512M` runs a script under a supervisor: it owns the leases' heartbeat from a side thread (so a busy script does not lose leases), restarts on crash with back-off, releases leases cleanly on exit (`on_expire` is still the safety net), captures stdout to the recording's `scripts` channel, and exposes `scripts.status` to the map. Scripts declare `requires: {hooks: ["bda.waypoints"], areas: ["ksp.flight"]}` so failures are explicit at start.
+`skizzy run script.py --actor swarm-script --restart on-failure --cpu 1 --mem 512M` runs a script under a supervisor: it owns the leases' heartbeat from a side thread (so a busy script does not lose leases), restarts on crash with back-off, releases leases cleanly on exit (`on_expire` is still the safety net), captures stdout to the recording's `scripts` channel, and reports its status through `host.sessions` (**[R]** pass 1.0 called this `scripts.status`, which no other file defines), which the map and the in-game connections window show. Scripts declare `requires: {hooks: ["bda.waypoints"], areas: ["ksp.flight"]}` so failures are explicit at start.
 
 ## 4. Templates (`skizzy.templates`, P1)
 
-`swarm_controller` (the 20-drone scenario), `ad_coordinator` (WTA loop without an LLM), `asw_screen`, `formation_keeper`, `craft_iterate`, `batch_ab`, `log_profile_switcher`, `aar_report`. Each is a runnable script with a config block and tests against the mini-sim.
+`swarm_controller` (the 20-drone scenario), `ad_coordinator` (WTA loop without an LLM; **[R]** it needs the `targeting` and `weapons` channels, which the default `script` ROLE does not grant, so the template declares `requires: {channels: [targeting, weapons]}` and `skizzy run` fails at start with the exact `ROLE`/`CLIENT` line to add to `permissions.cfg` from the in-game window), `asw_screen`, `formation_keeper`, `craft_iterate`, `batch_ab`, `log_profile_switcher`, `aar_report`. Each is a runnable script with a config block and tests against the mini-sim.
 
 ## 5. In-game behaviour engine (P1)
 

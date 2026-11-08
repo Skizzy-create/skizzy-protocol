@@ -8,7 +8,7 @@ editor (VAB/SPH) ◄──round-trip──┘   ▲                             
 headless craft.* ops ───────────────┘   ◄──────────────── adjust (agent/script/human) ◄──┘
 ```
 
-## 1. CraftDocument (P0)
+## 1. CraftDocument (P1; **[R]** was P0, see `01-feature-catalog.md` §3)
 
 An in-memory, dependency-free model of a `.craft` ConfigNode: header (`ship`, `version`, `type`, `size`, `description`), parts (`part`, `persistentId`, `pos`, `rot`, `attPos`, `attRot`, `mir`, `istg`, `dstg`, `sqor`, `sidx`, `link`, `attN`, `srfN`, `sym`), `MODULE` and `RESOURCE` nodes, plus derived data (tree, attach-node geometry from `PartLoader` prefabs, bounds, mass). It is the same structure the editor round-trip uses (PLAN v0.2 §8.1), so headless edits and editor edits are the same code.
 
@@ -16,7 +16,7 @@ Operations (`craft.*`, affinity `main` for anything touching `PartLoader`, other
 
 ## 2. Editor control (`ksp.editor.*`, P1)
 
-As PLAN v0.2 §8.1: ConfigNode round-trip through `ShipConstruct.SaveShip/LoadShip` + `EditorLogic.SetBackup` for undo, `ksp.editor.apply` for batches (one reload per batch), `ksp.parts.catalog` with role filters (`role:"vls"`), `ksp.editor.validate`, save to `Ships/` or `AutoSpawn/`. The editor path is required for: live visual check (screenshot after apply), B9PartSwitch/TweakScale state that only resolves in the editor, and KerbalEngineer readouts. The reload-path spike (which API replaces the ship cleanly) stays the first task of the craft milestone.
+As PLAN v0.2 §8.1: ConfigNode round-trip through `ShipConstruct.SaveShip/LoadShip` + `EditorLogic.SetBackup` for undo, `ksp.editor.apply` for batches (one reload per batch), `ksp.parts.catalog` with role filters (`role:"vls"`), `ksp.editor.validate`, save to `Ships/` or `AutoSpawn/`. The editor path is required for: live visual check (screenshot after apply), B9PartSwitch/TweakScale state that only resolves in the editor, and KerbalEngineer readouts. The reload-path spike (which API replaces the ship cleanly) stays the first task of the craft milestone. **[R]** Budget: one reload per batch, target ≤ 1.5 s for a 300-part craft (pass 1.0 said 150 ms, which a KSP editor reload of that size does not achieve; the spike measures `LoadShip` + `SpawnConstruct` vs `LoadShipFromFile` and fixes the number). During the reload the editor is not interactive and the host reports `op.progress`, so agents batch edits instead of applying them one by one.
 
 ## 3. Blueprint DSL (P1)
 
@@ -78,7 +78,7 @@ The report is JSON plus a compact text summary for agents.
 
 ## 5. Sea trials and flight trials (P1) — [ADDED]
 
-`craft.trial {doc|library, profile}` is a long operation that spawns the craft at the test range (a dedicated save `saves/skizzy-range`, open water east of KSC; see decision list), runs a scripted profile under Skizzy holds and records metrics with a dedicated log profile:
+`craft.trial {doc|library, profile}` is a long operation that spawns the craft at the test range (a dedicated save `saves/skizzy-range`, open water east of KSC; decided in `18-risks-and-decisions.md` §3.2 D-5), runs a scripted profile under Skizzy holds and records metrics with a dedicated log profile:
 
 | Profile | Measures |
 |---|---|
@@ -91,7 +91,7 @@ Results are stored in the library version's `trials.json` and compared across ve
 
 ## 6. Library (P1)
 
-`<KSP>/Skizzy/library/craft/<name>/<version>/` with `manifest.json` (`class`, `roles` summary, `blueprint` hash, `tags`, `author actor`, `created`), the `.craft`, `trials.json`, `battles.json` (aggregated results from recordings: survival rate, kills, missiles expended per kill), thumbnails. `lib.craft.list|get|promote|tag`, `lib.blueprint.*`, `lib.loadout.*`. BDA's `AutoSpawn` staging copies from the library.
+`<KSP>/Skizzy/library/craft/<name>/<version>/` with `manifest.json` (`class`, `roles` summary, `blueprint` hash, `tags`, `author actor`, `created`), the `.craft`, `trials.json`, `battles.json` (aggregated results from recordings: survival rate, kills, missiles expended per kill), thumbnails. `lib.craft.list|get|save|promote|tag|compare`, `lib.blueprint.*`, `lib.loadout.*`. BDA's `AutoSpawn` staging copies from the library.
 
 ## 7. Iteration loop (agent view, P1)
 
@@ -116,3 +116,20 @@ Each step is one or two tool calls; the whole loop is also available as a script
 2. Headless edits round-trip through the editor without diffs (`craft.diff` empty).
 3. `craft.trial naval.basic` predicts draft within 10 % and reports speed and turning circle; results appear in the library and in `lib.craft.compare`.
 4. The destroyer scenario (`16-scenarios.md` §1) completes end-to-end from Claude Code.
+
+## 10. Capability list (consolidated) — [R]
+
+Pass 1.0 named these operations across sections and scenarios; this is the one list the catalog implements.
+
+| Capability | Level | Affinity | Notes |
+|---|---|---|---|
+| `craft.open|create|save|diff|validate|apply` and the part/module/resource/stage ops of §1 | read/control (`save` over an existing file: destructive) | any/main | |
+| `craft.assemble {blueprint, vars?}` | control | main | blueprint → `doc:N`; reports unfilled slots |
+| `craft.probe_slots {hull}` | read | main (editor) | proposes deck slots by raycast (§3) |
+| `craft.trial {doc|library, profile}` | cheat (spawns at the range) | op | §5; needs the range save or `allowCurrentSave:true` |
+| `craft.thumbnail {doc, views}` | read | main | P2 |
+| `ksp.editor.open|apply|validate|save|screenshot` | control | main | §2 |
+| `ksp.parts.catalog {role?, search?}` | read | any | role filters from `SKIZZY_PART_ROLES` |
+| `lib.craft.list|get|save|promote|tag|compare` | read/control | any | `compare` diffs trials and battle stats between versions |
+| `lib.blueprint.list|get|save|patch`, `lib.loadout.list|get|save|apply` | read/control | any | `patch` applies a JSON merge patch and saves a new blueprint version; `apply` sets missile types per cell (`MultiMissileLauncher`/`ModuleMissileRearm`) |
+| `ksp.vessel.spawn_craft` | cheat | main | spawn any `.craft` at a position (M1; `04-ksp-and-mod-access.md` §2) |

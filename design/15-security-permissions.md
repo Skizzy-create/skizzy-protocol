@@ -7,8 +7,8 @@ The permission model of PLAN v0.2 §6 stands (levels, policy evaluation order, `
 | Level | Default (preset **Battle Lab**, applied on first run for the local user) |
 |---|---|
 | `read` | allow |
-| `control` | allow (flight, editor, camera, AI/WM params, orders, leases, recorder, time scale) |
-| `destructive` | **ask** (manual weapon fire, staging, remove vessels, overwrite craft, save/load game) — the user can switch individual capabilities to allow (e.g. `bda.fire_*` for the test range) |
+| `control` | allow (flight, editor, camera, AI/WM params, orders, leases, recorder, time scale, **[R]** vessel rename, staging of non-weapon stages) |
+| `destructive` | **ask** (manual weapon fire, staging a stage that fires a weapon or strands crew (resolver in `06-flight-control.md` §2), remove vessels, overwrite craft, save/load game) — the user can switch individual capabilities to allow (e.g. `bda.fire_*` for the test range) |
 | `cheat` | allow for `bdarmory` spawn/settings, `ksp.vessel.place`, `sim.*`, library staging; ask for `INFINITE_*`/gravity hacks |
 | `unsafe` | deny (deep reflection set/call, writes outside sandboxes); `reflect.get` per mod via the in-game UI only |
 
@@ -19,14 +19,16 @@ Areas: all on except `deep`. Presets `Observer`, `Test Director`, `Full Combat`,
 Because several agents share one bridge, the client-level cap (`CLIENT` rule) is not enough. The permission file gains `ROLE` rules:
 
 ```
-ROLE { name = unit      levels = read, control   god = false  channels = steer, weapons, targeting, sensors, ai_params  preemptMax = 600 }
-ROLE { name = group     levels = read, control   god = false  channels = *   preemptMax = 700 }
-ROLE { name = commander levels = read, control, destructive, cheat   god = true   preemptMax = 800   bulkOps = ask }
-ROLE { name = script    levels = read, control   god = per-session  channels = steer, formation  preemptMax = 400 }
-ROLE { name = human     levels = *   god = true   preemptMax = 1000 }
+ROLE { name = unit      levels = read, control   god = false  channels = steer, weapons, targeting, sensors, ai_params  maxPrecedence = 600 }
+ROLE { name = group     levels = read, control   god = false  channels = *   maxPrecedence = 700 }
+ROLE { name = commander levels = read, control, destructive, cheat   god = true   maxPrecedence = 800   bulkOps = ask }
+ROLE { name = script    levels = read, control   god = per-session  channels = steer, formation  maxPrecedence = 500 }
+ROLE { name = behaviour levels = read, control   god = false  channels = steer, weapons, targeting, sensors, ai_params, formation  maxPrecedence = 400 }
+ROLE { name = harness   levels = read, control, cheat   god = true  channels = *  maxPrecedence = 500 }
+ROLE { name = human     levels = *   god = true   maxPrecedence = 1000 }
 ```
 
-The effective decision is `min(file policy, CLIENT cap, ROLE cap)`. God view (`tac.god`) is a per-role flag, so unit agents cannot read through fog even though the data is `read` level. Actor identities are asserted by the bridge (it knows which MCP session is which agent) and by scripts (self-declared); the host trusts the loopback connection holder but still clamps by role and client caps, so a mis-declared role cannot exceed what the file allows for that client.
+**[R]** Pass 1.0 called the field `preemptMax` and set the script cap at 400, which made the documented "doctrine promotes a trusted script above unit agents" impossible. The field is now `maxPrecedence` everywhere; scripts may be promoted up to 500 by doctrine and further only by editing this file. Effective precedence = `min(doctrine or default band, ROLE maxPrecedence)`; a client can only lower it. The effective permission decision is `min(file policy, CLIENT cap, ROLE cap)`. God view (`tac.god`) is a per-role flag, so unit agents cannot read through fog even though the data is `read` level. Actor identities are asserted by the bridge (it knows which MCP session is which agent) and by scripts (self-declared); the host trusts the loopback connection holder but still clamps by role and client caps, so a mis-declared role cannot exceed what the file allows for that client.
 
 ## 3. Bulk and two-key operations — [ADDED]
 
@@ -58,4 +60,4 @@ Every call (allowed or not), every lease change, every order transition and ever
 
 ## 8. Security checklist (release gate)
 
-Browser connection refused (Origin); DNS rebinding refused (Host); token-less and bad-token connections closed; role clamps enforced in a test where a `unit` actor requests god view and `cheat`; path traversal rejected; 10 k-case fuzz corpus without a host exception; token never readable through any capability or recording; two-key enforced for `remove_vessels all` in batch mode; kill switch releases all Skizzy control within one physics step while BDA guard stays up.
+Browser connection refused (Origin); DNS rebinding refused (Host); token-less and bad-token connections closed; role clamps enforced in a test where a `unit` actor requests god view and `cheat`; path traversal rejected; 10 k-case fuzz corpus without a host exception; token never readable through any capability or recording; two-key enforced for `remove_vessels all` in batch mode; kill switch releases all Skizzy control within one physics step while BDA guard stays up, and on the active vessel the BDA pilot is off so the human has the stick (**[R]**); the kill switch can be released only from the in-game UI or by a `human` actor.

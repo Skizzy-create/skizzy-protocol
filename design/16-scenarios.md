@@ -1,6 +1,24 @@
 # 16 End-to-end scenarios
 
-Nine walkthroughs. Each lists the actors, the message flow (abridged wire calls), the latency budget, and which design elements it exercises. Times: `wall` = real time, `UT` = game time. Loopback RTT host↔client is 1–3 ms; an MCP tool call through the bridge adds ~5 ms; a Haiku 5.5 turn is typically 1.5–4 s wall, an Opus 5.5 turn 5–20 s with `high` effort.
+**[R]** Ten walkthroughs (§0 added by the review: the first thing the user will do, available from M0/M1). Each lists the actors, the message flow (abridged wire calls), the latency budget, and which design elements it exercises. Times: `wall` = real time, `UT` = game time. Loopback RTT host↔client is 1–3 ms; an MCP tool call through the bridge adds ~5 ms; a Haiku 5.5 turn is typically 1.5–4 s wall, an Opus 5.5 turn 5–20 s with `high` effort.
+
+## 0. First contact (M0/M1): connect, read, fly, screenshot, log — [R]
+
+```
+user installs the zip, starts KSP → first-run wizard: token created, preset Battle Lab, port 47549 OK, "Copy MCP command" → pastes into Claude Code
+user (Claude Code): "what am I flying?"
+agent → ksp_read {vessel:"active"}            → compact: name, situation, speed, altitude, parts 214, crew 2, AI none, WM none  (≈ 10 lines)
+agent → ksp_camera_screenshot {mode:"chase", width:1024} → image (≤ 3 ms main thread)
+user: "log altitude, speed and throttle at 5 Hz to CSV and climb to 3000 m at 200 m/s, heading 090"
+agent → rec_log_start {name:"climb", select:{vessels:{active:true}}, fields:["altitude","srfSpeed","ctrlState.mainThrottle"], rateHz:5, format:"csv"}
+agent → flight_hold {vessel:"active", heading:90, altitude:3000, speed:200}   → lease steer (agent, 600); hold installed
+user grabs the stick → human.took_controls; hold suspended; lets go → resumes after 5 s idle
+agent → flight_release {vessel:"active"}; rec_log_stop → Skizzy/logs/2026-11-08/climb.csv
+user presses Ctrl+Alt+K at any point → everything Skizzy released, BDA pilot off on the active vessel, banner shown
+no Claude Code: the same steps with `skizzy call ksp.read vessel=active`, `skizzy shot --mode chase`, `skizzy log start climb …`, or the in-game console (`21-user-experience.md` §3–4)
+```
+
+Budget: each call ≤ 50 ms end to end except the screenshot (≤ 300 ms); host idle cost after the session < 0.1 ms/frame. Exercises: install, first-run wizard, auth, catalog, Tier-0 read, screenshot pipeline, log v0, holds, arbiter and human override, kill switch, CLI.
 
 ## 1. Design and build an Arleigh Burke-style destroyer, iterate via test battles
 
@@ -88,11 +106,11 @@ Budget: order → BDA command ≤ 50 ms (one main-thread job); formation re-slot
 ```
 sim.scenario.load cvn-strike (CVN with ACA catapults/wires, 6 strikers, 2 escorts; Red SAG 180 km away under BDA guard)
 commander (Opus) → c2.order.issue tactic strike_package {targets:[Red DDGs], strikers:g:strike-1, escorts:g:cap-a, ingress route via map or auto}
-planner: carrier_launch {carrier, aircraft list} → naval.carrier.launch per aircraft (ACA Catapult: taxi hold → hook → Launch → CommandTakeOff; 45 s cadence)
+planner: c2_order_issue {type:"launch", carrier, aircraft list} → naval.carrier.launch per aircraft (ACA Catapult: taxi hold → hook → Launch → CommandTakeOff; 45 s cadence)
          move_route ingress (patched waypoints F6 for aircraft), escort orders, strike {weapon allocation: 2 ASM per DDG via missile_budget}, egress, return_to carrier
 in flight: strike lead agent (Haiku) monitors tac_threats; Red SAM launches → missile.inbound → agent orders evasive leg (amend route) and continues
 strike: BDA guard fires assigned ASMs (bda.assign_targets + fire_authority tight → free at release point via trigger "in_range")
-recovery: carrier_recover: marshal racetrack 10 km astern (loiter), one aircraft at a time to the glideslope hold, Hook.HookDeploy, wire capture (Arrestwire.IsWire) → taxi clear; v1 fallback: BDA AI "land" is unreliable, so recovery can be hand-flown by the human with the agent calling the pattern
+recovery: c2_order_issue {type:"recover"} → naval.carrier.recover: marshal racetrack 10 km astern (loiter), one aircraft at a time to the glideslope hold, Hook.HookDeploy, wire capture (Arrestwire.IsWire) → taxi clear; v1 fallback: BDA AI "land" is unreliable, so recovery can be hand-flown by the human with the agent calling the pattern
 ```
 
 Budget: launch cycle 6 aircraft ≈ 5 min UT; the deck state machine runs at 5 Hz in-game. Exercises: ACA adapter (P2), routes, WTA for strike, triggers, carrier ops state machine. Honest status: P2; v1 ships launch + marshal; arrested recovery is the hardest part (`18-risks-and-decisions.md`).
@@ -103,7 +121,7 @@ Budget: launch cycle 6 aircraft ≈ 5 min UT; the deck state machine runs at 5 H
 Blue SSN-1 (SubTrim, passive + active sonar as ModuleRadar sonarMode, torpedoes SLW), BT sub_shoot_and_scoot attached; Red convoy of 4 under BDA surface AI at 12 kt
 TPE for Blue under fog: no radar → tracks come only from sonar; passive contacts are bearing-only (`pos:null`, bearing from SSN-1, class guess from acoustic signature → "SUR?")
 sub agent (Haiku, sensors+targeting+ai_params on SSN-1) wakes on track.new: tac_query frame braa → "T41 UNK SUR? B032 R? bearing-only q.3"
-  decision: hold passive, set_depth 60 m, move_to intercept bearing (c2.order.issue move_to computed from bearing drift via tac.intercept with range unknown → host returns a bearing-line intercept)
+  decision: hold passive, c2_order_issue set_depth 60 m (→ flight.depth via SubTrim manualDepth), move_to intercept bearing (c2.order.issue move_to computed from bearing drift via tac.intercept with range unknown → host returns a bearing-line intercept)
 two more bearing-only tracks; TPE associates when bearings converge → after 3 ticks `track.merged`; still no range
 agent: sonar active one ping (c2.order.issue sonar {mode:"active", pingS:5}) → ranged tracks (quality .8), Red gets `sonar_ping` event (their RWR-equivalent) → Red AI goes to evasion
 BT: track_in_range torpedo → fire_depth → fire_authority free → 2 SLW away → hide depth 150 m → turn → reattack timer
@@ -152,6 +170,8 @@ user → "give me a CSV" → skizzy rec export --format csv --channels flood →
 
 Budget: 10 Hz × 120 fields = 1200 values/s ≈ 15 KB/s; chunk writes every 5 s; query over a 20-minute file < 1 s. Exercises: profiles, selectors, compiled accessors, `.skzrec`, query, export.
 
+**[R] Before M2** the same request works with log v0: `rec_log_start {name:"flood-study", select:{…}, fields:[…], rateHz:10, format:"csv"}` writes `Skizzy/logs/<date>/flood-study.csv` directly, `rec_log_tail` shows the last rows, and the user opens the CSV without any export step (`12-logging-recording-replay.md` §1.1).
+
 ## 10. Cross-cutting latency table
 
 | Path | Budget | Mechanism |
@@ -163,4 +183,4 @@ Budget: 10 Hz × 120 fields = 1200 values/s ≈ 15 KB/s; chunk writes every 5 s;
 | Haiku unit decision | 1.5–4 s wall | event-driven turn, cached prefix |
 | Opus commander decision | 5–20 s wall | digest-driven, slow-mo on urgent triggers |
 | Kill switch → controls released | ≤ 20 ms (one physics step) | main-thread flag read by the mixer |
-| Screenshot | ≤ 30 ms main thread, ≤ 300 ms to the agent | end-of-frame capture, writer-thread base64 |
+| Screenshot | **[R]** ≤ 3 ms main thread (`AsyncGPUReadback`; ≤ 30 ms on the `ReadPixels` fallback), ≤ 300 ms to the agent | end-of-frame capture, async readback, writer-thread JPEG encode |

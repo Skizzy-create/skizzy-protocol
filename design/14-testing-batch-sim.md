@@ -1,5 +1,7 @@
 # 14 Testing strategy and batch simulation
 
+**[R] "Headless" means unattended.** KSP cannot run without a window and a GPU (it is a Unity player with a renderer; `-batchmode` does not run the flight scene usefully). Pass 1.0 said "headless" in places; what the design delivers is (a) a truly headless kinematic world for CI (`Skizzy.Sim`, §2) and (b) **unattended** batch runs in a real KSP window that nobody watches (§4). The headless map renderer (`11-tactical-map.md` §9) is headless; KSP is not.
+
 ## 1. Test pyramid
 
 | Level | What | Runs where | Tools |
@@ -14,9 +16,11 @@
 | Conformance | `spec/conformance`: wire-level checks of `03-protocol.md` against host + FakeKsp, and optionally against a live KSP | CI / manual | |
 | In-game self-checks | idle cost, dispatcher timing, PAW write path, hook availability, screenshot leak check, TPE tick cost at current vessel count, recorder cost | KSP start / on demand (`host.selfcheck`) | log lines + `skizzy doctor` |
 | In-game acceptance | per-milestone checklists (`17-milestones.md`), run by the user with Claude Code | KSP | |
-| Soak | 2 h and 8 h battles with recorder on; memory and handle counts sampled; GC alloc per tick asserted 0 after warm-up | KSP (user machine, unattended) | `host.selfcheck.soak`, `skizzy battle run --soak` |
+| Soak | **[R]** 30 min (gate from M2), 2 h (from M4), 4 h (release gate, M9), 8 h optional; recorder on; heap after forced collection, Unity object counts and handle counts sampled; heap-slope gate (`02-architecture.md` §8.1). Exact 0 B/tick asserts are CI-only (Unity's mscorlib has no per-thread allocation counter) | KSP (user machine, unattended) | `host.selfcheck.soak`, `skizzy battle run --soak` |
 | Fuzz | 10 k-case JSON/msgpack corpus against the host parser; schema fuzz for `cap.call` | CI | |
 | Perf gates | `host.selfcheck.perf` asserts `02-architecture.md` §8 budgets; batch runner flags frame-time regressions between runs | KSP | |
+| **[R]** Allocation asserts | every `skizzy:hot` method (engines and the network-thread serialisers) wrapped in `GC.GetAllocatedBytesForCurrentThread()` deltas on .NET 10, asserted 0 after warm-up | CI | xUnit + `Skizzy.Sim` |
+| **[R]** In-KSP synthetic load | `host.selfcheck.perf --synthetic N` injects N synthetic track sources (kinematic, from `Skizzy.Sim`'s models) into the real TPE, recorder, subscriptions and serialisers inside KSP, next to the real scene, for budgets that real KSP cannot reach with loaded vessels (1000 records) | KSP | in-game self-check |
 
 ## 2. FakeKsp (`Skizzy.Sim`) — [ADDED]
 
@@ -31,7 +35,7 @@ The point is not physics fidelity; it is that every engine, SDK, map feature and
 
 ## 3. In-game test range
 
-A dedicated save `saves/skizzy-range` (decision for the user) with a parked probe at an open-water site east of KSC (`lat -0.15, lon -74.20`), PRE range set to the scenario's need (default 100 km), and `AutoSpawn/skizzy/` populated from the library. The batch runner and `craft.trial` require this save to be loaded (they never load saves themselves unless `sim.scenario.load {save}` is granted; `destructive`).
+A dedicated save `saves/skizzy-range` (decided, `18-risks-and-decisions.md` §3.2 D-5) with a parked probe at an open-water site east of KSC (`lat -0.15, lon -74.20`), PRE range set to the scenario's need (default 100 km), and `AutoSpawn/skizzy/` populated from the library. The batch runner and `craft.trial` require this save to be loaded (they never load saves themselves unless `sim.scenario.load {save}` is granted; `destructive`). **[R]** Decided: the save is created by `skizzy doctor --fix --create-range` (or the first-run wizard) from a template shipped in `GameData/SkizzyProtocol/Defaults/skizzy-range/`; loading it from a running game is `ask`. The site is changeable in `settings.cfg`.
 
 ## 4. Batch simulation (`skizzy battle run`, P1)
 
@@ -43,12 +47,14 @@ Lifecycle (bridge-driven over the native socket; PLAN §9.2 extended):
 4. Restore settings; remove vessels.
 5. Summaries: per-cell metrics, assertions, `summary.md` and `summary.json`; non-zero exit on failure.
 
-Scale: 200 vessels × 50 runs ≈ 50 × (spawn ~2–4 min + battle ~10 min at `TIME_SCALE` 2–3 + teardown) ≈ 6–10 h unattended; the runner checkpoints after every cell and resumes after a KSP restart (the user restarts KSP; the runner never does: PLAN decision kept). Frame-time and memory are recorded per cell so a 1000-vessel stress cell is diagnosable.
+**Unattended profile [R]** (P2, `skizzy battle run --unattended`): arming it from the in-game window ("arm batch mode for 8 hours") pre-answers the run's known confirmations and co-signs its two-key operations for that run only, turns every other `ask` into `deny` (nothing can block on a prompt nobody sees), sets a wall-clock cap, writes a heartbeat file the runner watches to detect a hung or crashed KSP, and disarms itself when the run ends, the cap passes or the human touches the controls.
+
+Scale: 200 vessels × 50 runs ≈ 50 × (spawn ~2–4 min + battle ~10 min at `TIME_SCALE` 2–3 + teardown) ≈ 6–10 h unattended; the runner checkpoints after every cell and resumes after a KSP restart (the user restarts KSP; the runner never does: PLAN decision kept). Frame-time and memory are recorded per cell so a stress cell is diagnosable.
 
 ## 5. A/B and statistics
 
 - Matrix cells differ by scenario parameters (WM settings, doctrine, craft versions, BDA settings). Build A/B (different BDArmory DLLs) still needs a manual restart; the runner detects the DLL hash change and tags cells.
-- Report: mean ± 95 % bootstrap CI, win rates, distributions; invariant assertions checked on every sample (`max(missilesInFlightAt) ≤ maxMissilesOnTarget`, `exceptions == 0`, `GC alloc per tick == 0` after warm-up).
+- Report: mean ± 95 % bootstrap CI, win rates, distributions; invariant assertions checked on every sample (`max(missilesInFlightAt) ≤ maxMissilesOnTarget`, `exceptions == 0`, heap slope within the allocation gate).
 - Determinism: not available (Unity physics, BDA randomness); repeats default 5 for tuning runs, 20–50 for publication-grade comparisons. Lockstep reduces timing variance in order issue but not in physics.
 
 ## 6. Validation of the user's mods (scenario pack, P1)
@@ -62,10 +68,12 @@ Scale: 200 vessels × 50 runs ≈ 50 × (spawn ~2–4 min + battle ~10 min at `T
 | MNWS VLS | `vls-load`: loadout read-back and reload cycle | loaded names match blueprint; reload timing |
 | Iron Seas guns (SkizzyRig) | `gun-line`: 2 ships broadside at 8 km | hits registered by weapon name; turret arcs |
 | HullBreach | `flood-1`: ship with scripted damage | flood tonnes monotonic, founder time |
-| Performance | `stress-200`, `stress-1000` (god view, recorder on) | budgets from `02-architecture.md` §8; frame-time regression < 10 % between builds |
+| Performance | `stress-200` (200 loaded vessels, god view, recorder on) and `stress-1000s` (100 loaded + 900 synthetic records) | budgets from `02-architecture.md` §8; frame-time regression < 10 % between builds |
 
 ## 7. Acceptance (summary)
 
 1. CI runs unit + host core + FakeKsp engine + bridge + SDK + map + agent tests in < 10 minutes with no KSP.
 2. `skizzy battle run library/scenarios/mt-matrix.yaml` completes unattended and produces `summary.md` with CIs; assertions catch an injected regression (a cell with `maxMissilesOnTarget` violated by a test hook).
-3. A 2-hour soak shows no monotonic memory growth (slope < 1 MB/h after warm-up) and 0 B/tick alloc in TPE/recorder.
+3. A 2-hour soak shows no monotonic memory growth (slope < 1 MB/h after the first 30 minutes) and no Unity object count rising monotonically; CI shows 0 B/tick alloc in TPE/recorder/serialisers.
+4. **[R]** `host.selfcheck.perf --synthetic 1000` passes the 1000-record TPE budget inside KSP on the user's machine.
+5. **[R]** An unattended run that hits an unexpected `ask` denies it, logs it and continues; the run is never blocked on a prompt.

@@ -67,6 +67,11 @@ This is the combined list of every MCP and server idea so far (2026-11-08). It's
 - **Model per role:** a fast model (e.g. claude-haiku-5-5) for tactical units, a strong model for command. Events are pushed to agents, never polled.
 - **Time control for thinking:** automatic slow-motion or pause while agents decide.
 - **LLMs are one option, not the only one:** scripts, behaviour trees, the BDArmory AI and humans are all first-class actors.
+- **Mission command plus direct control (added 2026-11-08):** both, never one instead of the other.
+  - Command at mission level: assign units to patrol, strike or escort and let doctrine plus the BDArmory AI run them.
+  - At any moment, drop to direct micromanagement of any unit or group: steer, pick a target, fire this missile, hold fire, or fly it yourself.
+  - Hand it back to the mission afterwards.
+  - Each unit and group shows whether it is mission-controlled or manual, with one-click take-over and release (the human lease preempts).
 
 ## 8. Scripting and automation
 - **SDKs, Python first and C# second:** typed models, async event streams, and helpers for formations, BRAA queries and order lifecycles.
@@ -80,6 +85,28 @@ This is the combined list of every MCP and server idea so far (2026-11-08). It's
 - **Planning for the human and agents:** draw routes, areas and formations; assign targets; set rules of engagement. Agent orders appear live.
 - Fog-of-war or god view.
 - An external desktop or web app, an in-game overlay, or both, fed by the same data stream.
+- **Command-screen layout (added 2026-11-08):**
+  - The whole window is freely resizable.
+  - Panels are dockable, movable and detachable: track list, unit details, orders, timeline, log, layers.
+  - The layout is saved and restored per user.
+  - Smooth zoom (wheel/pinch) and pan, plus fit-to-selection and fit-all.
+- **Clarity at scale is the core problem.** Example: 40 jets and drones with 128 missiles flying over them at once must stay readable. (Corrected by the user 2026-11-08: individual tracks always.)
+  - **Every track is shown individually by default:** every missile and aircraft, where each one goes, its altitude, when a flight splits to evade, intercepts and collisions as they happen. Nothing is aggregated by default.
+  - Aggregated counts ("MSL ×128", "UAV ×20") are only an optional alternative view or toggle, for when the user wants numbers.
+  - **Dynamic, zoom-aware sizing that avoids overlap:** symbols shrink when zooming out and grow when zooming in, but never so far that they overlap; when zoomed in, things don't sit on top of each other unless they really are that close. Sizing comes from local density/spacing on screen, not just a fixed zoom factor.
+  - At high density or far zoom, degrade gracefully: full symbol → small symbol → small dot. Never hide or merge.
+  - **Visual hierarchy by radar cross-section** (that's how things are tracked): larger RCS gets a larger or more prominent symbol; small-RCS items (missiles, drones) are small but always visible. The user can override size per item, type or selection.
+  - Per-track readability: compact altitude/depth (label or colour/tick); short motion trails or velocity leaders so splits and manoeuvres are readable; optional missile → target lines; intercept, impact and kill events marked briefly on the map; label decluttering that never hides the symbol itself.
+  - Filters: show or hide by type, team or threat. Highlight on hover and selection.
+  - **Replay and slow-motion scrubbing** so dense engagements can be watched move by move.
+  - Performance target: thousands of symbols at 60 fps.
+- **Memos:** pin notes and labels to tracks or map points.
+- **Genre reference (added 2026-11-08):** the command screen should offer what a serious naval/air C2 wargame screen offers, in the spirit of *Command: Modern Operations* (features only; the UI stays our own): NTDS/2525 symbology options, posture colours, track uncertainty areas, sensor/weapon coverage and emission state, EMCON, doctrine/ROE with inheritance, missions as first-class objects, reference points and zones, a filtered message log, losses and expenditures, time compression and pause-on-event, magazine views, the unknown → classified → identified flow, and a side/scenario editor. This is *in addition to* Skizzy's own strengths, which stay up front:
+  - real KSP physics and the BDArmory AI;
+  - LLM and script actors;
+  - flying a unit yourself;
+  - craft building;
+  - full logging and replay.
 
 ## 10. Logging, recording, replay ("log whatever I want, get it, save it")
 - **Log anything:** pick any field, module, vessel, track, order, event or BDArmory stat by query, at any rate (on change or at N Hz).
@@ -114,6 +141,8 @@ This is the combined list of every MCP and server idea so far (2026-11-08). It's
 ## Constraints and preferences
 - C# on the KSP side and for the bridge. Python and others are fine for external clients.
 - Performance first: zero-alloc hot paths and frame budgets at 100–1000 vessels, because the user just fixed memory leaks.
+- **Optional layer, zero cost when unused (added 2026-11-08):** plain BDArmory guard mode works exactly as now with nothing connected (no LLM, no bridge, no map). Everything skizzy-protocol adds is an optional layer, and with nothing connected it costs nothing.
+- **Parallelism, kept realistic (added 2026-11-08):** use multiple cores and the GPU where it's cheap and safe. External processes (bridge, map renderer, recording export, batch analysis) can be multi-threaded freely. In-game, KSP and Unity APIs are main-thread only, so at most pure math on snapshot copies goes to worker threads, and only where measurement shows it helps. Low priority; must not complicate the first milestones.
 - Don't break the user's game. Stay compatible with the installed mod set (see `D:\Epic Games\KerbalSpaceProgram\English\GameData`).
 - Related repos:
   - BDArmory fork: `D:\KerbalSpaceProgram\BDArmory` (branch multitarget-1.13.1)

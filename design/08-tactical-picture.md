@@ -8,7 +8,7 @@ The Tactical Picture Engine (TPE) turns BDArmory's per-vessel sensor state into 
 |---|---|---|
 | Own team truth | all vessels with a WM on `view.team` (friendly) | `iff:friend`, full state, `quality:1`, identity known |
 | Radar/sonar/IRST detection (team-wide) | `TargetInfo.detected[team]` true | `sources += radar|sonar|irst` (kind from the detecting `ModuleRadar.sonarMode` / `ModuleIRST` when per-unit contacts are read; else `sensor`), position from the vessel (BDA detection is binary per team), `quality` from signal strength when available, `lastSeenUt = now` |
-| Visual / recent contact | `TargetInfo.detectedTime[team]` within 30 s | `sources += visual` if no sensor flag; stale beyond `staleAfterS` → `dr:true` |
+| Visual / recent contact | `TargetInfo.detectedTime[team]` within 30 s (**[R]** `detectedTime` is Unity `Time.time`, so the age is `Time.time - detectedTime` scaled by the current time scale history; it is converted to UT with the per-tick `(Time.time, ut)` pair) | `sources += visual` if no sensor flag; stale beyond `staleAfterS` → `dr:true` |
 | Per-unit radar contacts | `VesselRadarData.displayedTargets` (hook F5 or reflection) | `lockedBy`, `signalStrength → quality`, `detectedBy` unit; jamming (`jammedIndex`) lowers quality |
 | Per-unit IRST contacts | `displayedIRTargets` | `sources += irst`; if `!irstRanging` the track is **bearing-only** until another source ranges it |
 | RWR | `OnRadarPing` events, `pingsData` | emitter tracks: bearing-only from the receiving unit, `class` from `RWRThreatTypes` (SAM, fighter, AWACS, torpedo, …), persist `persistTime` |
@@ -16,6 +16,9 @@ The Tactical Picture Engine (TPE) turns BDArmory's per-vessel sensor state into 
 | Datalink | BDA linked VRDs already merge contacts into the receiving VRD; the TPE additionally shares all per-team detections (BDA's team-wide `detected` flag is effectively a perfect datalink) | `sources += datalink` when the detecting unit is not the viewer; the optional comms model (§9) can delay or drop it |
 | Missiles | `BDATargetManager.FiredMissiles`, `MissileBase` state | `domain:missile`, `class` from guidance (`ASM`, `AAM`, `SAM`, `torpedo`, `bomb`), `targetGuess` from `targetVessel`/`TargetPosition`, `inboundTo` |
 | God view | every vessel | all of the above with `quality:1`, plus truth fields (`truth:{team,name}`) |
+| **[R]** Packed vessels (loaded, on rails) | `vessel.GetWorldPos3D()`, orbit velocity | positions keep updating; `state:packed`; BDA does not detect packed vessels, so under fog they age like lost contacts |
+| **[R]** Unloaded vessels (outside load range) | `ProtoVessel` + `orbit` propagated at 1 Hz | **god view only** (`state:unloaded`, `quality:1`, no sensor sources); never visible under fog; cost bounded by the 1 Hz rate |
+| **[R]** Debris | `VesselType.Debris`, or no command part and no WM after a split | ignored by default (no track, no events); `includeDebris:true` shows them as `class:debris` in god view; parent/child links come from `vessel.split` events (`20-runtime-lifecycle.md` §7) |
 
 Fusion is by **vessel identity**: BDA already resolves which `Vessel` a contact belongs to, so there is no association problem for radar/visual tracks; one track per enemy vessel per team. Bearing-only RWR/passive sonar contacts are separate tracks until the TPE associates them with a positional track (bearing within `assocDeg` of an existing track from the same unit for ≥ 3 ticks) and merges (`track.merged` event). Decoys (`TargetSignatureData.isDecoy`) become tracks with `class:decoy` once identified.
 
@@ -25,6 +28,7 @@ Fusion is by **vessel identity**: BDA already resolves which `Vessel` a contact 
 - `hostile`: `BDTeam.IsEnemy` for a vessel whose team is *known*. Under fog, the team is known when the track is classified from visual/IFF-bearing sources: radar-only tracks are `unknown` until within `idRangeM` (doctrine, default 40 km for air, 20 km for surface) or until the track behaves hostile (launches a missile at a friend, `engagement.assignment` from BDA: `TargetInfo.Team` is engaged by the enemy WM). God view and `fogIff:false` (a simpler mode) make IFF truthful immediately.
 - `neutral`: team with `Neutral` flag.
 - `pending`: a friend's launched missile before BDA assigns a `Team`.
+- **[R] Identification state** (genre feature, `09-c2-multi-agent.md` §11.4): `idState` ∈ `detected | classified | identified`, advancing with sensor quality, range and time; `iff` stays `unknown` until `identified` (under fog).
 - Identity: friendly tracks carry `name`/`vessel`; hostile tracks carry `identity.name` only when `revealNames` is on (default on for god view, off under fog; the agent sees `T117 HOS SUR DDG?` with a class guess).
 
 ## 3. Classification
@@ -62,7 +66,19 @@ Geometry runs on the network thread from the snapshot (`snapshot` affinity) usin
 
 Other queries: `tac.sitrep {vessel|group|"self"}`, `tac.track.get {id, history?:{seconds, stepS}}`, `tac.threats {to: unit|group, limit}` (ranked with reasons), `tac.engagements {team}` (who engages whom, missiles per track, saturation), `tac.coverage {group}` (union of weapon/sensor envelopes vs threat axis), `tac.zones.list|create|update|delete`, `tac.bullseye.set|list`, `tac.intercept {shooter, track}` (DLZ + geometry: `inRange`, `timeToInRange`, bearing to steer), `tac.los {from, to}`.
 
-Filter atoms: `iff`, `domain`, `class`, `team`, `within {ref|pos, m}`, `zone`, `bearing {from, deg, widthDeg}`, `altM {min,max}`, `speedMps`, `minThreat`, `engagedBy`, `inboundTo`, `sources`, `minQuality`, `maxAgeS`, `ids`, `nameLike` (friendly only). Combinable with `all/any/not`.
+Filter atoms: `iff`, `domain`, `class`, `team`, **[R]** `role` (friendly units by their group role from the order of battle, e.g. `escort`, `picket`, `cap`; hostile tracks by inferred role `striker|cap|awacs|picket|unknown`), `state` (`live|packed|unloaded|dead`), `within {ref|pos, m}`, `zone`, `bearing {from, deg, widthDeg}`, `altM {min,max}`, `speedMps`, `minThreat`, `engagedBy`, `inboundTo`, `sources`, `minQuality`, `maxAgeS`, `ids`, `nameLike` (friendly only). Combinable with `all/any/not`.
+
+**Output caps and pagination [R].** `limit` defaults to 10 and is capped at 50 per call; results carry `total`, `truncated` and a `cursor` (valid for the snapshot `seq` it was issued on plus 30 s). Asking for more than 50 rows is an `INVALID_PARAMS` with a hint to filter or page. This is the mechanism behind "compact relative picture, never a token dump": the default answer to "what's out there" is a summary plus ten lines.
+
+**`tac.summary {ref?, units?}` [R]** returns the whole picture in ≤ 6 lines, for the first call of a turn:
+
+```
+#sum seq=88217 ut=1204.2 view=Blue fog ref=DDG-1 units=nm
+HOS 14 (AIR 4, MSL 8, SUR 2)  UNK 3  FRD 9 (2 dmg)  inbound to own: 6 (tcpa min 41s)
+TOP T117 MSL ASM B271 R17.2 HOT tcpa41 eng:DDG-1(2) | T121 MSL ASM B268 R19.0 HOT unassigned | T093 AIR FTR B015 R41.5 FLANK
+OWN ammo ESSM 22/32, SM2 8/16 | CIWS 1800 | flood 0 | leases: targeting a:ad-coord
+ORD o:412 defend_sector executing 6 eng / 2 killed
+```
 
 ## 7. Compact text
 
@@ -73,8 +89,18 @@ Grammar in `03-protocol.md` §6. SITREP compact form:
 ai surface/Water on Free "Engaging"   wm guard on auth TIGHT tgt T117 sec 4 away 6 eng 3 inbound 2
 wpn ESSM 22/32 r1.5-50km | SM-2 20/24 r5-120km | CIWS 1800rd r2.5km turret | chaff 12 | decoys 4
 sns SPY on locks 3/8 r120km | sonar off | rwr on
-flood 0t/820t inflow 0 leaks 0   leases targeting:a:ad-coord steer:bda   orders o:412(defend_sector executing)
+flood 0t/820t inflow 0 leaks 0   ctl M:m3 H:w   leases targeting:a:ad-coord steer:bda   orders o:412(defend_sector executing)
 ```
+
+**[R]** `ctl` is the unit's control state (`09-c2-multi-agent.md` §4.1.1):
+
+- `M:<mission>` means mission-controlled.
+- `H:<channels>` means a human holds those channels.
+- `P` means the human is flying the unit in KSP.
+- `A:<agent>` means an agent holds it.
+- The token is omitted when BDA alone is in control.
+
+Agents use it to avoid issuing orders to units the human is micromanaging.
 
 Orders and leases: `o:412 defend_sector g:sag-1 by a:ad-coord EXECUTING prio700 eng6 kill2 valid→∞`.
 
@@ -100,7 +126,9 @@ Default: perfect, instant team-wide sharing (matches BDA). Optional per-scenario
 
 - `TrackRecord` is a struct of ~120 bytes (ids, floats, bitmasks, interned name index); `TrackTable` per team is a struct array with a free list; a `Dictionary<uint vesselPid, int slot>` per team for identity (allocated once, grows rarely).
 - Tick: (1) walk `LoadedVessels` once, refresh positions/velocities of all friendly and god tracks; (2) per team, walk `TargetList(team)` and update detection flags; (3) walk `FiredMissiles`; (4) round-robin K units' VRDs for locks/quality; (5) threat scoring for tracks within the max weapon range of any friendly (bounded); (6) write deltas into buffer B; swap.
-- Measured target: ≤ 1.0 ms per tick at 1000 vessels / 4 teams on the user's machine, 0 B steady-state allocation. Rate degrades (5 → 2 Hz) before the budget is exceeded; `degraded:true` on subscriptions.
+- **[R] Time slicing.** The tick above is not run in one physics step. A full pass is divided into fixed slices spread over the physics steps of one period (at 5 Hz and 50 Hz physics, 10 steps): step 1 refreshes friendly/god positions for slice 1 of `LoadedVessels`, later steps continue the slices and the per-team detection walk, the last step scores threats, writes deltas and swaps. Consumers only ever see complete snapshots. Targets: amortised ≤ 0.25 ms per physics step and ≤ 1.0 ms in the worst step at 1000 tracked records / 4 teams, 0 B steady-state allocation (`02-architecture.md` §8). Rate degrades (5 → 2 Hz) before the budget is exceeded; `degraded:true` on subscriptions.
+- **[R] BDA access costs.** `TargetList(team)` returns BDA's live `List<TargetInfo>` for the team (it allocates only the first time a team is seen); `TargetInfo.detected`/`detectedTime` are `Dictionary<BDTeam, …>` whose key hash is the team-name string hash, so the TPE walks each team's list once and reads only that team's entry, never all teams for every vessel. Lists are read on the main thread only and never stored past the tick.
+- **[R] Loaded vs tracked.** Realistic battles have 50–200 *loaded* vessels; the 1000 figure counts tracked records including packed, unloaded and synthetic ones. The synthetic mode (`host.selfcheck.perf --synthetic 1000`, `14-testing-batch-sim.md` §3) drives the in-game TPE with injected sources to test the 1000-record budget inside KSP.
 - Snapshot consumers (queries, subs, recorder) never touch the game; per-subscriber delta state is a `seq` and a small per-track hash array.
 
 ## 11. Threat scoring
@@ -112,5 +140,7 @@ Default: perfect, instant team-wide sharing (matches BDA). Optional per-scenario
 1. Fog view: a hostile ship beyond radar range is absent; it appears as `UNK SUR` on radar detection with `quality` from signal strength, becomes `HOS` on launch, and is dead-reckoned with `DR` after loss, dropped after 90 s.
 2. BRAA from DDG-1 matches a hand computation within 1° / 50 m for a track at 30 km.
 3. 40 inbound missiles: `tac.threats` ranks them by `tcpa`, `missile.inbound` events fire within one TPE tick of BDA's `missileIsIncoming`, compact output for top-10 is under 600 characters.
-4. 1000-vessel god view: TPE tick ≤ 1.0 ms, 0 B/tick alloc after warm-up, subscription of a 50-track filter at 5 Hz costs ≤ 50 µs on the network thread.
+4. 1000-record god view (synthetic mode in KSP and `Skizzy.Sim` in CI): TPE amortised ≤ 0.25 ms per physics step, worst step ≤ 1.0 ms, 0 B/tick alloc after warm-up (CI assert), subscription of a 50-track filter at 5 Hz costs ≤ 50 µs on the network thread.
+6. **[R]** `tac.query` without `limit` returns 10 rows plus `total`/`cursor`; `limit: 200` is refused with a hint; `tac.summary` is ≤ 6 lines and ≤ 500 characters for a 40-missile raid.
+7. **[R]** God view lists an unloaded vessel 200 km away with `state:unloaded`; fog view does not; debris from a destroyed ship produces no tracks unless `includeDebris:true`.
 5. Sonar-only: a submarine with passive sonar sees bearing-only tracks; active ping produces ranged tracks and an `unit.rwr_ping`-like `sonar_ping` event on the target's side.

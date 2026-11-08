@@ -7,7 +7,7 @@
 | R1 | Unity threading violations from new engines | M/H | engines run only in FixedUpdate/Update; network threads see immutable snapshots; debug assertions; FakeKsp tests exercise the same code paths |
 | R2 | Frame-time and GC regressions as features pile up (the user's main fear) | H/H | per-engine budgets and counters from day one, `host.stats`, perf self-check gates in every milestone, `perf` channel in recordings, soak tests, CI grep for allocations on `skizzy:hot` paths |
 | R3 | BDArmory internals change under the shim (other agent committing on the fork; upstream BDA Plus moving) | H/M | fork-first hooks with reflection fallbacks resolved once at startup, per-capability fail-closed, `bda.hooks` truthfulness, build against the installed DLL, conformance tests on both modes |
-| R4 | `OnFlyByWire` ordering makes the mixer unreliable without F8 | M/M | re-registration on `pilotEnabled` edges and every second; F8 lands in M2 for the fork; documented |
+| R4 | `OnFlyByWire` ordering makes the mixer unreliable without F8 | M/M | re-registration on `pilotEnabled` edges and every second; F8 lands in M4 if merged; documented |
 | R5 | Fog-of-war picture diverges from what BDA's AI actually "sees" | M/M | TPE uses BDA's own `detected/detectedTime` as truth source; god view for debugging; tests on FakeKsp with known truth |
 | R6 | Track id churn when KSP reassigns `persistentId` or vessels split (debris, fighters detaching) | M/M | identity by `Vessel` reference + name fallback; `track.split` events; re-index on `onVesselCreate` |
 | R7 | LLM latency too high for tactical decisions | H/M | agents shape engagements, in-game executors and BDA fire regardless; event-driven turns; Haiku for units; slow-mo on urgent triggers; budgets stop runaway loops |
@@ -17,16 +17,22 @@
 | R11 | Editor reload path drops state or spawns floating subassemblies | H/M | reload spike first in M5; headless path independent of the editor; B9PartSwitch/TweakScale state carried in the document; round-trip diff tests |
 | R12 | Blueprint assembler needs curated hull slots for every hull family | H/M | ship slots for the pack's main hulls; `craft.probe_slots` fallback; agents can still place parts by coordinates with validation |
 | R13 | Carrier arrested recovery is beyond BDA AI's landing ability | H/M | P2, scoped as launch + marshal in v1; recovery BDA-assisted or human; measured success rate reported honestly |
-| R14 | Recording volume and disk I/O on long 1000-vessel battles | M/L | adaptive rates, columnar layouts, lz4 compaction, retention policy |
+| R14 | Recording volume and disk I/O on long battles (`battle.detailed` ≈ 1.2 GB/h) | M/L | adaptive rates, columnar layouts, lz4 compaction, manual prune and a 20 GB warning |
 | R15 | Multi-agent through one bridge: actor spoofing or confusion | M/M | role clamps in the permission file, bridge asserts identity per MCP session, audit per actor |
-| R16 | Scene changes and quick-loads during battles corrupt orders/leases | M/M | suspend/resume rules, handles invalidated, orders `suspended_scene`, `sim.scenario.snapshot` as the supported way to save a battle position |
+| R16 | Scene changes and quick-loads during battles corrupt orders/leases | M/M | suspend/resume rules, handles invalidated, orders `suspended` (reason `scene`), `sim.scenario.snapshot` as the supported way to save a battle position (`20-runtime-lifecycle.md` §5) |
 | R17 | KSP `Vessel.OnFlyByWire` for non-active vessels only runs when loaded/unpacked; PRE range changes mid-battle | M/M | holds report `inactive` when the vessel is packed; PRE range is a scenario parameter and checked in preflight |
 | R18 | Harmony-based stopgaps destabilise stock installs | L/M | Harmony mode off by default, only for the private-member hooks, removed when the upstream PR lands |
-| R19 | Avalonia/SkiaSharp performance on the user's GPU at 1000 tracks | L/M | cached pictures per symbol, culling, benchmark in M3; fallback to lower map rate |
+| R19 | Avalonia/SkiaSharp performance with thousands of individually drawn symbols, trails and labels | M/M | sprite atlas + `DrawAtlas`, density sizing and label placement on a worker, batched trails, spike at the start of M3; fallback to shorter trails and a lower label budget, never to merging tracks |
 | R20 | Determinism expectations for A/B | H/L | statistics with CIs, repeats, invariants on every sample; lockstep for structure only; documented |
 | R21 | MCP spec/SDK churn | M/M | all MCP code in the bridge; conformance tests; pinned SDK with a review date |
 | R22 | SubTrim/HullBreach API drift (user's own mods) | L/L | the user controls them; adapters resolve by name and fail closed |
 | R23 | `UnityEngine.Random` seeding changes BDA behaviour subtly | L/L | P3 patch behind a setting, off by default |
+| R24 **[R]** | Stock BDA drops or overwrites Skizzy target assignments (missile routine, team assist) | H/M | re-issue executor with back-off and `assignment_lost` (`07-bdarmory-integration.md` §1.4); F1 makes assignments sticky |
+| R25 **[R]** | CommNet/RemoteTech/Kerbalism make vessels uncontrollable, silently stopping BDA guard and player input | M/M | `not_controllable` in SITREP and events, doctor check, holds refused unless allowed (`20-runtime-lifecycle.md` §9) |
+| R26 **[R]** | A Unity API assumed thread-safe is not (`EncodeArrayToJPG`) | M/L | M0 spike; main-thread fallback within budget |
+| R27 **[R]** | Assembly conflicts (KSPBurst's `System.Runtime*`, netstandard) break the host at load | M/H | net48 build against KSP's `Managed` folder, no external serialisers in-game, CI reference check, doctor check |
+| R28 **[R]** | `Dock.Avalonia` does not fit Avalonia 11 or the layout needs | L/M | M3 spike; fallback of splitters and detachable windows |
+| R29 **[R]** | Duplicate vessel names corrupt BDA scores (scores are keyed by name) | H/M | automatic deconfliction at competition start (`20-runtime-lifecycle.md` §6) |
 
 ## 2. Rejected alternatives
 
@@ -49,37 +55,63 @@
 | Orders | free-text orders to units | unexecutable by in-game code; typed orders with schemas, free text only as notes |
 | Memory | vector database for agent memory | small, human-editable files suffice; revisit if memories grow |
 | Time | KSP save/load as battle snapshot | unreliable mid-combat (missiles, debris, 200 vessels); scenario snapshot/respawn instead |
+| Encoding (in-game) **[R]** | MessagePack-CSharp inside KSP | needs `System.Memory`/`Unsafe`, which KSPBurst already ships in other versions; an in-house subset codec is ~600 lines |
+| Map **[R]** | clustering/aggregating tracks by default | the user wants every missile visible; aggregation is an optional Counts view |
+| Parallelism **[R]** | Unity Jobs/Burst for the TPE | blittable world copies every tick and a hard KSPBurst dependency for a sub-millisecond gain |
+| Hooks **[R]** | depending on BDA source line numbers | lines move with every commit; members are resolved by name and checked by `bda.hooks` |
 | Bridge name | keep `skizzy-mcp.exe` as the only exe | it is now a CLI with runner/exporter/metrics/map; `skizzy.exe` with an alias |
 
-## 3. Decisions for the user
+## 3. Decisions
 
-Decisions the design could not make alone. Each has a default the design assumes.
+**[R] Consolidated by review pass 1.1.** Pass 1.0 listed 17 open questions. Most had a clear answer from `IDEAS.md`, the installed mod set or the code, so the review decided them (§3.2). Four need the user (§3.1). Each has a default the design assumes until the user answers.
 
-1. **Default permissions and areas.** Design assumes the **Battle Lab** preset: all areas on except deep reflection; read/control allow; cheat allow for spawn/settings/placement/scenarios; destructive **ask**; unsafe deny. Confirm, or pick `Test Director`/`Full Combat`.
-2. **Fork-first hooks.** The design lands patches F1–F12 in `BDArmory-Skizzy` (the user's fork) starting in M1, with shim fallbacks. Another agent is committing on that repo now: who coordinates the patch PRs and in which order? Default: separate small PRs per hook group (F1/F2/F5 first), reviewed by the user, after the current memory-leak work is merged.
-3. **Tactical map technology.** Avalonia + SkiaSharp desktop app in C#. The alternative that keeps a browser UI would need JS/TS (rejected) or a Python UI (slower, weaker rendering). Confirm Avalonia.
-4. **Bridge rename** to `skizzy.exe` with subcommands, keeping `skizzy-mcp.exe` as an alias. Cosmetic; confirm.
-5. **Competition as referee.** C2 battles always start a BDA competition (scoring only, no killer GM, no duration) so kills/scores exist. Acceptable? Alternative: our own kill/score tracker (duplicates BDA, P2).
-6. **Test range save.** Create `saves/skizzy-range` (open water at `lat -0.15, lon -74.20`, PRE 100 km, parked probe) and let `craft.trial`/batch runs require it. Confirm the site and whether the runner may `ksp.game.load` it (destructive) when it is not loaded.
-7. **LLM models and budgets.** `claude-haiku-5-5` for group/unit agents, `claude-opus-5-5` (effort `high`) for the commander, `claude-sonnet-5-5` or Opus for the analyst. Default dollar caps: commander $3 per battle, each unit agent $0.50, orchestrator total $8. Confirm models and caps.
-8. **Orchestrator stack.** Python with the `anthropic` SDK (Tool Runner over MCP tools via the bridge) rather than the Claude Agent SDK. Confirm, or ask for an Agent SDK variant.
-9. **Multiplayer/humans.** v1 is loopback only; a second human uses an SSH tunnel to the map port. LAN binding with TLS is P3. Acceptable?
-10. **Harmony stopgap.** Allow an optional Harmony mode (off by default) for stock BDA Plus installs lacking the fork hooks? Default: yes, optional, removed when the upstream PR lands.
-11. **Recording format and retention.** `.skzrec` (msgpack) + JSONL events, Parquet export on demand, 60-day retention of recordings by default. Confirm.
-12. **Screenshot `hideUi` default** stays `false` (PLAN open question 12). Confirm.
-13. **Hull slot authoring.** The blueprint assembler needs slot templates for the hull families you actually use (LBP destroyer/carrier, Maritime/MNWS hulls). The design ships templates for the pack's main hulls and a probe fallback; tell us which hulls matter most.
-14. **Lua/MoonSharp in-game scripting** is rejected for now (BTs + C# plug-ins + external Python). Confirm.
-15. **Realism defaults.** Fog-of-war IFF: radar-only tracks stay `unknown` until 40 km (air) / 20 km (surface) or a hostile act; comms model off by default. Confirm or set your own id ranges.
-16. **MCP SDK pin.** PLAN pinned ModelContextProtocol 2.3.0 with a 2026-11-17 review date; the design keeps "newest release at least two weeks old at build time". Confirm the policy.
-17. **Upstream PR timing.** Pitch the BDA Plus maintainers after M4 (hooks proven in battles) rather than before. Confirm.
+### 3.1 Decisions for the user
 
-## 4. Open technical spikes (first tasks of their milestones)
+| # | Question | Recommended default | Why |
+|---|---|---|---|
+| U1 | Who coordinates the BDArmory fork patches, and when do they go upstream? | Small separate PRs to `BDArmory-Skizzy` in the order F1/F2/F5 (M2), then F3/F4/F6 (M4), F8–F12 later; opened only after the current multi-target/leak work is merged; the user reviews each; pitch BDA Plus upstream after M6, when the hooks have been used in real battles | the fork is being changed by another agent right now, and every patch has a shim fallback, so nothing in Skizzy waits on them |
+| U2 | How much may LLM agents spend per battle? | Commander $3, each unit agent $0.50, whole orchestrator $8 per battle; batch runs never use LLMs unless the scenario explicitly opts in | caps stop runaway loops; the SAG scenario estimate is under $1, so the caps leave headroom |
+| U3 | Which hull families get blueprint slot templates first? | LBP destroyer hull, LBP carrier hull, and one MNWS/Maritime hull | these are the hulls in the user's naval pack; everything else uses `craft.probe_slots` |
+| U4 | Order of milestones after M2 | M3 tactical map, then M4 control depth and C2 basics, then M5 craft building | the user named the map and the compact picture among the most-missed items; craft building is the largest and least urgent block |
 
-- M0: msgpack writer zero-alloc verification on Mono; `SynchronizationContext` idle wake on this KSP build.
-- M1: VRD `displayedTargets` reflection cost at 200 radars; `TargetInfo.detected` semantics for allied teams; BRAA math test vectors shared with Python.
-- M2: `OnFlyByWire` ordering behaviour with BDA re-activation; SubTrim `IDepthCommandSource` registration timing; `CommandFlyTo` arrival behaviour for surface AI.
-- M3: Avalonia headless rendering in CI; Parquet.Net column mapping for nested track records.
-- M4: Streamable HTTP session identity in the MCP SDK; prompt-cache hit rates with digest injection.
-- M5: editor reload path (`LoadShip`+`SpawnConstruct` vs `LoadShipFromFile`); GM estimate accuracy vs observed roll period.
-- M6: 1000-vessel TPE tick cost; lz4 in-game cost vs bridge-side compaction.
-- M7: ACA catapult attach sequence; passive sonar bearing noise model from BDA's acoustic signature.
+### 3.2 Decided by the review (no action needed; say so to change any)
+
+| # | Topic | Decision | Why |
+|---|---|---|---|
+| D-1 | Default permissions | **Battle Lab** preset: all areas on except deep reflection; read/control allow; cheat allow for spawn, placement, scenarios and BDA settings, ask for `INFINITE_*` and gravity changes; destructive ask; unsafe deny | matches IDEAS ("editor, flight, screenshots allowed; destructive ask") |
+| D-2 | Map technology | Avalonia + SkiaSharp desktop app in C# | the user rejected TypeScript; one language; GPU rendering |
+| D-3 | Bridge name | `skizzy.exe` with subcommands; `skizzy-mcp.exe` kept as an alias | the exe now does far more than MCP |
+| D-4 | Competition as referee | C2 battles start a BDA competition for scoring only (no killer GM, no duration) | reuses BDA's kill/score logic instead of duplicating it |
+| D-5 | Test range | `saves/skizzy-range` created from a shipped template by the wizard or `skizzy doctor --fix --create-range`; open water at lat -0.15, lon -74.20; loading it from a running game is `ask` | a known site makes trials comparable; loading a save is destructive |
+| D-6 | Orchestrator stack | Python with the `anthropic` SDK (tool runner over the bridge's MCP tools) | Python is the scripting language of the project; no Agent SDK dependency needed |
+| D-7 | Network exposure | loopback only; a second human uses an SSH tunnel; LAN/TLS is P3 | smallest attack surface |
+| D-8 | Harmony stopgap | optional, off by default, only for stock BDA Plus installs without the fork; removed when hooks land upstream | the user's install has the fork |
+| D-9 | Recording format and retention | `.skzrec` + JSONL, CSV/JSONL direct sinks, Parquet on export; **no automatic deletion**, manual prune plus a 20 GB warning | auto-deleting data the user may want to compare is worse than a disk warning |
+| D-10 | Screenshot `hideUi` default | `false` | hiding the UI flickers for a frame; agents rarely need it |
+| D-11 | In-game Lua scripting | rejected (BTs, C# plug-ins, external Python cover it) | GC and sandboxing risk |
+| D-12 | Fog-of-war realism defaults | radar-only tracks stay `unknown` until 40 km (air) / 20 km (surface) or a hostile act; comms model off; all tunable in doctrine | sensible defaults, no user input needed |
+| D-13 | MCP SDK pinning | newest release at least two weeks old at build time, reviewed each milestone | avoids both stale pins and day-zero releases |
+| D-14 | SubTrim integration | v1 writes `manualDepth`/`targetDepth` through the PAW path; `IDepthCommandSource` is an optional v2 needing a SubTrim priority option | works today without touching SubTrim |
+| D-15 | Kill switch on the active vessel | also deactivates the BDA pilot there (guard unchanged); all other vessels keep BDA AI and guard | "always restores manual control" for the ship the human is in, without killing the fleet |
+| D-16 | Staging permission | resolver: staging is control unless the next stage fires a weapon or strands crew | a prompt on every rocket stage would make flight unusable |
+| D-17 | Renaming vessels | control, not destructive | reversible |
+| D-18 | Save files | Skizzy never writes `.sfs` in v1; battle positions are scenario snapshots | save corruption is the worst failure a mod can cause |
+| D-19 | CommNet / `IsControllable` | warn in `skizzy doctor` and the SITREP, never change the user's CommNet settings | it is a game setting, not ours |
+| D-20 | Map clarity | individual tracks always; aggregation only as an optional Counts view (user correction, 2026-11-08) | the user wants to see every missile |
+| D-21 | Map docking | `Dock.Avalonia` (MIT), with a splitter-and-window fallback if it fails the M3 spike | docking is a solved problem; do not hand-build it |
+| D-22 | In-game parallelism | at most one worker thread for pure math on snapshot copies, only where measured, not before M8; no Unity Jobs/Burst | Unity/KSP APIs are main-thread only; complexity must not reach M0–M3 |
+| D-23 | LLM models | `claude-haiku-5-5` for group/unit agents, `claude-opus-5-5` (effort `high`) for the commander and builder, `claude-sonnet-5-5` for the analyst | cost and latency per role |
+| D-24 | Take-over and hand-back defaults | Default channels are steer, weapons and targeting; take-over changes nothing physically until the human commands (`hold_last`, locks and fire authority kept); release resumes the mission, which re-plans from the unit's position; one-shot interventions return automatically; human take-overs survive a map disconnect for 120 s; no automatic release, only a reminder after 5 min | the user wants mission command and micromanagement together with seamless switching (2026-11-08); surprises at the moment of switching are the main way such a feature fails |
+
+## 4. Open technical spikes
+
+Spikes are now the first tasks of each milestone in `17-milestones.md`. The full list:
+
+- M0: `EncodeArrayToJPG` off the main thread; `AsyncGPUReadback` support on the user's graphics API; `UnitySynchronizationContext` idle wake; `NoStdLib` build against KSP's `Managed` folder.
+- M1: `OnFlyByWire` ordering with BDA's re-registration; placement with KJR installed.
+- M2: VRD `displayedTargets` reflection cost at 200 radars; `TargetInfo.detected` semantics for allied teams; BRAA test vectors; in-house msgpack zero-alloc on Mono.
+- M3: `Dock.Avalonia` on Avalonia 11; Skia `DrawAtlas` throughput; Avalonia headless rendering in CI.
+- M4: `CommandFlyTo` arrival behaviour for the surface AI; aircraft `FlyTo` orbit radius vs leg geometry.
+- M5: editor reload path and its time at 300 parts; GM estimate vs observed roll period.
+- M6: Streamable HTTP session identity in the MCP SDK; prompt-cache hit rates with digest injection; compaction over a 2-hour battle.
+- M8: ACA catapult attach sequence; passive sonar bearing noise model from BDA's acoustic signature; whether any in-game parallel offload saves ≥ 0.2 ms.
