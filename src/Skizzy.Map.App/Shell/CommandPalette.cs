@@ -223,7 +223,10 @@ public sealed class CommandPalette : Panel
         title.FontSize = 13;
         title.TextTrimming = TextTrimming.CharacterEllipsis;
         if (!it.Available) Ui.BindBrush(title, "TextFaintBrush");
-        var name = Ui.Text(it.IsLocal ? it.Description : it.Name, "data", "faint");
+        // second line: the method name, or its description when the title already is the name (M0 catalogs)
+        bool prose = it.IsLocal || (it.Title == it.Name && it.Description.Length > 0);
+        var name = Ui.Text(prose ? it.Description : it.Name, prose ? "note" : "data", "faint");
+        name.TextWrapping = TextWrapping.NoWrap;
         name.TextTrimming = TextTrimming.CharacterEllipsis;
         var left = Ui.V(1, title, name);
 

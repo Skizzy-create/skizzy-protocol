@@ -152,6 +152,8 @@ public sealed class MapView : UserControl
         root.Children.Add(_overlay);
         root.Children.Add(toolbar);
         root.Children.Add(_banner);
+        // the banner sits just under the floating toolbar, whatever height its rows wrap to
+        toolbar.SizeChanged += (_, e) => _banner.Margin = new Thickness(12, toolbar.Margin.Top + e.NewSize.Height + 8, 12, 0);
         root.Children.Add(_legendBox);
         root.Children.Add(tl);
         root.Children.Add(_toast);
