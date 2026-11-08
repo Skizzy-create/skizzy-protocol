@@ -126,7 +126,12 @@ These were recorded by the user on 2026-11-08 and must hold in the real system:
    - The mockup's "1 in 1,000 missiles" setting is a demo stand-in, not a game rule.
 6. **Posture switch:** a side-level Defensive/Proactive doctrine preset is useful at a glance (fighter hunt radius, ship engagement range, alert launches). It maps to doctrine presets in `09-c2-multi-agent.md` §11.
 7. **Comms tab works as designed:** team reports, diplomatic demands and an unverified broadcast (spoofing) read clearly. Keep that layout.
-8. **Performance:**
+8. **Dead time before contact.**
+   - In the mockup the first missile launch comes about 8 minutes of game time in, roughly 2 real minutes at 4×.
+   - The real map needs **"Skip to next event"**: run at the highest safe warp or time scale until a trigger fires (new hostile contact, a launch, a unit inside a zone, an order completing), then drop back to 1× and pause if pause-on-event is on.
+   - The scenario editor also needs a "start at contact" option.
+   - Ties into `sim.time.*` and the triggers in `03-protocol.md`.
+9. **Performance:**
    - The plot must not tie simulation time to frame rate.
    - In the real map, KSP time is authoritative and the map only interpolates, so this is satisfied by design.
    - Keep draw calls per trail at two strokes.
