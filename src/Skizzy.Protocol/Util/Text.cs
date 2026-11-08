@@ -87,17 +87,23 @@ namespace Skizzy.Protocol.Util
     {
         public const int MaxName = 48;
 
-        public static string SafeName(string s)
+        /// <summary>Untrusted text made safe for one compact line (15 §5): control characters become spaces, cut at max.</summary>
+        public static string SafeName(string s) { return SafeName(s, MaxName); }
+
+        public static string SafeName(string s, int max)
         {
             if (string.IsNullOrEmpty(s)) return "-";
-            var sb = new System.Text.StringBuilder(Math.Min(s.Length, MaxName));
-            for (int i = 0; i < s.Length && sb.Length < MaxName; i++)
+            bool clean = s.Length <= max;
+            for (int i = 0; clean && i < s.Length; i++) if (s[i] < 0x20 || s[i] == 0x7F) clean = false;
+            if (clean) return s;
+            var sb = new System.Text.StringBuilder(Math.Min(s.Length, max) + 3);
+            for (int i = 0; i < s.Length && sb.Length < max; i++)
             {
                 char c = s[i];
                 if (c < 0x20 || c == 0x7F) sb.Append(' ');
                 else sb.Append(c);
             }
-            if (s.Length > MaxName) sb.Append("...");
+            if (s.Length > max) sb.Append("...");
             return sb.ToString();
         }
 

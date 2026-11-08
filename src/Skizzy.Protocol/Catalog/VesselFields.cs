@@ -85,20 +85,28 @@ namespace Skizzy.Protocol.Catalog
             { "vesselName", "name" },
         };
 
-        private static Dictionary<string, VesselFieldInfo> _map;
+        private static readonly Dictionary<string, VesselFieldInfo> _map = BuildMap();
+
+        private static Dictionary<string, VesselFieldInfo> BuildMap()
+        {
+            var m = new Dictionary<string, VesselFieldInfo>();
+            foreach (var f in All) m[f.Name] = f;
+            return m;
+        }
 
         public static VesselFieldInfo Find(string name)
         {
             if (name == null) return null;
-            if (_map == null)
-            {
-                var m = new Dictionary<string, VesselFieldInfo>();
-                foreach (var f in All) m[f.Name] = f;
-                _map = m;
-            }
             if (name.StartsWith("vessel.", System.StringComparison.Ordinal)) name = name.Substring(7);
             if (Aliases.TryGetValue(name, out var canon)) name = canon;
             return _map.TryGetValue(name, out var fi) ? fi : null;
+        }
+
+        /// <summary>Index into <see cref="All"/> after prefix and alias resolution, or -1.</summary>
+        public static int IndexOf(string name)
+        {
+            var f = Find(name);
+            return f == null ? -1 : System.Array.IndexOf(All, f);
         }
 
         public static string Canonical(string name)

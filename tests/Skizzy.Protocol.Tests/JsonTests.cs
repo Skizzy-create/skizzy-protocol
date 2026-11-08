@@ -191,4 +191,58 @@ namespace Skizzy.Protocol.Tests
             Assert.Equal(49, o.GetInt("k49"));
         }
     }
+
+    public class ByteBufferPoolTests
+    {
+        [Fact]
+        public void Rented_buffers_never_need_growing_and_sizes_do_not_mix()
+        {
+            // Return a small and a large buffer; a large rent must not be handed the small one.
+            var small = new ByteBuffer(512);
+            var large = new ByteBuffer(16384);
+            ByteBufferPool.Return(small);
+            ByteBufferPool.Return(large);
+            var r = ByteBufferPool.Rent(9000);
+            Assert.True(r.Capacity >= 9000);
+            Assert.Equal(0, r.Length);
+            var r2 = ByteBufferPool.Rent(300);
+            Assert.True(r2.Capacity >= 300);
+            ByteBufferPool.Return(r);
+            ByteBufferPool.Return(r2);
+        }
+
+        [Fact]
+        public void Double_return_is_ignored_and_oversized_is_dropped()
+        {
+            var b = new ByteBuffer(1 << 13);
+            ByteBufferPool.Return(b);
+            ByteBufferPool.Return(b);
+            var x = ByteBufferPool.Rent(1 << 13);
+            var y = ByteBufferPool.Rent(1 << 13);
+            Assert.False(ReferenceEquals(x, y));
+            ByteBufferPool.Return(new ByteBuffer(ByteBufferPool.MaxRetainedBytes + 1));
+            Assert.True(ByteBufferPool.RetainedBytes <= 64 * 1024 * 1024);
+        }
+
+        [Fact]
+        public void Large_buffers_cannot_starve_small_buckets()
+        {
+            for (int i = 0; i < 12; i++) ByteBufferPool.Return(new ByteBuffer(4 * 1024 * 1024));
+            var small = new ByteBuffer(2048);
+            ByteBufferPool.Return(small);
+            var got = ByteBufferPool.Rent(2048);
+            Assert.True(got.Capacity >= 2048);
+            Assert.True(ReferenceEquals(got, small) || got.Capacity < 1 << 16, "small rent should come from a small bucket");
+        }
+
+        [Fact]
+        public void Shift_helpers()
+        {
+            Assert.Equal(8, ByteBufferPool.CeilShift(1));
+            Assert.Equal(10, ByteBufferPool.CeilShift(1024));
+            Assert.Equal(11, ByteBufferPool.CeilShift(1025));
+            Assert.Equal(10, ByteBufferPool.FloorShift(2047));
+            Assert.Equal(11, ByteBufferPool.FloorShift(2048));
+        }
+    }
 }
