@@ -18,6 +18,9 @@ namespace Skizzy.C2
         public readonly List<uint> HostileMissiles = new List<uint>();
 
         internal readonly HashSet<uint> InView = new HashSet<uint>();
+        /// <summary>The same units as <see cref="Hostiles"/> / <see cref="HostileMissiles"/>, as records (no id lookups in hot loops).</summary>
+        internal readonly List<UnitRec> HostileRecs = new List<UnitRec>();
+        internal readonly List<UnitRec> MissileRecs = new List<UnitRec>();
         internal readonly HashSet<uint> Identified = new HashSet<uint>();
         internal readonly Dictionary<uint, int> Holders = new Dictionary<uint, int>();
         internal readonly Dictionary<uint, uint> SoleHolder = new Dictionary<uint, uint>();
@@ -37,6 +40,8 @@ namespace Skizzy.C2
         internal bool Managed;
         /// <summary>Recomputed each tick: managed, or has units under orders, holds or non-default doctrine.</summary>
         internal bool Active;
+        /// <summary>Position in the engine's side list (hostility matrix index).</summary>
+        internal int Index;
 
         public SidePicture(string side) { Side = side; }
 

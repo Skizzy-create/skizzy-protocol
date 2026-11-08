@@ -16,6 +16,20 @@ namespace Skizzy.C2
         /// <summary>Escort aim point: the slot projected along the leader's track by this many seconds.</summary>
         public double EscortLeadS = 10;
 
+        /// <summary>
+        /// Acquisition scans (O(units x hostiles): self-defence threat search, the missile-engagement toggle) run every
+        /// <see cref="ScanEveryTicks"/> ticks per unit, staggered by unit id, to stay inside the C2 tick budget. End
+        /// conditions and order progress still run every tick.
+        /// </summary>
+        public int ScanEveryTicks = 5;
+
+        private bool ScanDue(UnitRec r)
+        {
+            int n = ScanEveryTicks;
+            if (n <= 1) return true;
+            return (_tickNo + (int)(r.Id % (uint)n)) % n == 0;
+        }
+
         private readonly object _advanceOwner = new object();
         private readonly List<GeoPoint> _ptScratch2 = new List<GeoPoint>();
 
@@ -134,6 +148,12 @@ namespace Skizzy.C2
         }
 
         private static bool Gone(UnitRec t) { return t == null || t.Dead || (t.Present && !t.S.Alive); }
+
+        private static UnitRec LiveIn(List<UnitRec> list, int i)
+        {
+            var t = list[i];
+            return t.Alive ? t : null;
+        }
 
         private void StepEngage(UnitRec r, SidePicture p, UnitOrder uo)
         {
@@ -283,18 +303,20 @@ namespace Skizzy.C2
             if (armed)
             {
                 double reach = d.HuntAirReachKm * 1000;
-                for (int i = 0; i < p.Hostiles.Count; i++)
+                for (int i = 0; i < p.HostileRecs.Count; i++)
                 {
-                    var t = AliveRec(p.Hostiles[i]);
+                    var t = LiveIn(p.HostileRecs, i);
                     if (t == null || !UnitClasses.IsAircraftTarget(t.S.Class) || !p.Identified.Contains(t.Id) || r.InBackoff(t.Id, _now)) continue;
                     double dd = Dist(r, t);
                     if (dd > reach) continue;
                     int c = p.ClaimCount(t.Id) - (r.Claim == t.Id ? 1 : 0);
                     if (c >= d.HuntMaxClaimsPerAircraft) continue;
                     int v = IsVipThreat(p, t, 1.0) ? 0 : 1;
-                    int o = Closing(r, t) ? 0 : 1;
                     int cc = c > 0 ? 1 : 0;
-                    if (air == null || v < bv || (v == bv && (cc < bc || (cc == bc && (o < bo || (o == bo && dd < bd))))))
+                    if (air != null && (v > bv || (v == bv && cc > bc))) continue;
+                    // the closing test (trigonometry) only when it can decide
+                    int o = Closing(r, t) ? 0 : 1;
+                    if (air == null || v < bv || cc < bc || o < bo || (o == bo && dd < bd))
                     {
                         air = t; bv = v; bc = cc; bo = o; bd = dd;
                     }
@@ -304,9 +326,9 @@ namespace Skizzy.C2
             int mv = 0;
             double md = 0;
             double mreach = d.HuntMissileReachKm * 1000 * (r.S.MissilesReady > 0 ? 1 : 0.5);
-            for (int i = 0; i < p.HostileMissiles.Count; i++)
+            for (int i = 0; i < p.MissileRecs.Count; i++)
             {
-                var m = AliveRec(p.HostileMissiles[i]);
+                var m = LiveIn(p.MissileRecs, i);
                 if (m == null || r.InBackoff(m.Id, _now)) continue;
                 bool mine = r.Claim == m.Id;
                 if (!mine && (p.ClaimCount(m.Id) > 0 || _world.FriendliesEngaging(p.Side, m.Id, r.Id) > 0)) continue;
@@ -706,11 +728,11 @@ namespace Skizzy.C2
             bool missiles = r.Doc.AirEngageMissiles != AirEngageMissiles.Never;
             for (int pass = 0; pass < 2; pass++)
             {
-                var list = pass == 0 ? p.Hostiles : p.HostileMissiles;
+                var list = pass == 0 ? p.HostileRecs : p.MissileRecs;
                 if (pass == 1 && !missiles) break;
                 for (int i = 0; i < list.Count; i++)
                 {
-                    var t = AliveRec(list[i]);
+                    var t = LiveIn(list, i);
                     if (t == null || r.InBackoff(t.Id, _now)) continue;
                     if (!t.S.IsMissile && !UnitClasses.IsAircraftTarget(t.S.Class)) continue;
                     double dv = Dist(vip, t);
@@ -862,11 +884,12 @@ namespace Skizzy.C2
                 Emit(C2EventKind.BackOnTask, "orders", r.S.Side, OrderIdOf(r), r.Id, "self_defence_end",
                     r.Name + ": " + why + "; back on " + TaskPhrase(r) + ".");
             }
+            if (!ScanDue(r)) return; // acquisition is time-sliced; the end checks above run every tick
             UnitRec best = null;
             double bd = range;
-            for (int i = 0; i < p.Hostiles.Count; i++)
+            for (int i = 0; i < p.HostileRecs.Count; i++)
             {
-                var t = AliveRec(p.Hostiles[i]);
+                var t = LiveIn(p.HostileRecs, i);
                 if (t == null || !UnitClasses.IsAirCombat(t.S.Class) || t.Id == _orderTarget || t.Id == r.Divert || r.InBackoff(t.Id, _now)) continue;
                 double dd = Dist(r, t);
                 if (dd <= bd) { best = t; bd = dd; }
@@ -955,11 +978,11 @@ namespace Skizzy.C2
             double bd = double.MaxValue;
             for (int pass = 0; pass < 2; pass++)
             {
-                var list = pass == 0 ? p.Hostiles : p.HostileMissiles;
+                var list = pass == 0 ? p.HostileRecs : p.MissileRecs;
                 if (pass == 1 && !missiles) break;
                 for (int i = 0; i < list.Count; i++)
                 {
-                    var t = AliveRec(list[i]);
+                    var t = LiveIn(list, i);
                     if (t == null || r.InBackoff(t.Id, _now) || !IsVipThreat(p, t, 1.0)) continue;
                     double dd = Dist(r, t);
                     if (dd > reach) continue;
@@ -996,9 +1019,9 @@ namespace Skizzy.C2
                 r.NextAdvancePick = _now + d.AdvanceRepickS;
                 UnitRec best = null;
                 double bd = double.MaxValue;
-                for (int i = 0; i < p.Hostiles.Count; i++)
+                for (int i = 0; i < p.HostileRecs.Count; i++)
                 {
-                    var t = AliveRec(p.Hostiles[i]);
+                    var t = LiveIn(p.HostileRecs, i);
                     if (t == null || (!proactive && !p.Identified.Contains(t.Id))) continue;
                     double dd = Dist(r, t);
                     if (dd < bd) { best = t; bd = dd; }
@@ -1035,11 +1058,11 @@ namespace Skizzy.C2
             _ids2.Clear();
             for (int pass = 0; pass < 2; pass++)
             {
-                var list = pass == 0 ? p.HostileMissiles : p.Hostiles;
+                var list = pass == 0 ? p.MissileRecs : p.HostileRecs;
                 int start = _ids2.Count;
                 for (int i = 0; i < list.Count; i++)
                 {
-                    var t = AliveRec(list[i]);
+                    var t = LiveIn(list, i);
                     if (t != null && IsVipThreat(p, t, 1.0)) _ids2.Add(t.Id);
                 }
                 SortByDistance(r, _ids2, start);
@@ -1078,17 +1101,22 @@ namespace Skizzy.C2
             {
                 case AirEngageMissiles.Always: on = true; break;
                 case AirEngageMissiles.Never: on = false; break;
-                default: on = !HostileAirWithin(r, p, d.AirEngageMissilesViewKm * 1000); break;
+                default:
+                    if (!r.MissilesKnown || ScanDue(r)) on = !HostileAirWithin(r, p, d.AirEngageMissilesViewKm * 1000);
+                    else on = r.MissilesOn;
+                    break;
             }
             r.Want.SetEngageMissiles = true;
             r.Want.EngageMissiles = on;
+            r.MissilesOn = on;
+            r.MissilesKnown = true;
         }
 
         private bool HostileAirWithin(UnitRec r, SidePicture p, double rangeM)
         {
-            for (int i = 0; i < p.Hostiles.Count; i++)
+            for (int i = 0; i < p.HostileRecs.Count; i++)
             {
-                var t = AliveRec(p.Hostiles[i]);
+                var t = LiveIn(p.HostileRecs, i);
                 if (t != null && UnitClasses.IsAircraftTarget(t.S.Class) && Dist(r, t) <= rangeM) return true;
             }
             return false;
@@ -1138,9 +1166,9 @@ namespace Skizzy.C2
                 var v = AliveRec(r.Move.Anchor);
                 if (v != null)
                 {
-                    for (int i = 0; i < p.Hostiles.Count; i++)
+                    for (int i = 0; i < p.HostileRecs.Count; i++)
                     {
-                        var t = AliveRec(p.Hostiles[i]);
+                        var t = LiveIn(p.HostileRecs, i);
                         if (t != null && Dist(v, t) <= r.Move.StationDistM) allow.Add(t.Id);
                     }
                 }
@@ -1149,9 +1177,9 @@ namespace Skizzy.C2
             // close threats: hostile fighters and drones inside selfDefenceFighterKm (any hostile aircraft for surface units)
             double close = r.Doc.SelfDefenceFighterKm * 1000;
             bool selfAir = UnitClasses.IsAircraft(r.S.Class);
-            for (int i = 0; i < p.Hostiles.Count; i++)
+            for (int i = 0; i < p.HostileRecs.Count; i++)
             {
-                var t = AliveRec(p.Hostiles[i]);
+                var t = LiveIn(p.HostileRecs, i);
                 if (t == null || Dist(r, t) > close) continue;
                 if (selfAir ? UnitClasses.IsAirCombat(t.S.Class) : UnitClasses.IsAircraftTarget(t.S.Class)) allow.Add(t.Id);
             }

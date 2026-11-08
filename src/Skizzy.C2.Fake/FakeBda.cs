@@ -166,6 +166,7 @@ namespace Skizzy.C2.Fake
             s.Pos = At(eastKm, northKm, altM);
             if (UnitClasses.IsShip(cls) || cls == UnitClass.Submarine) { s.Home = s.Pos; s.HasHome = true; }
             List.Add(u);
+            _senseDirty = true;
             Units[s.Id] = u;
             return u;
         }
@@ -191,6 +192,7 @@ namespace Skizzy.C2.Fake
             var u = Get(id);
             if (u == null || !u.S.Alive) return;
             u.S.Alive = false;
+            _senseDirty = true;
             Sink?.OnUnitDestroyed(id);
         }
 
@@ -216,6 +218,7 @@ namespace Skizzy.C2.Fake
         public void Step(double dt)
         {
             Now += dt;
+            _senseDirty = true;
             for (int i = 0; i < List.Count; i++)
             {
                 var u = List[i];
@@ -231,6 +234,8 @@ namespace Skizzy.C2.Fake
                 Move(u, dt);
                 FireAt(u);
             }
+            _senseDirty = true; // positions moved during the step
+            Sense();
         }
 
         private void MoveScripted(FakeUnit u, double dt)
@@ -452,37 +457,66 @@ namespace Skizzy.C2.Fake
             for (int i = 0; i < List.Count; i++) into.Add(List[i].S);
         }
 
-        public void GetOwnContacts(uint unit, List<uint> into)
+        // Sensor queries are cached per step (positions only change in Step); tests that move units or change
+        // radar/RCS between steps are covered because every Step and every Add/Kill marks the cache dirty.
+        private bool _senseDirty = true;
+        private readonly Dictionary<uint, List<uint>> _contacts = new Dictionary<uint, List<uint>>();
+        private readonly Dictionary<string, HashSet<uint>> _sideView = new Dictionary<string, HashSet<uint>>();
+
+        /// <summary>Forces sensor recomputation (after a test changes positions, radar ranges or RCS mid-step).</summary>
+        public void Invalidate() { _senseDirty = true; }
+
+        private void Sense()
         {
-            var u = Get(unit);
-            if (u == null || !u.S.Alive || u.RadarRangeM <= 0) return;
+            if (!_senseDirty) return;
+            _senseDirty = false;
+            foreach (var l in _contacts.Values) l.Clear();
+            foreach (var s in _sideView.Values) s.Clear();
             for (int i = 0; i < List.Count; i++)
             {
-                var t = List[i];
-                if (t == u || !t.S.Alive) continue;
-                if (Geo.Distance(u.S.Pos, t.S.Pos) <= u.RadarRangeM * t.Rcs) into.Add(t.Id);
+                var u = List[i];
+                List<uint> mine;
+                if (!_contacts.TryGetValue(u.Id, out mine)) _contacts[u.Id] = mine = new List<uint>();
+                if (!u.S.Alive || u.RadarRangeM <= 0 || u.S.Side == null) continue;
+                HashSet<uint> view;
+                if (!_sideView.TryGetValue(u.S.Side, out view)) _sideView[u.S.Side] = view = new HashSet<uint>();
+                for (int k = 0; k < List.Count; k++)
+                {
+                    var t = List[k];
+                    if (t == u || !t.S.Alive) continue;
+                    if (Geo.Distance(u.S.Pos, t.S.Pos) <= u.RadarRangeM * t.Rcs)
+                    {
+                        mine.Add(t.Id);
+                        view.Add(t.Id);
+                    }
+                }
             }
         }
 
+        public void GetOwnContacts(uint unit, List<uint> into)
+        {
+            Sense();
+            var u = Get(unit);
+            List<uint> mine;
+            if (u == null || !u.S.Alive || !_contacts.TryGetValue(unit, out mine)) return;
+            into.AddRange(mine);
+        }
 
         public bool SideDetects(string side, uint target)
         {
             HashSet<uint> link;
-            if (DataLink.TryGetValue(side, out link) && link.Contains(target)) return true;
+            if (side != null && DataLink.TryGetValue(side, out link) && link.Contains(target)) return true;
             var t = Get(target);
-            if (t == null || !t.S.Alive) return false;
-            for (int i = 0; i < List.Count; i++)
-            {
-                var u = List[i];
-                if (!u.S.Alive || u.S.Side != side || u.RadarRangeM <= 0) continue;
-                if (Geo.Distance(u.S.Pos, t.S.Pos) <= u.RadarRangeM * t.Rcs) return true;
-            }
-            return false;
+            if (t == null || !t.S.Alive || side == null) return false;
+            Sense();
+            HashSet<uint> view;
+            return _sideView.TryGetValue(side, out view) && view.Contains(target);
         }
 
         public bool AreHostile(string a, string b)
         {
             if (a == null || b == null || a == b) return false;
+            if (Allies.Count == 0) return true;
             return !Allies.Contains(a + "|" + b) && !Allies.Contains(b + "|" + a);
         }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 
 namespace Skizzy.C2
@@ -78,6 +79,7 @@ namespace Skizzy.C2
         private int _routeSerial;
         private double _now;
         private bool _ticked;
+        private int _tickNo;
 
         /// <summary>Seconds a target may be out of view before an engage order on it fails with target_lost.</summary>
         public double TargetLostS = 30;
@@ -352,11 +354,17 @@ namespace Skizzy.C2
                 _geo = new Geo(_world.BodyRadius);
                 _ticked = true;
             }
+            _tickNo++;
+            if (_hostileN > 0) Array.Clear(_hostile, 0, _hostile.Length);
+            long t0 = Profile ? Stopwatch.GetTimestamp() : 0;
             RefreshUnits();
             ProcessHookEvents();
             RefreshDoctrine();
+            long t1 = Profile ? Stopwatch.GetTimestamp() : 0;
             BuildPictures();
             RebuildClaims();
+            long t2 = Profile ? Stopwatch.GetTimestamp() : 0;
+            long step = 0, apply = 0;
             for (int i = 0; i < _unitList.Count; i++)
             {
                 var r = _unitList[i];
@@ -370,11 +378,27 @@ namespace Skizzy.C2
                                r.Doc.WeaponsControl != WeaponsControl.Free;
                 if (!managed && r.Have.IsStock && r.Have.Route == RouteKind.None) { r.Managed = false; continue; }
                 r.Managed = managed;
+                long a = Profile ? Stopwatch.GetTimestamp() : 0;
                 StepUnit(r);
+                long b = Profile ? Stopwatch.GetTimestamp() : 0;
                 Apply(r);
+                if (Profile) { step += b - a; apply += Stopwatch.GetTimestamp() - b; }
             }
             FinishOrders();
+            if (Profile)
+            {
+                double f = 1000.0 / Stopwatch.Frequency;
+                PhaseMs[0] += (t1 - t0) * f;
+                PhaseMs[1] += (t2 - t1) * f;
+                PhaseMs[2] += step * f;
+                PhaseMs[3] += apply * f;
+                PhaseMs[4] += (Stopwatch.GetTimestamp() - t0) * f;
+            }
         }
+
+        /// <summary>Accumulate per-phase tick time in <see cref="PhaseMs"/>: refresh, picture, step, apply, total (host.stats).</summary>
+        public bool Profile;
+        public readonly double[] PhaseMs = new double[5];
 
         private void RefreshUnits()
         {
@@ -388,6 +412,8 @@ namespace Skizzy.C2
                 var r = RecOrCreate(s.Id);
                 string oldSide = r.S.Side;
                 r.S.CopyFrom(s);
+                r.P = s.Side != null ? Side(s.Side) : null;
+                SetVector(r);
                 r.Present = true;
                 if (s.Alive) r.LastSeenUt = _now;
                 else if (!r.Dead) MarkDead(r);
@@ -572,6 +598,8 @@ namespace Skizzy.C2
                 var p = _sideList[s];
                 p.Hostiles.Clear();
                 p.HostileMissiles.Clear();
+                p.HostileRecs.Clear();
+                p.MissileRecs.Clear();
                 p.InView.Clear();
                 p.Holders.Clear();
                 p.SoleHolder.Clear();
@@ -581,48 +609,70 @@ namespace Skizzy.C2
             for (int i = 0; i < _unitList.Count; i++)
             {
                 var r = _unitList[i];
-                if (r.Alive && r.S.Side != null && (r.Managed || r.Move != null || r.Engage != null || r.Hold != null)) Side(r.S.Side).Active = true;
+                if (r.Alive && r.P != null && (r.Managed || r.Move != null || r.Engage != null || r.Hold != null)) r.P.Active = true;
             }
-            // own-sensor contacts per unit (F5), identification (row 24), holders (row 7)
+            int sides = _sideList.Count;
+            // own-sensor contacts per unit (F5), identification (row 24), holders (row 7): counted on the target record
             for (int i = 0; i < _unitList.Count; i++)
             {
                 var r = _unitList[i];
                 r.Contacts.Clear();
-                if (!r.Alive || r.S.IsMissile || r.S.Side == null) continue;
-                var p = Side(r.S.Side);
+                if (!r.Alive || r.S.IsMissile || r.P == null) continue;
+                var p = r.P;
                 if (!p.Active) continue;
                 _world.GetOwnContacts(r.Id, r.Contacts);
+                int si = p.Index;
                 double classRange = r.Doc.ClassificationRangeM(r.S.Class);
                 bool surveillance = UnitClasses.IsSurveillance(r.S.Class);
                 for (int c = 0; c < r.Contacts.Count; c++)
                 {
                     var t = Rec(r.Contacts[c]);
-                    if (t == null || !t.Alive || t.S.Side == null || !_world.AreHostile(r.S.Side, t.S.Side)) continue;
-                    int n;
-                    p.Holders.TryGetValue(t.Id, out n);
-                    p.Holders[t.Id] = n + 1;
-                    if (n == 0) p.SoleHolder[t.Id] = r.Id;
-                    if (surveillance) p.SurveillanceHeld.Add(t.Id);
-                    if (!t.S.IsMissile && classRange > 0 && Dist(r, t) <= classRange && !p.Identified.Contains(t.Id))
+                    if (t == null || !t.Alive || t.P == null || !HostileSides(p, t.P)) continue;
+                    if (t.HeldTick == null || t.HeldTick.Length < sides)
+                    {
+                        t.HeldTick = new int[sides];
+                        t.HeldN = new int[sides];
+                        t.HeldBy = new uint[sides];
+                        t.HeldSurv = new bool[sides];
+                    }
+                    if (t.HeldTick[si] != _tickNo)
+                    {
+                        t.HeldTick[si] = _tickNo;
+                        t.HeldN[si] = 0;
+                        t.HeldBy[si] = r.Id;
+                        t.HeldSurv[si] = false;
+                    }
+                    t.HeldN[si]++;
+                    if (surveillance) t.HeldSurv[si] = true;
+                    if (!t.S.IsMissile && classRange > 0 && !p.Identified.Contains(t.Id) && Dist(r, t) <= classRange)
                     {
                         p.Identified.Add(t.Id);
                         OnIdentified(p, r, t);
                     }
                 }
             }
-            // in view: the side's BDA database or an own sensor
+            // in view: an own sensor or the side's BDA database
             for (int s = 0; s < _sideList.Count; s++)
             {
                 var p = _sideList[s];
                 if (!p.Active) continue;
+                int si = p.Index;
                 for (int i = 0; i < _unitList.Count; i++)
                 {
                     var t = _unitList[i];
-                    if (!t.Alive || t.S.Side == null || !_world.AreHostile(p.Side, t.S.Side)) continue;
-                    if (!p.Holders.ContainsKey(t.Id) && !_world.SideDetects(p.Side, t.Id)) continue;
+                    if (!t.Alive || t.P == null || !HostileSides(p, t.P)) continue;
+                    bool held = t.HeldTick != null && t.HeldTick.Length > si && t.HeldTick[si] == _tickNo;
+                    if (held)
+                    {
+                        p.Holders[t.Id] = t.HeldN[si];
+                        if (t.HeldN[si] == 1) p.SoleHolder[t.Id] = t.HeldBy[si];
+                        if (t.HeldSurv[si]) p.SurveillanceHeld.Add(t.Id);
+                    }
+                    else if (!_world.SideDetects(p.Side, t.Id)) continue;
                     p.InView.Add(t.Id);
                     p.LastInView[t.Id] = _now;
-                    if (t.S.IsMissile) p.HostileMissiles.Add(t.Id); else p.Hostiles.Add(t.Id);
+                    if (t.S.IsMissile) { p.HostileMissiles.Add(t.Id); p.MissileRecs.Add(t); }
+                    else { p.Hostiles.Add(t.Id); p.HostileRecs.Add(t); }
                 }
                 // own-sensor-only contacts (row 7): log once per track
                 foreach (var kv in p.SoleHolder)
@@ -803,7 +853,7 @@ namespace Skizzy.C2
             SidePicture p;
             if (!_sides.TryGetValue(side, out p))
             {
-                p = new SidePicture(side);
+                p = new SidePicture(side) { Index = _sideList.Count };
                 _sides[side] = p;
                 _sideList.Add(p);
             }
@@ -833,7 +883,52 @@ namespace Skizzy.C2
             return r != null && r.Alive ? r : null;
         }
 
-        private double Dist(UnitRec a, UnitRec b) { return _geo.Distance(a.S.Pos, b.S.Pos); }
+        private const double Deg = Math.PI / 180.0;
+
+        private void SetVector(UnitRec r)
+        {
+            double lat = r.S.Pos.Lat * Deg, lon = r.S.Pos.Lon * Deg;
+            double c = Math.Cos(lat);
+            double R = _geo.Radius;
+            r.X = R * c * Math.Cos(lon);
+            r.Y = R * c * Math.Sin(lon);
+            r.Z = R * Math.Sin(lat);
+        }
+
+        /// <summary>
+        /// Surface distance between two units from their cached sphere vectors: the chord, converted to the arc with
+        /// the asin series (relative error below 0.1% out to one body radius). No trigonometry per pair.
+        /// </summary>
+        private double Dist(UnitRec a, UnitRec b)
+        {
+            double dx = a.X - b.X, dy = a.Y - b.Y, dz = a.Z - b.Z;
+            double c2 = dx * dx + dy * dy + dz * dz;
+            double c = Math.Sqrt(c2);
+            double q = c2 / (_geo.Radius * _geo.Radius);
+            return c * (1 + q / 24 + 3 * q * q / 640);
+        }
+
+        private sbyte[] _hostile = new sbyte[0];
+        private int _hostileN;
+
+        /// <summary>BDA team hostility, asked once per side pair per tick.</summary>
+        private bool HostileSides(SidePicture a, SidePicture b)
+        {
+            int n = _sideList.Count;
+            if (_hostileN != n)
+            {
+                _hostile = new sbyte[n * n];
+                _hostileN = n;
+            }
+            int k = a.Index * n + b.Index;
+            sbyte v = _hostile[k];
+            if (v == 0)
+            {
+                v = _world.AreHostile(a.Side, b.Side) ? (sbyte)1 : (sbyte)2;
+                _hostile[k] = v;
+            }
+            return v == 1;
+        }
 
         private string Km(UnitRec a, UnitRec b) { return (Dist(a, b) / 1000.0).ToString("0", CultureInfo.InvariantCulture); }
 
@@ -841,7 +936,7 @@ namespace Skizzy.C2
 
         private bool Hostile(UnitRec r, UnitRec t)
         {
-            return r.S.Side != null && t.S.Side != null && _world.AreHostile(r.S.Side, t.S.Side);
+            return r.P != null && t.P != null && HostileSides(r.P, t.P);
         }
 
         private C2Event Emit(C2EventKind kind, string category, string side, int order, uint unit, string code, string text)

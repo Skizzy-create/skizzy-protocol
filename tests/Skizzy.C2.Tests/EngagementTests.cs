@@ -179,7 +179,7 @@ namespace Skizzy.C2.Tests
             threat.S.HeadingDeg = 90; // running away
             threat.S.SpeedMps = 300;
             E.SetSideManaged(Blue, true);
-            Settle(0.4);
+            Settle(1.2); // acquisition scans run at 1 Hz per unit
             Assert.Equal(threat.Id, V(f1).SelfDefence);
             Assert.True(H.RunUntil(() => V(f1).SelfDefence == 0, 60), H.Log());
             Assert.True(H.Logged(C2EventKind.BackOnTask, "opening"));

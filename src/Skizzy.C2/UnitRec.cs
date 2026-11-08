@@ -167,6 +167,17 @@ namespace Skizzy.C2
         public readonly Applied Have = new Applied();
         public TargetFilter Filter;
         public readonly List<uint> Contacts = new List<uint>();
+        /// <summary>The unit's side picture (null without a side) and its position on the body sphere, refreshed each tick.</summary>
+        public SidePicture P;
+        public double X, Y, Z;
+        // per side index: own-sensor holders of this unit in the current tick (stamped, no per-contact dictionary work)
+        public int[] HeldTick;
+        public int[] HeldN;
+        public uint[] HeldBy;
+        public bool[] HeldSurv;
+        // row 12 toggle, re-evaluated at the scan rate
+        public bool MissilesOn;
+        public bool MissilesKnown;
 
         public uint Id => S.Id;
         public string Name => S.Name ?? ("v:" + S.Id);

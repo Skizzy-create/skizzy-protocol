@@ -170,11 +170,11 @@ namespace Skizzy.C2.Tests
             Assert.False(never.EngageMissiles);
             var raid = Add("Raid", Red, UnitClass.Bomber, 40, 0);
             raid.RadarRangeM = 0;
-            Settle(0.4);
+            Settle(1.2);
             Assert.False(f1.EngageMissiles); // hostile aircraft within 75 km
             raid.S.Pos = W.At(120, 0);
             W.Detect(Blue, raid.Id);
-            Settle(0.4);
+            Settle(1.2);
             Assert.True(f1.EngageMissiles);
         }
     }
