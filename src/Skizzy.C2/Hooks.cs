@@ -49,8 +49,8 @@ namespace Skizzy.C2
     /// </summary>
     public sealed class TargetFilter
     {
-        private readonly HashSet<uint> _allow = new HashSet<uint>();
-        private readonly List<uint> _scratch = new List<uint>();
+        private HashSet<uint> _allow = new HashSet<uint>();
+        private HashSet<uint> _next = new HashSet<uint>();
 
         /// <summary>Incremented whenever the allow set changes (diagnostics and tests).</summary>
         public int Version { get; private set; }
@@ -70,20 +70,15 @@ namespace Skizzy.C2
             foreach (var id in _allow) into.Add(id);
         }
 
-        /// <summary>Replaces the allow set with <paramref name="ids"/>; bumps <see cref="Version"/> only when it changed.</summary>
+        /// <summary>Replaces the allow set with <paramref name="ids"/> (duplicates allowed); bumps <see cref="Version"/> only when it changed.</summary>
         internal void SetTo(List<uint> ids)
         {
-            bool changed = ids.Count != _allow.Count;
-            if (!changed)
-            {
-                for (int i = 0; i < ids.Count; i++)
-                {
-                    if (!_allow.Contains(ids[i])) { changed = true; break; }
-                }
-            }
-            if (!changed) return;
-            _allow.Clear();
-            for (int i = 0; i < ids.Count; i++) _allow.Add(ids[i]);
+            _next.Clear();
+            for (int i = 0; i < ids.Count; i++) _next.Add(ids[i]);
+            if (_next.SetEquals(_allow)) return;
+            var t = _allow;
+            _allow = _next;
+            _next = t;
             Version++;
         }
 

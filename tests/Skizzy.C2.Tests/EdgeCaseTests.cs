@@ -166,6 +166,24 @@ namespace Skizzy.C2.Tests
         }
 
         [Fact]
+        public void Filter_contents_are_stable_in_steady_state()
+        {
+            var f1 = Add("Cobra 1", Blue, UnitClass.Fighter, 0, 0);
+            var b1 = Add("Bomber 1", Red, UnitClass.Bomber, 120, 0);
+            b1.RadarRangeM = 0;
+            b1.Rcs = 3;
+            Settle(0.2);
+            var req = OrderRequest.Engage(Blue, b1.Id, f1.Id);
+            req.Targets = new System.Collections.Generic.List<uint> { b1.Id }; // override is also a task target
+            Ok(req);
+            Settle(1);
+            int v = f1.Filter.Version;
+            Settle(5);
+            Assert.Equal(v, f1.Filter.Version);
+            Assert.Equal(1, f1.Filter.Count);
+        }
+
+        [Fact]
         public void Large_battle_ticks_within_budget()
         {
             for (int i = 0; i < 60; i++) Add("Blue " + i, Blue, i % 3 == 0 ? UnitClass.Drone : UnitClass.Fighter, 0, i * 1.5);
