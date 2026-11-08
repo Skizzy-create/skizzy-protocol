@@ -122,6 +122,7 @@ namespace Skizzy.Host.Core
                 _server = new WsServer(this, policy, Settings.Limits, Log);
                 int port = _server.Start(Settings.PortFirst, Settings.PortLast);
                 EndpointFile.Write(Paths.EndpointFile, port, Log);
+                if (Settings.WriteUserPointer) EndpointFile.WritePointer(Paths.PluginData, port, Log);
                 Started = true;
                 Log.Info("listening on ws://127.0.0.1:" + port + ProtocolInfo.Path);
             }
@@ -143,6 +144,7 @@ namespace Skizzy.Host.Core
                 Events.ReleaseAll();
                 _server?.Stop();
                 EndpointFile.Delete(Paths.EndpointFile);
+                if (Settings.WriteUserPointer) EndpointFile.DeletePointer();
                 Audit.Stop();
             }
             catch (Exception e) { Log.Error("host stop failed: " + e.Message); }
@@ -673,6 +675,50 @@ namespace Skizzy.Host.Core
         public static void Delete(string path)
         {
             try { if (File.Exists(path)) File.Delete(path); } catch (Exception) { }
+        }
+
+        /// <summary>
+        /// Per-user pointer (%LOCALAPPDATA%/skizzy-protocol/endpoint.json) naming the running host's PluginData, so the
+        /// Python SDK and a CLI outside GameData find the token and port with no configuration. Outside the KSP install.
+        /// </summary>
+        public static string PointerPath()
+        {
+            string dir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrEmpty(dir)) return null;
+            return Path.Combine(Path.Combine(dir, "skizzy-protocol"), "endpoint.json");
+        }
+
+        public static void WritePointer(string pluginData, int port, IHostLog log)
+        {
+            try
+            {
+                string path = PointerPath();
+                if (path == null) return;
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                int pid = 0;
+                try { pid = System.Diagnostics.Process.GetCurrentProcess().Id; } catch (Exception) { }
+                var o = JsonValue.Obj().Set("pluginData", pluginData).Set("url", "ws://127.0.0.1:" + port + ProtocolInfo.Path).Set("port", port)
+                    .Set("pid", pid).Set("startedUtc", Clock.WallUtcIso());
+                string tmp = path + ".tmp";
+                File.WriteAllText(tmp, o.ToPrettyString());
+                if (File.Exists(path)) File.Delete(path);
+                File.Move(tmp, path);
+            }
+            catch (Exception e) { log.Warn("user endpoint pointer not written: " + e.Message); }
+        }
+
+        /// <summary>Deletes the pointer only if this process wrote it (another KSP instance may own it now).</summary>
+        public static void DeletePointer()
+        {
+            try
+            {
+                string path = PointerPath();
+                if (path == null || !File.Exists(path)) return;
+                var j = JsonValue.Parse(File.ReadAllText(path));
+                int pid = System.Diagnostics.Process.GetCurrentProcess().Id;
+                if (j.GetInt("pid") == pid) File.Delete(path);
+            }
+            catch (Exception) { }
         }
     }
 }

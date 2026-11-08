@@ -55,6 +55,7 @@ namespace Skizzy.Host.Core
         public bool IdleProbe = false;          // 1 Hz background heap sampler (acceptance 1 measurement)
         public bool FirstRunDone = false;
         public bool JpegOnWorkerThread = true;  // set false automatically if the spike fails
+        public bool WriteUserPointer = false;   // KSP bootstrap: true (per-user endpoint pointer); FakeKsp/tests: false
         public readonly HostLimits Limits = new HostLimits();
 
         public static HostSettings FromNode(CfgNode n)
@@ -72,6 +73,7 @@ namespace Skizzy.Host.Core
             s.IdleProbe = n.GetBool("idleProbe", s.IdleProbe);
             s.FirstRunDone = n.GetBool("firstRunDone", s.FirstRunDone);
             s.JpegOnWorkerThread = n.GetBool("jpegOnWorkerThread", s.JpegOnWorkerThread);
+            s.WriteUserPointer = n.GetBool("writeUserPointer", s.WriteUserPointer);
             s.Limits.MaxConnections = Clamp(n.GetInt("maxConnections", s.Limits.MaxConnections), 1, 64);
             return s;
         }
@@ -89,6 +91,7 @@ namespace Skizzy.Host.Core
             n.AddValue("idleProbe", IdleProbe ? "true" : "false");
             n.AddValue("firstRunDone", FirstRunDone ? "true" : "false");
             n.AddValue("jpegOnWorkerThread", JpegOnWorkerThread ? "true" : "false");
+            n.AddValue("writeUserPointer", WriteUserPointer ? "true" : "false");
             n.AddValue("maxConnections", Limits.MaxConnections.ToString(CultureInfo.InvariantCulture));
             return n;
         }

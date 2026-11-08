@@ -26,6 +26,8 @@ namespace Skizzy.Client
         public int? Precedence;
         public bool? Fog;
         public string Team;
+        /// <summary>Delegation token for a delegate actor (09 §1.2, R2; M0 hosts ignore it).</summary>
+        public string DelegationToken;
         public string[] Features = { "ops", "streams", "events" };
 
         public JsonValue ToParams(string resumeSession, long resumeCursor)
@@ -35,6 +37,7 @@ namespace Skizzy.Client
             if (Role != null) actor.Set("role", Role);
             if (Side != null) actor.Set("side", Side);
             if (Display != null) actor.Set("display", Display);
+            if (DelegationToken != null) actor.Set("delegationToken", DelegationToken);
             var p = JsonValue.Obj()
                 .Set("protocol", ProtocolInfo.Name)
                 .Set("versions", JsonValue.ArrOf(ProtocolInfo.SupportedVersions))
@@ -84,6 +87,71 @@ namespace Skizzy.Client
         }
 
         public static Endpoint FromKsp(string kspRoot) { return FromPluginData(PluginDataFor(kspRoot)); }
+
+        /// <summary>Per-user pointer the running host writes (%LOCALAPPDATA%/skizzy-protocol/endpoint.json).</summary>
+        public static string UserPointerPath()
+        {
+            string dir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return string.IsNullOrEmpty(dir) ? null : Path.Combine(Path.Combine(dir, "skizzy-protocol"), "endpoint.json");
+        }
+
+        /// <summary>
+        /// Finds the host without configuration. Order: explicit endpoint file, explicit KSP folder, SKIZZY_ENDPOINT /
+        /// KSPDIR environment, the PluginData next to this executable (GameData/SkizzyProtocol/Bin), the per-user
+        /// pointer. <paramref name="tokenFile"/> overrides where the token is read from. Returns where it looked in
+        /// <paramref name="searched"/> so errors can say so.
+        /// </summary>
+        public static Endpoint Discover(string endpointFile, string kspRoot, string tokenFile, System.Collections.Generic.List<string> searched = null)
+        {
+            var tried = searched ?? new System.Collections.Generic.List<string>();
+            string pluginData = null;
+            if (!string.IsNullOrEmpty(endpointFile)) pluginData = Path.GetDirectoryName(Path.GetFullPath(endpointFile));
+            else if (!string.IsNullOrEmpty(kspRoot)) pluginData = PluginDataFor(kspRoot);
+            else
+            {
+                string envEp = Environment.GetEnvironmentVariable("SKIZZY_ENDPOINT");
+                string envKsp = Environment.GetEnvironmentVariable("KSPDIR");
+                if (!string.IsNullOrEmpty(envEp)) pluginData = Path.GetDirectoryName(Path.GetFullPath(envEp));
+                else if (!string.IsNullOrEmpty(envKsp)) pluginData = PluginDataFor(envKsp);
+                else
+                {
+                    string exeSibling = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "PluginData"));
+                    tried.Add(exeSibling);
+                    if (File.Exists(Path.Combine(exeSibling, "auth.token"))) pluginData = exeSibling;
+                    else
+                    {
+                        string ptr = UserPointerPath();
+                        if (ptr != null)
+                        {
+                            tried.Add(ptr);
+                            if (File.Exists(ptr))
+                            {
+                                try { pluginData = JsonValue.Parse(File.ReadAllText(ptr)).GetString("pluginData"); }
+                                catch (Exception) { pluginData = null; }
+                            }
+                        }
+                    }
+                }
+            }
+            if (pluginData == null)
+                throw new SkizzyClientException("NO_ENDPOINT", "could not find a running skizzy host (looked in: " + string.Join("; ", tried.ToArray()) + ")",
+                    "Start KSP with skizzy-protocol installed, or pass --ksp <KSP folder> (or set KSPDIR).");
+            if (!tried.Contains(pluginData)) tried.Add(pluginData);
+            var e = FromPluginDataOrToken(pluginData, tokenFile);
+            return e;
+        }
+
+        private static Endpoint FromPluginDataOrToken(string pluginData, string tokenFile)
+        {
+            if (string.IsNullOrEmpty(tokenFile)) return FromPluginData(pluginData);
+            if (!File.Exists(tokenFile))
+                throw new SkizzyClientException("NO_TOKEN", "token file not found: " + tokenFile, "Check --token-file.");
+            var e = new Endpoint { PluginData = pluginData, Token = File.ReadAllText(tokenFile).Trim() };
+            string ep = Path.Combine(pluginData, "endpoint.json");
+            if (File.Exists(ep)) e.Url = JsonValue.Parse(File.ReadAllText(ep)).GetString("url");
+            if (e.Url == null) e.Url = "ws://127.0.0.1:" + ProtocolInfo.DefaultPort + ProtocolInfo.Path;
+            return e;
+        }
     }
 
     public sealed class SkizzyClientException : Exception

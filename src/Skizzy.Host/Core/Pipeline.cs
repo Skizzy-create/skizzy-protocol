@@ -376,7 +376,7 @@ namespace Skizzy.Host.Core
             if (errors.Count > 0)
             {
                 ctx.Decision = "n/a";
-                ctx.Fail(new SkizzyError(ErrorKind.InvalidParams, "invalid arguments for " + def.Name + ": " + errors[0].Pointer + " " + errors[0].Message, null,
+                ctx.Fail(new SkizzyError(ErrorKind.InvalidParams, "invalid arguments for " + def.Name + ": " + errors[0].Pointer + " " + errors[0].Message, "schema",
                     "Fix the listed fields; the schema is in catalog.describe.", JsonValue.Obj().Set("errors", SchemaValidator.ErrorsToJson(errors))));
                 return;
             }
@@ -728,7 +728,7 @@ namespace Skizzy.Host.Core
             var errors = SchemaValidator.Validate(args, ctx.Def.InputSchema);
             if (errors.Count > 0)
             {
-                ctx.Fail(new SkizzyError(ErrorKind.InvalidParams, errors[0].Pointer + " " + errors[0].Message, null, null,
+                ctx.Fail(new SkizzyError(ErrorKind.InvalidParams, errors[0].Pointer + " " + errors[0].Message, "schema", null,
                     JsonValue.Obj().Set("errors", SchemaValidator.ErrorsToJson(errors))));
                 return;
             }

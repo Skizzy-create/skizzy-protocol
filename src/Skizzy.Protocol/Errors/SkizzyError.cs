@@ -168,7 +168,7 @@ namespace Skizzy.Protocol.Errors
         {
             var extra = JsonValue.Obj();
             if (errors != null) extra.Set("errors", errors);
-            return new SkizzyError(ErrorKind.InvalidParams, message, null, hint, extra);
+            return new SkizzyError(ErrorKind.InvalidParams, message, "invalid", hint, extra);
         }
 
         public static SkizzyError InvalidParam(string pointer, string message, string hint = null)
@@ -181,7 +181,7 @@ namespace Skizzy.Protocol.Errors
         {
             string msg = reason == "stale" ? "Handle " + handle + " is stale (from before a scene change or reload)"
                 : reason == "destroyed" ? "Object " + handle + " was destroyed"
-                : "No object " + handle;
+                : "Nothing matches '" + handle + "'";
             return new SkizzyError(ErrorKind.NotFound, msg, reason, hint, JsonValue.Obj().Set("handle", handle));
         }
 

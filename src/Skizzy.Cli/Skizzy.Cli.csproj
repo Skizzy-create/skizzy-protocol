@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- skizzy: the command-line tool and the MCP bridge (skizzy mcp). Ships in GameData/SkizzyProtocol/Bin. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>skizzy</AssemblyName>
+    <RootNamespace>Skizzy.Cli</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Skizzy.Client\Skizzy.Client.csproj" />
+    <ProjectReference Include="..\Skizzy.Protocol\Skizzy.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Pinned exactly (17 M0 implementation notes). -->
+    <PackageReference Include="ModelContextProtocol.Core" Version="[2.3.0]" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Skizzy.Cli.Tests" />
+  </ItemGroup>
+</Project>
