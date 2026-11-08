@@ -28,14 +28,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.4" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
-    <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
-    <PackageReference Include="Dock.Avalonia" Version="12.1.0.12" />
-    <PackageReference Include="Dock.Model.Avalonia" Version="12.1.0.12" />
-    <PackageReference Include="Dock.Avalonia.Themes.Fluent" Version="12.1.0.12" />
-    <PackageReference Include="Dock.Serializer.SystemTextJson" Version="12.1.0.12" />
+    <PackageReference Include="Avalonia" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.5" />
+    <PackageReference Include="Dock.Avalonia" Version="12.1.5" />
+    <PackageReference Include="Dock.Model.Avalonia" Version="12.1.5" />
+    <PackageReference Include="Dock.Avalonia.Themes.Fluent" Version="12.1.5" />
+    <PackageReference Include="Dock.Serializer.SystemTextJson" Version="12.1.5" />
     <!-- the render core already references SkiaSharp 3.119.4; pin the Windows natives to the same build -->
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.4" />
   </ItemGroup>
