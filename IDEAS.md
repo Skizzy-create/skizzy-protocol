@@ -143,7 +143,14 @@ This is the combined list of every MCP and server idea so far (2026-11-08). It's
   - **Who commands:** the commander is either a human on the command screen or one agent, and either can take over from the other at any time. They plan, move flights, and send a swarm at the enemy's high-value assets.
   - **Who fights:** BDArmory AI flies and fights each craft.
   - **Automatic reports:** each unit or group reports back without any LLM: engaged, contacts, weapons spent, damage, kills, out of ammo, returning to base, lost.
-- **Group agents are optional,** only when clusters get very large (big swarms or fleets). They can be run by Codex/Claude Code as a separate session, by a script, or by the in-game group executor.
+- **The commander controls all assets directly and talks to the other side's commander.** BDArmory AI is good enough for the fighting. Where it falls short, we add CMO-style features (missions, doctrine, ROE, EMCON, routes) as in-game logic, not more agents.
+- **Group agents are removed from the plan for now** and become a later item. There are no built-in group or unit agent layers and no Haiku-per-unit default.
+- **Team-internal "talk" for now:** the commander's own AI tool deploys a sub-agent to handle one cluster, e.g. Claude Code or Codex spawning a subagent. That sub-agent connects through the same MCP and is given a lease on just that cluster, reporting to the commander. The protocol only needs:
+  - actor identities
+  - leases scoped to a cluster
+  - a team channel
+
+  It doesn't need its own agent runtime or orchestrator.
 - **Plain guard mode still works with nothing connected.**
 
 ## 16. Communications, diplomacy and influence (user idea, 2026-11-08)
