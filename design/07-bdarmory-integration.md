@@ -1,0 +1,133 @@
+# 07 BDArmory integration
+
+Source studied: `D:\KerbalSpaceProgram\BDArmory\BDArmory\`, branch `multitarget-1.13.1`, HEAD `ff5130c19` (2026-11-08). Line numbers refer to that tree. The user owns this fork, so "upstream patches" land in `BDArmory-Skizzy` first (D9) and go to BDA Plus later; the shim keeps reflection fallbacks for stock installs.
+
+## 1. How the BDArmory AI works (what we layer on)
+
+### 1.1 Who controls a vessel
+
+`ActiveController : VesselModule` (`Utils/VesselModuleRegistry.cs:1009`) is BDA's per-vessel registry: `WM` is the primary `MissileFire` (closest to root; others get `IsPrimaryWM=false`, `ParentWM`), `AI` is the active `IBDAIControl` (first enabled in the order pilot → surface → VTOL → orbital, else the one closest to root), `UpdateAIModules()` (`:1093`) deactivates non-primary AIs, `SetActiveAI(ai)` (`:1125`) switches. `vessel.ActiveController()` is the extension. Everything we do to "the AI" goes through this.
+
+### 1.2 The physics-rate loop
+
+`BDGenericAIBase.ActivatePilot()` (`Control/BDGenericAIBase.cs:172`) registers `activeVessel.OnFlyByWire += autoPilot` (`:180`), creates a `BDAirspeedControl` component (`:184`) and forces gear deployed. Each physics step `autoPilot(FlightCtrlState s)` (`:111`) bails if packed/uncommandable, then runs the **base-class target selection**: `GetGuardTarget()` (`:333`, the WM's `currentTarget` when guard mode is on), `GetNonGuardTarget()` (`:367`, the player's `vessel.targetObject` if hostile), `GetGuardNonTarget()` (`:350`, closest/least-engaged pick when guard is on but the WM has no target), and finally the subclass `AutoPilot(s)` (`:108`, abstract). The comment at `:140` admits target choice is hard-coded in the base class "so changing this later is less of a mess" — this is the natural seam for a target-assignment hook.
+
+`BDModulePilotAI.AutoPilot` (`Control/BDModulePilotAI.cs:2083`): throttle reset, SAS on, standby handling, steer-limit and turning-circle estimation, min-altitude logic, `FlyAvoidTerrain`/`FlyAvoidOthers`, `TakeOff`, then **either** `UpdateCommand(s)` (`:5311`) when a WingCommander command is active (`Follow` → `UpdateFollowCommand` `:5362` using `GetFormationPosition` `:5422`; `FlyTo` → `FlyOrbit(..., 2500, idleSpeed, …)` `:5335`; `Attack` → orbit at `maxSpeed` until `targetVessel` appears, then `ReleaseCommand(false)` `:5343`) **or** `UpdateAI(s)` (`:2200`, the combat state machine: evasion, extending, engaging, bombing, ramming, orbiting). All steering converges in `FlyToPosition` (`:2884`), which applies altitude corrections, the "squiggly squid" evasion, and the PID (`steerMult`, `steerDamping*`, dynamic damping, three-axis PID) through `SetFlightControlState` (`BDGenericAIBase.cs:153`). Speed goes through `AdjustThrottle` (`:3684`) → `BDAirspeedControl.targetSpeed`.
+
+`BDModuleSurfaceAI.AutoPilot` (`Control/BDModuleSurfaceAI.cs:398`): `PanicModes()` (stranded/sunk/floating), `PilotLogic()` (`:431`, collision avoidance with raycasts and the `pathingMatrix`, target approach/extend, broadside geometry, waypoint and Follow handling at `:841-900`), `Tactical()` (evasion when `underFire`/`missileIsIncoming` `:930`), `AttitudeControl(s)` (`:1044`, yaw to `targetDirection` with `MaxDrift` weaving, pitch: for **submarines** a depth law from `CombatAltitude` with periscope depth −10 m for missile launch and surfacing (+1 m) for guns `:1081-1180`, roll from terrain slope and `BankAngle`), `AdjustThrottle(targetVelocity)` (`:1018`, `BDLandSpeedControl` with reverse). `SurfaceTypeName` ∈ Stationary/Land/Water/Amphibious/Submarine (`:76-78`); key ranges: `MaxSpeed` 5–80 m/s, `CruiseSpeed` 5–60, `MaxEngagementRange` 500–8000 m unless `UpToEleven` raises limits (`:161-164, 314-330`), `CombatAltitude` −200…−15 m. VTOL and orbital AIs follow the same pattern with their own speed controllers (`BDVTOLSpeedControl`).
+
+### 1.3 Commands and formations
+
+`IBDAIControl` (`Control/IBDAIControl.cs`) exposes `ReleaseCommand`, `CommandFollow(leader, index)`, `CommandAG`, `CommandFlyTo(gps)`, `CommandAttack(gps)`, `CommandTakeOff`, `CommandFollowWaypoints`, `currentCommand`, `commandGPS`, `commandLeader`, `commandFollowIndex`. `ModuleWingCommander` (`Control/ModuleWingCommander.cs`) keeps `friendlies` (same-team AIs, `:136`), `wingmen` (private `:31`), the default slot ladder `GetFormationPosition(index)` (`:694`: alternating right/left `spread`, `lag` behind) and a private per-index override dictionary `formationIndexToPosition` (`:687`) edited only through its GUI. `CommandAllFollow()` (`:475`) and `GetFreeWingIndex()` (`:485`) are public. Waypoints: `SetWaypoints(List<Vector3>)` (`BDGenericAIBase.cs:540`) is coupled to `WaypointCourses.CourseLocations` for gate scale and speed (`:572, 603`).
+
+### 1.4 Guard mode and targeting
+
+`MissileFire.GuardMode()` (`Control/MissileFire.cs:9877`) runs every physics step while `guardMode` (`:1044`) is on and `PEACE_MODE` is off: `UpdateGuardViewScan()` (`:10055`) calls `RadarUtils.GuardScanInDirection(this, transform, guardAngle, guardRange, rwr)` (`Radar/RadarUtils.cs:2447`) which fills `ViewScanResults` (incoming missiles sorted by distance, gun threats) and triggers countermeasures (chaff/ECM for radar missiles `:10095`, smoke for laser, flares for heat, radar shutdown for anti-radiation `:10121-10129`, bubbles for torpedoes), sets `missileIsIncoming`, `incomingMissileDistance/Time/Vessel` (`:393-397`). Every `targetScanInterval` (`:651`, default 1 s) it calls `SmartFindTarget()` (`:5853`):
+
+1. `SmartFindTargetInternal()` (`:5872`): clears `missileSaturatedTargets`; if `multiMissileTgtNum > 1` it marks targets with `GetMissilesAway(target).numAway >= maxMissilesOnTarget` as saturated and excludes them (`:5922-5944`); **checks `overrideTarget` first** (`:5947-5965`, set through `SetOverrideTarget(TargetInfo)` `:11164`, which also forces an immediate rescan by setting `targetScanTimer = -100`; the override is kept 15 s via `overrideTimer` `:5957`, `:10044-10052`, and dropped if it cannot be engaged); then missiles targeting this vessel (`BDATargetManager.GetMissileTarget`), then the priority/closest/least-engaged queries (`UI/BDATargetManager.cs:1473-1636`) scored by `TargetPriorityScore` (`:1604`) using the WM's `targetWeight*` fields (`MissileFire.cs:758-828`); each candidate is `SetTarget()`ed (`:8416`, engages `TargetInfo`, refreshes `firedMissiles`, requests a radar lock) and tested with `SmartPickWeapon_EngagementEnvelope` (`:6423`).
+2. `SmartFindSecondaryTargets()` (`:6178`): fills `targetsAssigned`/`missilesAssigned` (`:422-423`) up to `multiTargetNum`/`multiMissileTgtNum` (≤ `maxAllowableTargets` 1024) via `GetPrioritizedVesselTargets`/`GetPrioritizedMissileTargets` (`BDATargetManager.cs:1636, 1672`), engaging/disengaging `TargetInfo`s so other WMs see `NumFriendliesEngaging`.
+3. Firing: missiles/SLW → `GuardParallelSalvoRoutine()` (`:9324`) when `parallelFire` (`:699`): batch plans per target respecting `maxMissilesOnTarget`, `parallelSalvoSize`, `multiMissileTgtNum`, radar lock capacity, stagger frames, bounded work per frame (`:9303-9308`), `FireParallelMissile` (`:9853`); otherwise `GuardMissileRoutine` with `GuardMissileLaunchAuthorized` (`:9978`); bombs → `GuardBombRoutine`; guns/rockets/lasers → `GuardTurretRoutine()` (`:2732`) which hands `visualTargetVessel` to each `ModuleWeapon` (secondary targets for turrets come from `targetsAssigned`).
+
+Team assistance exists: `UpdateGuardViewScan` calls `nearbyFriendlyWM.SetOverrideTarget(nearbyThreat)` to pull friends onto a threat (`:10284-10293`). This is the same public entry point we use for external target assignment.
+
+### 1.5 Detection and fog-of-war
+
+- Each vessel enemy to anyone gets a `TargetInfo` (`Targeting/TargetInfo.cs`) with per-team `detected[team]` (radar/sonar/IRST detection flag) and `detectedTime[team]` (last visual or sensor contact) (`:36-37`), filled by `BDATargetManager.ReportVessel(v, reporter, radar)` (`UI/BDATargetManager.cs:1265`) and cleared by `ClearRadarReport` (`:1323`). The per-team target list is `BDATargetManager.TargetList(team)` (`:1358`).
+- `MissileFire.CanSeeTarget(target)` (`MissileFire.cs:8514`) returns `Visible` when `detected[Team]`, when RWR pings line up with anti-radiation ordnance, or when within visual range with line of sight (modified by cloaking); `RecentlyVisible` for ≤ 30 s after loss (object permanence, stale position with growing error, `staleTarget` `:8496`, `BDModulePilotAI.cs:2060-2075`); else `NotVisible`.
+- Radar: `ModuleRadar` (`Radar/ModuleRadar.cs`) scans (`Scan` `:980`) via `RadarUtils.RadarUpdateScanLock` (`RadarUtils.cs:1943`) using RCS (`GetVesselRadarSignatureAtAspect`, aspected RCS, notching, jamming, chaff), posting contacts into the vessel's `VesselRadarData` (`Radar/VesselRadarData.cs`) whose `displayedTargets : List<RadarDisplayData>` (`:141`, **private**) and `displayedIRTargets` (`:142`) are the per-vessel contact lists with `signalPersistTime`, `locked`, `detectedByRadar`. Locks: `TryLockTarget(Vessel, priority)` (`:964`), `GetLockedTargets()` (`:158`), `numLockedTargets` (`:147`). **Datalink**: a radar with `linkedVesselID` (`ModuleRadar.cs:186`) links to another vessel's VRD (`AddExternalVRD` `:1493`, `ReceiveContactData` `:1474`), and `VesselRadarData.externalRadars` (`:21`) / `UpdateDataLinkCapability` (`:597`) merge external radars into the display. **Sonar** is `ModuleRadar` with `sonarMode` Active/passive (`ModuleRadar.cs:173-179`) using acoustic signatures (`BDATargetManager.GetVesselAcousticSignature` `:688`, `GetAcousticTarget` `:827`); torpedoes are `WeaponClasses.SLW`. **IRST**: `ModuleIRST` (`Radar/ModuleIRST.cs`, `irstRanging` decides whether range is known). **RWR**: static events `RadarWarningReceiver.OnRadarPing(Vessel v, Vector3 source, RWRThreatTypes type, float persistTime, Vessel vSource)` and `OnMissileLaunch(Vector3 source, Vector3 direction, bool radar, Vessel vSource)` (`Radar/RadarWarningReceiver.cs:22-28`), ping array `pingsData` (`:115`).
+- Missiles in flight: `BDATargetManager.FiredMissiles : List<IBDWeapon>` (`:30`); `MissileBase` state (`Weapons/Missiles/MissileBase.cs:435-496`: `MissileState`, `GuidanceMode`, `TargetingMode`, `HasFired`, `HasMissed`, `HasExploded`, `TargetPosition`, `TimeToImpact`, `SourceVessel`, `Team`). Launch envelope: `MissileLaunchParams.GetDynamicLaunchParams(missile, targetVelocity, targetPosition, …)` (`Weapons/Missiles/MissileLaunchParams.cs:43`).
+
+### 1.6 Competition, scoring, spawning, tracing
+
+`BDACompetitionMode` (`Competition/BDACompetitionMode.cs`, Flight-scene `KSPAddon`): `StartCompetitionMode(distance, startDespiteFailures, tag, type)` (`:352`), `StopCompetition()` (`:392`, also resets `Time.timeScale` when `TIME_OVERRIDE`), `competitionStarting/IsActive` (`:313-315`), `DoUpdate()` (`:2689`, a 1 s tick that builds the alive list, pilot action strings, GM rules, and calls `Scores.RegisterDeath(player, …)` `:3036`). `CompetitionScores` (`Competition/Scoring.cs:23`) registers shots, hits, strikes, rams, deaths and writes `GameData/BDArmory/Logs/<id>[-tag].log`. There is no "vessel killed" event: the death order list diff is the signal. Spawning: `CircularSpawning.SpawnAllVesselsOnce`, `CustomTemplateSpawning.SpawnCustomTemplate(CustomSpawnConfig)` (`VesselSpawning/CustomSpawnTemplate.cs:95`; `CustomVesselSpawnConfig(lat, lon, heading, teamIndex)` + `craftURL`, `SpawnConfig.cs:137-152`), `SingleVesselSpawning.SpawnVessel` (`SingleVesselSpawning.cs:57`), `VesselSpawner.SpawnVesselFromCraftFile` (`VesselSpawner.cs:70`). Vessel tracing: `LoadedVesselSwitcher.vesselTraceEnabled` writes per-vessel JSON traces (time, position, rotation) to `GameData/BDArmory/Logs/VesselTraces` (`UI/LoadedVesselSwitcher.cs:1653-1699`). Evolution (`Evolution/BDAEvolution.cs`, `BDAModuleEvolution.StartEvolution` `:177`) mutates PilotAI/WM fields across generations; tournaments: `BDATournament`. Spawner quirks (name deconfliction, team assignment, `Spawn()` no-op, stale success flags, cancel NREs) are as listed in PLAN v0.2 §7.2 and become fork fixes (P1).
+
+## 2. What the design layers on, and where it attaches
+
+| Need | Hook point | Patch-free approach | Fork patch (preferred) |
+|---|---|---|---|
+| **Read detection / fog-of-war per team** | `TargetInfo.detected/detectedTime` (public), `BDATargetManager.TargetList(team)` (public) | direct reads, O(N) per team per tick | none needed; P1: `BDATargetManager.OnTargetDetected/OnTargetLost` static events for zero-latency `track.new/lost` |
+| **Per-unit radar/IRST contacts, locks, signal strength** | `VesselRadarData.displayedTargets`, `displayedIRTargets` (private) | compiled reflection getter on the `List<RadarDisplayData>` (read-only iteration on main thread) | `public IReadOnlyList<RadarDisplayData> DisplayedContacts { get; }`, `DisplayedIRContacts` |
+| **Sonar vs radar contact kind** | `RadarDisplayData.detectedByRadar.sonarMode` | read | none |
+| **RWR pings, launch warnings** | static events `OnRadarPing`, `OnMissileLaunch` (public) | subscribe | none |
+| **Target assignment (primary)** | `MissileFire.SetOverrideTarget(TargetInfo)` (public, `:11164`) | call it; re-issue every 10 s because `overrideTimer` is 15 s | `SetOverrideTarget(TargetInfo target, float durationS, bool sticky)` + `public Func<MissileFire, TargetInfo, bool> ExternalTargetFilter` consulted in `SmartFindTargetInternal` and the `BDATargetManager` queries (ROE/zone exclusions), + `public Func<MissileFire, IList<TargetInfo>> ExternalSecondaryTargets` consulted at the top of `SmartFindSecondaryTargets` |
+| **Fire authority (hold / tight / free)** | `guardMode` (public), `PEACE_MODE` (global), `ModuleWeapon.autoFire/aiControlled` | hold = guard off + weapons disabled; free = guard on; tight ≈ guard on + override target + exclusion (incomplete without a filter) | `public FireAuthority fireAuthority {Hold, Tight, Free}` checked in `GuardMode()`, `GuardParallelSalvoRoutine`, `GuardTurretRoutine`, `GuardMissileLaunchAuthorized`: Tight fires only at targets passing `ExternalTargetFilter`/assigned lists |
+| **Missiles-per-target and salvo per unit, live** | `MissileFire` KSPFields with UI ranges (`:680-708`) | PAW write path (callbacks run) | none |
+| **AI parameters, live** | AI KSPFields (all public with `UI_FloatRange`) | PAW write path; `BDModulePilotAI.OnMaxSpeedChanged()` is public | none |
+| **Steering override / mixing** | `Vessel.OnFlyByWire` ordering (see `06-flight-control.md` §1) | mixer registered after BDA, re-registered on `pilotEnabled` edges | `BDGenericAIBase`: `public Func<FlightCtrlState, bool> SteeringOverride` (return true = skip `AutoPilot`), `public Action<FlightCtrlState> PostAutoPilot` (mix), `public Vector3? ExternalFlyTo`/`float commandOrbitRadius` on `BDModulePilotAI` |
+| **Routes** | `CommandFlyTo` per leg (ships); `SetWaypoints` (coupled to courses) | sequencing executor; holds for aircraft | `SetWaypoints(List<Vector3> pts, float radiusM, int laps, IList<float> maxSpeeds = null)` decoupled from `WaypointCourses`; `commandOrbitRadius` |
+| **Formation slots** | `ModuleWingCommander.formationIndexToPosition` (private) | default ladder via `spread`/`lag` | `public void SetFormationPosition(int index, Vector2 rightBack)`, `ClearFormationPositions()`, `public IReadOnlyList<IBDAIControl> Wingmen` |
+| **Fire a missile at a target** | `FireCurrentMissile` (private `:4632`), `SetTarget` (public) | reflection delegate | `public bool FireMissileAt(MissileBase missile, Vessel target, bool checkClearance = true)` |
+| **Launch envelope** | `MissileLaunchParams.GetDynamicLaunchParams` (public static) | call | none |
+| **Kill / hit / competition events** | none in BDA | 1 Hz diff of `Scores.deathOrder`, `ScoreData` hit counts, `FiredMissiles` | static events `CompetitionScores.OnDeath(string, ScoringData)`, `OnHit(attacker, victim, DamageFrom)`, `BDACompetitionMode.OnStarted/OnEnded`, `MissileFire.OnMissileFired(MissileFire, MissileBase, Vessel)` in `FireCurrentMissile`/`FireParallelMissile` |
+| **Missile in flight ↔ target** | `MissileBase.targetVessel`/`TargetPosition`, `GetMissilesAway(TargetInfo)` (public `:2323`) | iterate `FiredMissiles` once per tick | none |
+| **Guard scan results (incoming missiles list)** | `MissileFire.results` is private; `missileIsIncoming`, `incomingMissile*` public | use public fields; count inbound per unit by scanning `FiredMissiles` for `targetVessel == unit` | `public ViewScanResults LastScan { get; }` |
+| **Team datalink picture** | linked VRDs (`linkedVesselID`) | read each unit's VRD; the TPE fuses per team anyway | none |
+| **Spawning formations** | `CustomTemplateSpawning.SpawnCustomTemplate` | call; apply PLAN v0.2 §7.2 workarounds | spawner fixes (P1) |
+| **Competition as referee** | `StartCompetitionMode` | start with `COMPETITION_DURATION 0`, killer GM off | `StartCompetitionMode(..., CompetitionOptions {scoringOnly, noGM})` (P2) |
+| **Time scale** | `TIME_OVERRIDE`/`TIME_SCALE`, `OtherUtils.SetTimeOverride` | call | none |
+| **Deterministic seed** | `UnityEngine.Random` global | — | `BDArmorySettings.RANDOM_SEED` applied in `ResetCompetitionStuff` (P3) |
+| **Vessel traces** | `vesselTraceEnabled` | the Skizzy recorder supersedes it | none |
+
+Capabilities publish `bda.hooks` so clients know whether the fork is present (`03-protocol.md` §10).
+
+## 3. Adapter capabilities (`bda.*`)
+
+PLAN v0.2 §7.1 lists the M1/M3 tools (`status`, `list_craft`, `stage_craft`, `spawn_vessels`, `spawn_template`, `spawn_vessel`, `remove_vessels`, `list_teams`, `set_team`, `set_guard_mode`, `get/configure_weapon_manager`, `list/get_ai`, `set_ai_mode`, `command_ai`, `start/stop_competition`, `get_competition_state`, `get_scores`, `list_targets`, `get_radar_contacts`, `radar_control`, `select_weapon`, `fire_missile_at`, `fire_guns`, `fire_countermeasures`, `get_missiles_in_flight`, `get_damage_report`, `get/set_settings`, `tournament`, `tail_log`). All stay. Added:
+
+| Capability | Level | Notes |
+|---|---|---|
+| `bda.assign_target {vessel, track|target, durationS, sticky}` | control | `SetOverrideTarget` (+ patched duration) |
+| `bda.assign_targets {vessel, primary, secondary:[…]}` | control | needs `ExternalSecondaryTargets` hook; else primary only |
+| `bda.fire_authority {vessel|group, mode:hold|tight|free}` | control | fork hook; emulated partially without |
+| `bda.target_filter {vessel|group, allow:{iff,domain,zones}, deny:{…}}` | control | fork hook |
+| `bda.formation {leader, slots:[{vessel, right, back}]}` | control | WingCommander + patch |
+| `bda.waypoints {vessel, points, radius, laps, speeds}` | control | patched `SetWaypoints` |
+| `bda.dlz {vessel, weapon?, track}` | read | `GetDynamicLaunchParams` → `{minM, maxM, inRange, rangeTr}` |
+| `bda.hooks` | read | which hooks are live |
+| `bda.ammo {vessel}` | read | per weapon: ready/total, `CheckAmmo`, `outOfAmmo` |
+| `bda.ai_status {vessel}` | read (snapshot) | `currentStatus`, `currentCommand`, `commandGPS`, extend/evade flags |
+| `bda.evolution.*`, `bda.autotune.*` | control | wrap existing BDA features (P2) |
+| `bda.events.*` | — | `vessel_killed`, `hit`, `missile_fired`, `missile_launch_warning`, `radar_ping`, `team_changed`, `competition_*`, `target_detected|lost` |
+
+## 4. Modified AI behaviours per unit (P1)
+
+Three layers, all without forking BDA's AI classes:
+
+1. **Parameters**: live field writes (PAW path), per unit, from doctrine or agents. Covers 80 % ("more aggressive extend", "longer engagement range", "no ramming").
+2. **Mixing**: the Skizzy FlightMixer in `mix` mode adjusts BDA's output (speed caps, altitude floors, depth ceilings, heading bias to stay inside a zone, "don't cross this line"). With the `PostAutoPilot` hook this is clean; without it, the ordering workaround applies.
+3. **Behaviour trees / C# plug-ins** (`10-scripting-sdk.md` §5) that read the SITREP/picture and issue BDA commands and parameter writes at 10 Hz — e.g. a "shoot-and-scoot" sub BT: launch at periscope depth, then dive to 150 m and turn 90° off the launch bearing, re-attack after 4 minutes. BDA keeps doing physics-rate steering and firing; the BT decides *what* and *when*.
+
+Replacing BDA's `AutoPilot` entirely for a unit is possible with the `SteeringOverride` hook (return true) or by deactivating the AI and using Skizzy holds; it is documented but discouraged (BDA's evasion and terrain avoidance are hard to beat).
+
+## 5. Fork patches (exact list)
+
+| # | Pri | File / member | Change |
+|---|---|---|---|
+| F1 | P0 | `Control/MissileFire.cs` `SetOverrideTarget` (`:11164`), `overrideTimer` (`:439`), `SmartFindTargetInternal` (`:5947`) | overload with `durationS`, `sticky`; honour `ExternalTargetFilter` in the override check and when building candidate lists |
+| F2 | P0 | `Control/MissileFire.cs` `SmartFindSecondaryTargets` (`:6178`) | consult `ExternalSecondaryTargets` before `GetPrioritized*Targets`; still cap by `multiTargetNum` |
+| F3 | P0 | `Control/MissileFire.cs` `GuardMode` (`:9877`), `GuardParallelSalvoRoutine` (`:9324`), `GuardTurretRoutine` (`:2732`), `GuardMissileLaunchAuthorized` | `fireAuthority` enum + filter checks; `Hold` keeps scanning/locking but never fires; `Tight` fires only at assigned/allowed targets |
+| F4 | P0 | `UI/BDATargetManager.cs` query helpers (`:1473-1700`) | respect the WM's `ExternalTargetFilter` (so `GetGuardNonTarget` in the AI base also obeys ROE) |
+| F5 | P0 | `Radar/VesselRadarData.cs` (`:141-142`) | `DisplayedContacts`, `DisplayedIRContacts` read-only accessors |
+| F6 | P0 | `Control/BDGenericAIBase.cs` `SetWaypoints` (`:540`), `UpdateWaypoint` (`:560`) | overload decoupled from `WaypointCourses`; per-point radius/speed lists |
+| F7 | P0 | `Control/ModuleWingCommander.cs` (`:687-711`) | `SetFormationPosition`, `ClearFormationPositions`, `Wingmen` accessor |
+| F8 | P1 | `Control/BDGenericAIBase.cs` `autoPilot` (`:111`) | `SteeringOverride`, `PostAutoPilot` hooks; `BDModulePilotAI.commandOrbitRadius` (`:5335`) |
+| F9 | P1 | `Control/MissileFire.cs` `FireCurrentMissile` (`:4632`) | `public bool FireMissileAt(MissileBase, Vessel, bool)` wrapper; `OnMissileFired` event also raised from `FireParallelMissile` (`:9853`) |
+| F10 | P1 | `Competition/Scoring.cs`, `Competition/BDACompetitionMode.cs` | `OnDeath`, `OnHit`, `OnStarted`, `OnEnded` static events; `BDATargetManager.OnTargetDetected/Lost` in `ReportVessel`/`ClearRadarReport` |
+| F11 | P1 | `VesselSpawning/*` | the PLAN §7.2 quirk fixes (deconfliction reset, team assignment with `teamsSpecific`, `Spawn()` no-op, stale success flags, `CancelSpawning` NREs) |
+| F12 | P1 | `Control/MissileFire.cs` | `public ViewScanResults LastScan` |
+| F13 | P2 | `Competition/BDACompetitionMode.cs` | scoring-only competition options |
+| F14 | P3 | `Settings/BDArmorySettings.cs`, `ResetCompetitionStuff` | `RANDOM_SEED` |
+
+Each patch is small, additive, default-off, and has a reflection or emulation fallback in the shim so nothing in Skizzy *requires* the fork; `bda.hooks` tells the truth about what is available. Zero cost when no Skizzy host is present: the hooks are null delegates checked with one branch.
+
+## 6. Performance at 100–1000 vessels
+
+- The TPE reads `BDATargetManager.LoadedVessels` once per tick and `TargetList(team)` per team: O(N + T·N_enemy). No `CanSeeTarget` calls (that one allocates and raycasts; BDA already computed the result into `detected`/`detectedTime`).
+- Per-unit contact lists are read only for units in subscribed views (a human's ship, agents' units), round-robin, max K vessels per tick (default 50), so 1000 radars do not mean 1000 list walks per tick.
+- `FiredMissiles` is walked once per tick to fill `missilesInFlightAt[track]` and `inboundTo[unit]` arrays; typical raids are tens to low hundreds of missiles.
+- Secondary-target hooks receive pre-allocated lists owned by the TPE/C2 engine and must not be stored by BDA (documented in the patch).
+- BDA's own cost scales with WMs × targets (parallel salvo bounded per frame already); the recorder's `perf` channel shows BDA's `MissileFire` time via the frame-time delta, and the batch runner flags regressions.
+
+## 7. Competition as referee
+
+C2 battles run under a BDA competition started by Skizzy (`distance` 0 or the spawn geometry, `startDespiteFailures`, tag = battle id) so that scoring, kill detection and BDA's debris cleanup work. Killer-GM and duration are disabled unless the scenario asks. `bda.get_scores`, the recorder and the AAR use `ScoreData` as the authoritative result. Decision for the user: `18-risks-and-decisions.md` §3.
