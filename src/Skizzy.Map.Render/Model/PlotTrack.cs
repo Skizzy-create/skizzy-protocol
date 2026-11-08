@@ -62,5 +62,20 @@ public sealed class PlotTrack
     /// <summary>False hides the track (dead, or filtered out). Filters are the only thing that removes marks.</summary>
     public bool Visible { get; set; } = true;
 
+    /// <summary>How the viewing side knows this track. <see cref="TrackDetection.None"/> (an undetected stealth contact) is not drawn.</summary>
+    public TrackDetection Detection { get; set; }
+
+    /// <summary>
+    /// VIP (design/23 §6.13): four accent corner brackets around the symbol, a faint dashed protection ring of
+    /// <see cref="VipRadiusKm"/>, and a "VIP" tag while the track is selected.
+    /// </summary>
+    public bool Vip { get; set; }
+
+    /// <summary>VIP protection radius, km (threats inside it get priority). Default 40, as in the mockup.</summary>
+    public float VipRadiusKm { get; set; } = 40f;
+
     public bool IsMissile => KindInfo.Of(Kind).IsMissile;
+
+    /// <summary>True when the track is drawn: visible (not filtered or dead) and detected.</summary>
+    public bool IsDrawn => Visible && Detection != TrackDetection.None;
 }

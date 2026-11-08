@@ -11,7 +11,10 @@ public sealed class PlotOrder
     /// <summary>Move destination (Move orders).</summary>
     public Vector2 Destination { get; set; }
 
-    /// <summary>Attack target (Attack orders).</summary>
+    /// <summary>
+    /// The other track: the target (Attack), the current target (Hunt; 0 = none yet), the protected unit (Defend)
+    /// or the base (Rtb).
+    /// </summary>
     public int TargetTrackId { get; set; }
 
     /// <summary>Route followed (Route orders).</summary>
@@ -22,6 +25,18 @@ public sealed class PlotOrder
 
     /// <summary>This unit's formation slot offset from the route, km.</summary>
     public Vector2 RouteOffset { get; set; }
+
+    /// <summary>Racetrack flown (Racetrack orders): the id of a <see cref="PlotRacetrack"/> in <see cref="PlotScene.Racetracks"/>.</summary>
+    public int PatternId { get; set; }
+
+    /// <summary>RTB phase (Rtb orders).</summary>
+    public RtbPhase RtbPhase { get; set; }
+
+    /// <summary>
+    /// Rtb orders: how far astern of the base the marshal point sits, km (doc 24 §2: 8 km by default, a doctrine
+    /// value). The marshal point follows the base's position and heading.
+    /// </summary>
+    public float MarshalAsternKm { get; set; } = 8f;
 }
 
 /// <summary>A drawn route, shared by every unit that follows it. Drawn once per route.</summary>
@@ -29,6 +44,27 @@ public sealed class PlotRoute
 {
     public int Id { get; set; }
     public List<Vector2> Points { get; } = new();
+}
+
+/// <summary>
+/// A racetrack holding pattern (<c>hold_pattern {a, b, widthKm, turn}</c>, doc 09 §2.1.2): two straight legs from
+/// <see cref="A"/> to <see cref="B"/> joined by half circles. Shared by every unit flying it; drawn once.
+/// </summary>
+public sealed class PlotRacetrack
+{
+    public int Id { get; set; }
+
+    /// <summary>Start of the inbound leg, km.</summary>
+    public Vector2 A { get; set; }
+
+    /// <summary>End of the inbound leg, km.</summary>
+    public Vector2 B { get; set; }
+
+    /// <summary>Distance between the two legs, km (default 6, as in the mockup).</summary>
+    public float WidthKm { get; set; } = 6f;
+
+    /// <summary>Right-hand turns at the ends (the default, as in the mockup); false flies the mirror pattern.</summary>
+    public bool TurnRight { get; set; } = true;
 }
 
 /// <summary>A zone, patrol station or bullseye.</summary>
@@ -66,6 +102,7 @@ public sealed class PlotScene
     public List<PlotTrack> Tracks { get; } = new();
     public List<PlotOrder> Orders { get; } = new();
     public List<PlotRoute> Routes { get; } = new();
+    public List<PlotRacetrack> Racetracks { get; } = new();
     public List<PlotZone> Zones { get; } = new();
 
     /// <summary>Events, oldest first. Marks fade out after a few seconds of <see cref="Time"/>.</summary>
