@@ -136,6 +136,33 @@ This is the combined list of every MCP and server idea so far (2026-11-08). It's
 - Other mods can add unit types, sensors, weapons and symbology.
 - Later: logistics and rearm, damage control, comms degradation and EW, a web dashboard, and an AI battle commentator.
 
+## 15. Command model: who runs what (user decision, 2026-11-08)
+- **Any AI client, not only Claude Code.** MCP is the main way in, and any MCP client works: Claude Code, Codex, others, or a local model. A direct API key and scripts remain options. LLM spending caps are an optional guard for API-key mode and are not used with Claude Code.
+- **The AI tool is the chat.** The map doesn't need its own LLM chat client, only a comms panel that passes messages to and from whatever agents are connected.
+- **Default: no agent on each craft.**
+  - **Who commands:** the commander is either a human on the command screen or one agent, and either can take over from the other at any time. They plan, move flights, and send a swarm at the enemy's high-value assets.
+  - **Who fights:** BDArmory AI flies and fights each craft.
+  - **Automatic reports:** each unit or group reports back without any LLM: engaged, contacts, weapons spent, damage, kills, out of ammo, returning to base, lost.
+- **Group agents are optional,** only when clusters get very large (big swarms or fleets). They can be run by Codex/Claude Code as a separate session, by a script, or by the in-game group executor.
+- **Plain guard mode still works with nothing connected.**
+
+## 16. Communications, diplomacy and influence (user idea, 2026-11-08)
+- **Channels:**
+  - team (always on)
+  - cross-team/diplomatic (both sides must open it)
+  - broadcast/open frequency
+  - direct (unit to unit, commander to commander)
+
+  Every message records sender, recipient, channel and time, and is logged.
+- **Agents in a team talk to each other:** commander to group to unit-reporting, plus peer coordination.
+- **Talking to the enemy:**
+  - demand surrender, negotiate a ceasefire, make threats, bluff
+  - **psychological operations and deception:** messages are not verified, so lies are possible, and receivers decide whether to believe them
+  - "subdue or talk it out" as a valid way to win a battle
+- **Side stance:** war / ceasefire / peace / surrender, mapped onto BDArmory team allies and weapons hold. Surrender makes units safe their weapons, marks them surrendered and scores them. Firing on a surrendered unit counts as a violation.
+- **Optional realism:** comms range and jamming (EW). Off by default.
+- **Visibility:** the human sees their own side's traffic plus the diplomatic channel, or everything in god view. Use it for agent-vs-agent scenarios, e.g. two AI commanders negotiating mid-battle.
+
 ---
 
 ## Constraints and preferences
