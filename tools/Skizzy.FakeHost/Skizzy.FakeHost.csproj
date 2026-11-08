@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- FakeKsp host as a process: the CLI, the MCP bridge and the Python client test against it, and it is the
+       "no game" demo. Writes PluginData/endpoint.json and auth.token under its dir option like the real plugin. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>skizzy-fakehost</AssemblyName>
+    <RootNamespace>Skizzy.FakeHost</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Skizzy.Sim\Skizzy.Sim.csproj" />
+  </ItemGroup>
+</Project>
