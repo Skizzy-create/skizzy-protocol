@@ -356,8 +356,9 @@ function setup(){
   ship('ddg','Cleat',-11,2,{mag:{'SM-2':[48,48],ESSM:[16,16],CIWS:[1,1]},channels:3});
   ship('ssn','Tide',34,-30,{alt:-120,ctrl:'Agent',mission:'ASW screen (sub-agent)',mag:{Torpedo:[12,12],SSAM:[8,8]},group:'Submarines'});
   const osp=ship('cvn','Osprey',-6,-34,{mag:{ESSM:[16,16],CIWS:[2,2]},channels:2,vip:true});
-  [['Capstan',0,15],['Bollard',24,1],['Fairlead',-9,13],['Hawser',8,-26],['Gunwale',8,-42],['Sheave',-20,-30],['Thimble',-6,-48],['Grommet',-19,-16],
-   ['Lanyard',40,12],['Shackle',40,-18],['Bitts',34,-50],['Winch',42,34]].forEach(([n,x,y])=>ship('ddg',n,x,y,{mag:DDG.mag(),channels:DDG.ch}));
+  // each carrier keeps three destroyers close; the other 21 form the forward line
+  [['Hawser',8,-26],['Sheave',-20,-30],['Thimble',-6,-48]].forEach(([n,x,y])=>ship('ddg',n,x,y,{mag:DDG.mag(),channels:DDG.ch}));
+  const FRONT=['Capstan','Bollard','Fairlead','Gunwale','Grommet','Lanyard','Shackle','Bitts','Winch'];
   add({side:'blue',kind:'aew',name:'Watch 1',x:-25,y:28,alt:9000,hdg:0,spd:K.aew.spd,orbit:{x:-25,y:15,r:13},ctrl:'BDA',mission:'AEW orbit',fuel:.82,homeBase:1});
   add({side:'blue',kind:'aew',name:'Watch 2',x:-32,y:-44,alt:9200,hdg:0,spd:K.aew.spd,orbit:{x:-32,y:-50,r:13},ctrl:'BDA',mission:'AEW orbit',fuel:.86,homeBase:osp.id});
   let homeB=1;
@@ -368,15 +369,15 @@ function setup(){
   wing5({f:[['Viper',62,8,6800,'CAP North'],['Cobra',55,-40,6200,'CAP South'],['Hawk',22,6,5200,'Escort'],['Saber',84,30,7400,'Sweep North']],d:['Wasp',38,26,'Drone swarm']});
   homeB=osp.id;
   wing5({f:[['Falcon',82,-16,7200,'CAP Centre'],['Kite',48,-84,6400,'CAP Far South'],['Harrier',16,-44,5400,'Escort 2'],['Lancer',86,-60,7000,'Sweep South']],d:['Hornet',42,-62,'Drone swarm 2']});
-  // third carrier group: Heron with six ring destroyers
+  // third carrier group: Heron with three close destroyers
   const NEWDD=['Anchor','Bosun','Cutwater','Dory','Ensign','Fathom','Gaff','Halliard','Inboard','Jib','Keelson','Lee','Mizzen','Nock','Oarlock'];let ddi=0;
   const her=ship('cvn','Heron',-12,44,{mag:{ESSM:[16,16],CIWS:[2,2]},channels:2,vip:true});
-  for(let k=0;k<6;k++){const a=k*Math.PI/3+.3;ship('ddg',NEWDD[ddi++],her.x+Math.cos(a)*12,her.y+Math.sin(a)*12,{mag:DDG.mag(),channels:DDG.ch});}
+  for(let k=0;k<3;k++){const a=k*2*Math.PI/3+.3;ship('ddg',NEWDD[ddi++],her.x+Math.cos(a)*12,her.y+Math.sin(a)*12,{mag:DDG.mag(),channels:DDG.ch});}
   add({side:'blue',kind:'aew',name:'Watch 3',x:-20,y:58,alt:9100,hdg:0,spd:K.aew.spd,orbit:{x:-22,y:62,r:13},ctrl:'BDA',mission:'AEW orbit',fuel:.84,homeBase:her.id});
   homeB=her.id;
   wing5({f:[['Eagle',60,52,6600,'CAP North 2'],['Condor',42,92,6900,'CAP Far North'],['Hound',4,50,5000,'Escort 3'],['Puma',88,64,7300,'Sweep Far North']],d:['Gnat',30,62,'Drone swarm 3']});
-  // nine picket destroyers on the threat axis (30 destroyers in all)
-  [[70,-60],[70,-30],[74,0],[70,30],[66,60],[58,-92],[58,92],[90,-14],[90,16]].forEach(([x,y])=>ship('ddg',NEWDD[ddi++],x,y,{mag:DDG.mag(),channels:DDG.ch}));
+  // forward line: 21 destroyers staggered across the threat axis (30 destroyers in all)
+  FRONT.push(...NEWDD.slice(ddi));FRONT.forEach((n,i)=>ship('ddg',n,72+(i%2)*14,-120+i*12,{mag:DDG.mag(),channels:DDG.ch}));
   // five more submarines (six with Tide), each with 8 sub-launched SAMs guided by a data link
   [['Trench',140,-10],['Shoal',150,50],['Eddy',150,-62],['Riptide',126,100],['Undertow',126,-112]].forEach(([n,x,y])=>ship('ssn',n,x,y,{alt:-150,spd:.002,mission:'Forward air-defence screen',mag:{Torpedo:[12,12],SSAM:[8,8]},channels:2,group:'Submarines'}));
   // every carrier keeps 6 armed fighters ready on deck (launched by Launch ready aircraft or by an attack order)
@@ -384,26 +385,26 @@ function setup(){
   objs.filter(o=>o.kind==='cvn').forEach((cv,ci)=>{for(let i=0;i<6;i++){const r=add({side:'blue',kind:'ftr',name:RES[ci]+' '+(i+1),x:cv.x,y:cv.y,alt:300,hdg:cv.hdg,spd:K.ftr.spd,orbit:{x:cv.x+18,y:cv.y,r:10},aam:8,aamMax:8,ctrl:'Mission',mission:'Deck reserve',group:RES[ci]+' (deck)',doctrine:'Free',onContact:'task',fuel:.95,homeBase:cv.id});
     r.home=r.orbit;r.alive=false;r.deck=cv.id;r.ready=true;r.landedT=-999;}});
   for(const o of objs)if(o.side==='blue'&&o.group==null)o.group=o.kind==='aew'?'AEW':(o.kind==='ssn'?'Submarine':'Surface group');
-  const ESC_AHEAD=14,ESC_AAM=4,SWP_AAM=2;
+  const ESC_AHEAD=14,ESC_AAM=8,SWP_AAM=4,RED_OFF=120;
   // Red: ten times the original raid, in four waves; strike escorts armed and screening ahead of the bombers; strike aircraft halved (2 per package), every fighter kept
   let n=0;const pad=i=>String(i).padStart(2,'0');
   const redA=(o)=>{const r=add(Object.assign({side:'red',hdg:0,idState:'unknown',ctrl:'BDA'},o));r.hdg=Math.atan2(-r.y,-r.x);n++;return r;};
-  for(let w=0;w<4;w++)for(let j=0;j<5;j++){const g=w*5+j,cy=-160+j*80,cx=228+w*90+(rnd()-.5)*10;
+  for(let w=0;w<4;w++)for(let j=0;j<10;j++){const g=w*10+j,cy=-180+j*40,cx=228+RED_OFF+w*90+(rnd()-.5)*10;
     for(let i=0;i<8;i++){const kind=i<2?'bmr':'ftr';
       redA({kind,name:'R'+(g+1)+'-'+pad(i+1),x:cx-(kind==='ftr'?ESC_AHEAD:0)+(rnd()-.5)*12,y:cy+(rnd()-.5)*12,alt:kind==='bmr'?1800+rnd()*2600:4500+rnd()*5000,spd:K[kind].spd+(rnd()-.5)*.02,
-        group:'R'+(g+1),gtype:'strike',state:kind==='bmr'?'ingress':'escort',asm:kind==='bmr'?8:0,aam:kind==='ftr'?ESC_AAM:0,pair:i>>1,off:(rnd()-.5)*.5});}}
+        group:'R'+(g+1),gtype:'strike',state:kind==='bmr'?'ingress':'escort',asm:kind==='bmr'?16:0,aam:kind==='ftr'?ESC_AAM:0,pair:i>>1,off:(rnd()-.5)*.5});}}
   const swY=[-240,-210,210,240,-5];
-  for(let k=0;k<10;k++){const w=Math.floor(k/5)*2,cy=swY[k%5],cx=215+w*90;
-    for(let i=0;i<10;i++)redA({kind:'ftr',name:'R'+(21+k)+'-'+pad(i+1),x:cx+(rnd()-.5)*12,y:cy+(rnd()-.5)*12,alt:6000+rnd()*4000,spd:.27,group:'R'+(21+k),gtype:'sweep',state:'escort',asm:0,aam:SWP_AAM,pair:i>>1,off:cy>0?-.25:.25});}
+  for(let k=0;k<20;k++){const w=Math.floor(k/5),cy=swY[k%5],cx=215+RED_OFF+w*90;
+    for(let i=0;i<10;i++)redA({kind:'ftr',name:'R'+(41+k)+'-'+pad(i+1),x:cx+(rnd()-.5)*12,y:cy+(rnd()-.5)*12,alt:6000+rnd()*4000,spd:.27,group:'R'+(41+k),gtype:'sweep',state:'escort',asm:0,aam:SWP_AAM,pair:i>>1,off:cy>0?-.25:.25});}
   // two defensive fighter squadrons holding combat air patrols over the strike route
-  for(let q=0;q<2;q++){const cap={x:190,y:q?-60:60,r:18};
-    for(let i=0;i<6;i++)redA({kind:'ftr',name:'DF'+(q+1)+'-'+pad(i+1),x:cap.x+(rnd()-.5)*20,y:cap.y+(rnd()-.5)*20,alt:8000+rnd()*3000,spd:.25,group:'DF'+(q+1),gtype:'dcap',state:'dcap',cap,asm:0,aam:6,pair:i>>1,off:0});}
-  for(let b=0;b<10;b++){const ang=(b<5?20+b*10:-20-(b-5)*10)*Math.PI/180,r=200+(b%3)*22,bx=Math.cos(ang)*r,by=Math.sin(ang)*r;
-    for(let i=0;i<10;i++){const o=add({side:'red',kind:'uav',name:'D'+String(b*10+i+1).padStart(3,'0'),x:bx+(i%5)*1.4+rnd(),y:by+Math.floor(i/5)*1.4+rnd(),alt:200+rnd()*300,spd:.05,idState:'unknown',group:'D'+(b+1),ctrl:'Script'});o.hdg=Math.atan2(-o.y,-o.x-10);}}
-  for(let q=0;q<5;q++){const sgn=q%2?-1:1;
-    for(let i=0;i<2;i++){const o=add({side:'red',kind:'ftr',name:'S-'+pad(q*2+i+1),x:72+q*14+i*1.5,y:sgn*(98+q*10)+i,alt:9500,hdg:0,spd:.24,idState:'unknown',group:'S'+(q+1),gtype:'stealth',state:'escort',asm:0,aam:0,pair:i,off:sgn*.5,ctrl:'BDA',stealth:true,seen:false});o.hdg=Math.atan2(-o.y,-o.x);}}
-  logMsg('contact',`New air contacts: 32 groups, ${n} tracks in four waves, bearing 040–140, 215–500 km. Identity unknown.`,300,0);
-  logMsg('contact','Slow low contacts: 100 tracks in ten blocks, north and south, about 200–245 km. Identity unknown.',170,112);
+  for(let q=0;q<2;q++){const cap={x:190+RED_OFF,y:q?-60:60,r:18};
+    for(let i=0;i<12;i++)redA({kind:'ftr',name:'DF'+(q+1)+'-'+pad(i+1),x:cap.x+(rnd()-.5)*20,y:cap.y+(rnd()-.5)*20,alt:8000+rnd()*3000,spd:.25,group:'DF'+(q+1),gtype:'dcap',state:'dcap',cap,asm:0,aam:12,pair:i>>1,off:0});}
+  for(let b=0;b<10;b++){const ang=(b<5?20+b*10:-20-(b-5)*10)*Math.PI/180,r=300+(b%3)*22,bx=Math.cos(ang)*r,by=Math.sin(ang)*r;
+    for(let i=0;i<20;i++){const o=add({side:'red',kind:'uav',name:'D'+String(b*20+i+1).padStart(3,'0'),x:bx+(i%5)*1.4+rnd(),y:by+Math.floor(i/5)*1.4+rnd(),alt:200+rnd()*300,spd:.07,idState:'unknown',group:'D'+(b+1),ctrl:'Script'});o.hdg=Math.atan2(-o.y,-o.x-10);}}
+  for(let q=0;q<10;q++){const sgn=q%2?-1:1;
+    for(let i=0;i<2;i++){const o=add({side:'red',kind:'ftr',name:'S-'+pad(q*2+i+1),x:200+q*14+i*1.5,y:sgn*(98+q*10)+i,alt:9500,hdg:0,spd:.24,idState:'unknown',group:'S'+(q+1),gtype:'stealth',state:'escort',asm:0,aam:0,pair:i,off:sgn*.5,ctrl:'BDA',stealth:true,seen:false});o.hdg=Math.atan2(-o.y,-o.x);}}
+  logMsg('contact',`New air contacts: 62 groups, ${n} tracks in four waves, bearing 040–140, 335–620 km. Identity unknown.`,300,0);
+  logMsg('contact','Slow low contacts: 200 tracks in ten blocks, north and south, about 300–345 km. Identity unknown.',170,112);
   logMsg('orders','Sea control ALPHA active. Doctrine: weapons free against missiles, tight against aircraft.',0,0);
   logMsg('orders','Six submarines carry sub-launched SAMs. Each missile needs a data link from a fighter, drone or destroyer holding the target. With no link for 10 s it self-destructs.',0,0);
   sel.clear();primary=byId.get(1).id;sel.add(primary);
