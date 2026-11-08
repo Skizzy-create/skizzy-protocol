@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The Unity-free host core (src/Skizzy.Host/Core) compiled for .NET 10 so CI, FakeKsp and the allocation
+    asserts run the same engine code without the game (02 §1.1, §8.1). Sources are linked, not copied.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Skizzy.Host.Core</AssemblyName>
+    <RootNamespace>Skizzy.Host.Core</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Skizzy.Host\Core\**\*.cs" LinkBase="Core" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Skizzy.Protocol\Skizzy.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Skizzy.Host.Tests" />
+    <InternalsVisibleTo Include="Skizzy.Sim" />
+  </ItemGroup>
+</Project>

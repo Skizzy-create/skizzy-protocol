@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Out-of-game build of the shared protocol sources (bridge, CLI, client, tests, fake host).
+       The in-game build of the same sources is src/Skizzy.Protocol.Ksp (net48, NoStdLib). -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>Skizzy.Protocol</RootNamespace>
+    <AssemblyName>Skizzy.Protocol</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Skizzy.Protocol.Tests" />
+    <InternalsVisibleTo Include="Skizzy.Host.Core" />
+    <InternalsVisibleTo Include="Skizzy.Host.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Skizzy.Cli\Skizzy.Cli.csproj" />
+    <ProjectReference Include="..\..\src\Skizzy.Host.Core\Skizzy.Host.Core.csproj" />
+    <ProjectReference Include="..\..\src\Skizzy.Sim\Skizzy.Sim.csproj" />
+    <ProjectReference Include="..\..\src\Skizzy.Client\Skizzy.Client.csproj" />
+  </ItemGroup>
+</Project>

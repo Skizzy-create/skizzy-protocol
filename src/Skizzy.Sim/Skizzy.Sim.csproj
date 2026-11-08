@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- FakeKsp: IGameWorld for CI and demos without the game (02 §1, D13). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Skizzy.Sim</AssemblyName>
+    <RootNamespace>Skizzy.Sim</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Skizzy.Host.Core\Skizzy.Host.Core.csproj" />
+    <ProjectReference Include="..\Skizzy.Protocol\Skizzy.Protocol.csproj" />
+  </ItemGroup>
+</Project>

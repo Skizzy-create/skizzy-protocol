@@ -130,8 +130,8 @@ The host's **report engine** turns events the TPE, BDA adapter and C2 engine alr
 
 | Family | Types | Default executor |
 |---|---|---|
-| Movement | `move_to`, `move_route`, `patrol_area`, `loiter {center, radius, alt}`, `follow {leader, slot}`, `formation {template}`, `hold_position`, `return_to {point|carrier}`, `rtb` (§2.1.1), `set_depth`, `set_speed_limit`, `set_alt_band` | in-game (BDA commands + holds, `06-flight-control.md`) |
-| Engagement | `engage {track}`, `engage_all {filter}`, `defend_sector {sector, priorities}`, `defend_unit {unit, radius}`, `intercept {track}`, `screen {main_body, bearings}`, `escort {unit}`, `suppress {zone}`, `strike {target, package}`, `attack_position {pos}` | in-game (assignments, fire authority, BDA `CommandAttack`) |
+| Movement | `move_to`, `move_route`, `patrol_area`, `loiter {center, radius, alt}`, `follow {leader, slot}`, `formation {template}`, `hold_position`, `return_to {point|carrier}`, `rtb` (§2.1.1), `hold_pattern {a, b, widthKm?: 6, turn?: right, altStackM?: 300}` (racetrack, §2.1.2), `set_depth`, `set_speed_limit`, `set_alt_band` | in-game (BDA commands + holds, `06-flight-control.md`) |
+| Engagement | `engage {track}`, `engage_all {filter}`, `defend_sector {sector, priorities}`, `defend_unit {unit, radius}`, `intercept {track}`, `screen {main_body, bearings}`, `escort {unit, slot?: ahead|abreast|astern}` (`ahead` = screen in front of a strike package), `suppress {zone}`, `strike {target, package}`, `attack_position {pos}`, `attack_nearest` ("hunt", §2.1.3), `all_attack` (side scope, §2.1.3) | in-game (assignments, fire authority, BDA `CommandAttack`) |
 | Fire control | `weapons_hold`, `weapons_tight`, `weapons_free`, `set_roe {profile}`, `missile_budget {per_track, total}`, `salvo_policy {size, stagger}` | in-game (WM fields, F3 hook) |
 | Sensors | `emcon {level}`, `radar {on|off}`, `sonar {passive|active|off}`, `irst`, `datalink {on|off}` (comms model) | in-game |
 | Systems | `launch {aircraft}`, `recover {aircraft}`, `refuel`, `rearm`, `damage_control {priority}`, `action_group {n}` | in-game adapters (P2) |
@@ -172,6 +172,38 @@ c2.order.issue {type:"rtb", units|group|mission|side:"Blue", filter?:{domain:air
   - a right-click menu entry
   - in-game, a Skizzy toolbar entry "RTB selected / RTB all" that works with nothing but the host running (no AI client needed)
 - **MCP.** The `c2_order` tool accepts `type:"rtb"`. The compact form is `rtb Cobra` or `rtb all air`.
+
+#### 2.1.2 Racetrack holding pattern and carrier landing (user request, 2026-11-08; mockup v10)
+
+- **`hold_pattern`** is a racetrack: two straight legs from `a` to `b`, joined by half-circles of width `widthKm`.
+  - Each aircraft in the order gets its own altitude in a stack. Drones and AEW use their own base altitudes.
+  - It is valid for aircraft only. Ships and subs **refuse** with `NOT_APPLICABLE` and a reason ("use move or a route").
+  - Self-defence fire stays allowed while holding.
+  - Executor: per-unit pursuit of a point a few samples ahead on the sampled racetrack. In KSP this means BDA waypoints (F6) re-fed each lap, or the Skizzy flight engine when it holds the `steer` lease.
+- **RTB & land** extends `rtb` (§2.1.1) with the full carrier cycle.
+  - **Transit** to the marshal point, 8 km astern of the carrier.
+  - **Marshal** stack in arrival order (FIFO). Altitude steps down as aircraft ahead land, starting at 1,200 m with 300 m steps.
+  - **Approach clearance,** one aircraft every `landGapS` (5 s in the mockup).
+  - **Land:** the aircraft is on deck, off the plot, and listed in the carrier's Flight deck section.
+  - **Turnaround:** rearm and refuel take 90 s.
+  - **Launch:** ready aircraft return to their missions.
+  - If the carrier is lost, aircraft on deck are lost with it, and aircraft still inbound report that they cannot land and go back to their mission.
+- **Real-system gap.** BDArmory's pilot AI cannot land on a moving carrier. Real landing needs a carrier-landing autopilot driving the ACA arrestor wires: the `recover` adapter in the Systems family. **The user wants this, so it moves up from P2 to P1 (M8, naval depth).** Until it exists, `rtb` ends at marshal with the "on station at marshal" report, and the deck cycle is only simulated in the mockup and Skizzy.Sim.
+
+#### 2.1.3 Attack nearest, all attack and advance on contact (mockup v13–v14)
+
+- **`attack_nearest`** ("hunt") for the selection, a group or a mission.
+  - Each unit claims the nearest unclaimed hostile aircraft that is closing; if there is none, the nearest missile no friendly is engaging. Claims are held by the C2 engine, so units spread across targets instead of piling on one.
+  - When a claimed target dies or is lost, the unit claims again. The order runs until nothing is left to claim, then the unit returns to its mission.
+  - Winchester aircraft refuse the claim and get `rtb` with the reason in the report.
+  - Carriers in the order launch their armed deck reserve (`launch`, Systems family); each launched aircraft joins the order. The reserve size is set per carrier in the scenario.
+  - Executor: a non-sticky F1 assignment per unit, re-assigned on `OnExternalOverrideLost` and `unit.destroyed` (`24-ksp-parity.md` row 26).
+- **`all_attack`**: `attack_nearest` for every unit of the side, issued from the top bar with a double-click as confirmation (no modal dialogs). Ships also extend their SAM engagement range to the weapon's maximum (90 km in the mockup). Scope `side` needs the seat or the referee, as for `rtb all`.
+- **Advance on contact** is a doctrine flag, not an order: `advanceOnContact: on (default) | off`, side level, toggled from the top bar.
+  - From the first identified hostile, every airborne fighter and drone moves toward the nearest identified hostile and re-picks every 2 s, so its course follows the picture as more hostiles are identified.
+  - Excluded: AEW, units on weapons Hold, units with an explicit operator order, and winchester units.
+  - It runs at behaviour precedence (300), so any commander order (800) replaces it for that unit, and guard mode does the actual engagement when the hostile comes into range.
+- **Related doctrine defaults** (§11.1): `selfDefenceFighterKm: 25` (a hostile fighter inside this range is engaged before the current order, and the interruption is logged), `classificationRangeKm: {fighter: 45, drone: 25, aew: 175, ship: 150}` (a track is identified only when an own unit's radar holds it inside its class range).
 
 ### 2.2 Lifecycle
 
@@ -581,6 +613,9 @@ The switch is seamless and shown per unit (§4.1, `11-tactical-map.md` §6.1).
 | `reports` | §1.3 | report engine |
 | `pauseOn` | §11.6 | session pause policy |
 | `requireIff`, `minRangeToFriendlyM` | as §2.3 | ROE evaluator |
+| `advanceOnContact` | `on` (default) / `off` (§2.1.3) | behaviour executor (F6 one-point routes) |
+| `selfDefenceFighterKm` | km, default 25 | executor (short F1 assignment ahead of the order) |
+| `classificationRangeKm` per unit class | default `{fighter: 45, drone: 25, aew: 175, ship: 150}` | track engine (identification flag) |
 
 ### 11.2 Missions as first-class objects (P1, M6)
 

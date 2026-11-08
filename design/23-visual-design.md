@@ -146,3 +146,67 @@ These were recorded by the user on 2026-11-08 and must hold in the real system:
     - Each unit resolves its own base. Units with no base refuse with a reason (point 10).
     - Aircraft hold at the marshal point because BDArmory cannot land on a carrier.
     - Spec in `09-c2-multi-agent.md` §2.1.1.
+12. **Fighters and drones engage missiles when no aircraft are in view** (user request, 2026-11-08; mockup v9).
+    - Air-defence target priority for own aircraft and drones:
+      1. threats to a VIP
+      2. hostile aircraft
+      3. anti-ship missiles and attack drones, one missile per threat, with the gun up close
+    - In the real system this is a doctrine field: `airEngageMissiles: when_no_air (default) | always | never`. It maps to BDArmory's interceptor and missile-targeting settings on the weapon manager (F2/F4 filters decide the order).
+    - Mockup v9 measured at T+700 s: 24 AAMs fired at missiles or drones, 12 air intercepts. v8 had none.
+13. **VIPs and protect orders** (user request, 2026-11-08; mockup v9).
+    - **Mark VIP:** V key or the Unit panel button, on any own units. Kestrel starts as a VIP in the demo.
+    - **Effect of VIP status:** every shooter (fighters, drones, ship SAMs) ranks threats to a VIP first. A threat is a missile aimed at it, or a hostile aircraft or drone within 40 km of it.
+    - **Protect order:** select units, then right-click one of your own units. That unit becomes a VIP. Aircraft orbit it at 7–10 km and engage anything within 40 km of it; ships take stations around it. When the VIP is lost, the protectors report and go back to their mission.
+    - **On the plot:** four accent corner brackets around the symbol, a faint 40 km protection ring, and the "VIP" tag only when the unit is selected (so it doesn't collide with labels).
+    - **In the real system:** `defend_unit {unit, radius}` (`09-c2-multi-agent.md` §2.1) plus a side-level `vip` flag that feeds WTA priority.
+14. **Orders section for the selection** (user request, 2026-11-08; mockup v10). The Unit panel's "Orders for the selection" section holds:
+    - **RTB & land (R):** aircraft stack at the marshal point and land one at a time; ships return to station; the carrier refuses because it is the base.
+    - **Racetrack… (T):** drag the long leg on the plot. A plain click makes a 20 km leg. Aircraft stack 300 m apart. Ships refuse with a reason.
+    - **RTB all aircraft:** Shift+R twice within 3 s. The second press is the confirmation, since there are no modal dialogs.
+    - **The carrier's Flight deck section** shows aircraft on deck, ready or rearming, plus **Launch ready aircraft**.
+    - **On the plot:** a solid accent racetrack with a direction arrow, a dashed MARSHAL ring astern of the carrier, and dashed lines from inbound aircraft to the marshal point.
+    - Spec in `09-c2-multi-agent.md` §2.1.2.
+15. **Patrols fight; guard vs passive; stay on task vs engage on contact; stealth** (user request, 2026-11-08; mockup v11).
+    - **A racetrack is a patrol.** With weapons Free (guard), aircraft leave the pattern to fight anything their own sensors detect within a 55 km leash, then resume. With Hold (passive) they stay on the pattern and do not fire.
+    - **Weapons control applies to aircraft as well as ships:** Free = guard, Tight = assigned targets and close threats, Hold = passive.
+    - **Per-unit setting "when a new hostile appears during an order":**
+      - **Stay on task** (default): go for the assigned target and ignore crossing hostiles.
+      - **Engage on contact:** attack anything the unit's own radar detects, then continue the order. Use this for the "send one to get the HVT, the rest fight here" case.
+    - **Stealth pair S-01/S-02:** invisible on the shared picture until a Blue unit's own radar sees it. Measured: Cobra 4 at 24.6 km, T+131 s.
+    - **RTB all moved to the top bar,** because it is side-wide.
+    - **Measured in v11:**
+      - patrol Free: 10 AAMs fired, diversions logged, resume logged
+      - patrol Hold: 0 fired, 24/24 on the pattern
+      - attack, stay on task: 0 diversions
+      - attack, engage on contact: diversions to R3/R5 contacts at 45 km
+    - **KSP mapping:** `24-ksp-parity.md` rows 5–9 and the new hook F6b.
+16. **Self-defence first, and identification by own radar** (mockup v12).
+    - A fighter engages a hostile fighter inside 25 km before carrying on with its order. The interruption is logged, as rule 2 of point 10 requires.
+    - A track counts as identified only when an own unit's radar holds it inside that unit's class range: fighter 45 km, drone 25, AEW 175, ships 150. Stealth contacts follow the same rule (point 15).
+    - Opposing air-defence squadrons armed with AAMs hold CAPs and fight, using the same patrol mechanism as Blue.
+    - Aircraft loadouts are per craft (the mockup now flies maximum air-to-air loads). In KSP they come from the craft file.
+    - **KSP mapping:** `24-ksp-parity.md` rows 21, 23, 24, 30.
+17. **Attack nearest and All attack** (mockup v13).
+    - **Attack nearest** ("hunt") for the selection: each unit takes the nearest unclaimed closing hostile aircraft, or an unengaged missile. Claims spread units across targets. Winchester fighters go home instead.
+    - **All attack** in the top bar, double-click to confirm: every unit hunts, and ships extend SAM range to the weapon's maximum.
+    - Carriers in an attack order launch their armed deck reserve toward the nearest closing craft or unengaged missiles.
+    - **First Blue launch alert,** separate from the opposing side's first-launch alert.
+    - **KSP mapping:** rows 25–27 and 31; spec in `09-c2-multi-agent.md` §2.1.3.
+18. **Advance on contact** (mockup v14; top-bar toggle, default on).
+    - From the first identified hostile, airborne fighters and drones fly toward the nearest identified hostile and re-pick every 2 s, so courses bend as more of the picture fills in.
+    - Excluded: AEW, units on Hold, units with an explicit operator order, winchester units. An operator order always wins.
+    - **KSP mapping:** row 28, doctrine `advanceOnContact`.
+19. **Escorts screen ahead of the strike** (mockup v14).
+    - Opposing strike escorts carry AAMs and fly ahead of the bombers, so interceptors meet the escorts first and the bombers reach anti-ship launch range.
+    - The same applies to Blue packages: `escort {unit, slot: ahead}`.
+    - **KSP mapping:** row 22 (escort slots fed as F6 routes or BDA wing formation slots, guard mode on the escorts).
+20. **Sub-launched SAMs with data link** (mockup v14; the user wants this in KSP).
+    - A submarine fires at an identified hostile aircraft only while a friendly unit holds the target close enough to guide the missile: fighter within 45 km, drone 25, destroyer 60.
+    - In flight the link hands over to any other unit that holds the target.
+    - If no unit can take the link, the missile coasts toward the last known position and self-destructs after 10 s. A link regained within 10 s lets it continue.
+    - The log records link lost, link regained and self-destruct.
+    - **KSP mapping:** rows 33–34 and the proposed hooks OD2 (link provider) and OD3 (link-loss self-destruct) in `07-bdarmory-integration.md` §5.2. Stock BDA already pools allied radar data for data-link missiles through the launcher, which gets part of the way.
+21. **Scale is a scenario property** (mockup v14).
+    - The mockup's force sizes (v12–v14) describe its test scenario (`24-ksp-parity.md` §1.1), not a product requirement.
+    - What KSP needs: spawn a scenario of any size from force templates (OD1 plus craft files), per-craft magazine loads from the craft file, submarine units, and deck reserve launch. That is phase v2 in `24-ksp-parity.md` §1.1.
+
