@@ -1,0 +1,1081 @@
+<title>Skizzy Command</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=Saira+Semi+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Layout: a combat-information-centre console. Docked panels around one live plot; the plot is the brightest thing on screen, panels recede. */
+:root{
+  color-scheme: dark;
+  /* surfaces: blue-green slate, dimmed like a darkened CIC */
+  --ink-0:#071013;      /* app ground */
+  --ink-1:#0c171b;      /* panels */
+  --ink-2:#12222828;    /* hover wash (alpha) */
+  --ink-3:#162a31;      /* raised controls */
+  --line:#1d333b;
+  --line-hi:#2a4a55;
+  --sea:#081519;
+  --grid:#10242b;
+  --grid-hi:#173540;
+  --text:#d3e0e4;
+  --text-dim:#7f979f;
+  --text-faint:#4f666e;
+  /* affiliation (MIL-STD-2525 hues, tuned for a dark plot; shape always carries the same meaning) */
+  --friend:#62c6f2;
+  --hostile:#ff6a57;
+  --unknown:#e9c84f;
+  --neutral:#7cd68e;
+  /* operator accent: selection, your controls, things you own */
+  --accent:#b5a3ff;
+  /* state */
+  --ok:#59d09a; --warn:#f0a43a; --crit:#ff4b4b;
+  /* type */
+  --font-display:"Saira Semi Condensed","Arial Narrow",system-ui,sans-serif;
+  --font-ui:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --font-data:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --fs-xs:10.5px; --fs-s:12px; --fs-m:13px; --fs-l:15px;
+  --lw:300px; --rw:310px; --bh:190px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ink-0);color:var(--text);font:var(--fs-m)/1.4 var(--font-ui);overflow:hidden;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.app{height:100%;display:grid;gap:0;
+  grid-template-columns:var(--lw) 6px minmax(0,1fr) 6px var(--rw);
+  grid-template-rows:auto minmax(0,1fr) 6px var(--bh);
+  grid-template-areas:"top top top top top" "left sl map sr right" "left sl hs sr right" "left sl bot sr right";}
+.app.no-left{--lw:0px}.app.no-right{--rw:0px}.app.no-bot{--bh:0px}
+.app.no-left .left,.app.no-right .right,.app.no-bot .bot{display:none}
+.app.no-left .sl,.app.no-right .sr,.app.no-bot .hs{pointer-events:none;opacity:0}
+
+/* top bar */
+.top{grid-area:top;display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;padding:0 2px 10px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand b{font:700 15px/1 var(--font-display);letter-spacing:.14em;text-transform:uppercase}
+.brand span{font:500 var(--fs-s)/1 var(--font-ui);color:var(--text-dim)}
+.ut{font:500 var(--fs-l)/1 var(--font-data);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.ut small{display:block;font:500 9.5px/1 var(--font-display);letter-spacing:.16em;color:var(--text-faint);margin-bottom:3px}
+.grp{display:flex;align-items:center;gap:4px}
+.seg{display:inline-flex;border:1px solid var(--line-hi);border-radius:4px;overflow:hidden}
+.seg button{background:transparent;border:0;padding:4px 8px;font:500 var(--fs-s)/1.2 var(--font-data);color:var(--text-dim);font-variant-numeric:tabular-nums}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink-3);color:var(--text)}
+.seg button:hover{color:var(--text)}
+.btn{background:var(--ink-3);border:1px solid var(--line-hi);border-radius:4px;padding:4px 10px;font:500 var(--fs-s)/1.2 var(--font-ui);color:var(--text)}
+.btn:hover{border-color:var(--text-faint)}
+.btn.ghost{background:transparent}
+.btn.acc{border-color:color-mix(in srgb,var(--accent) 60%,transparent);color:var(--accent)}
+.btn[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,var(--ink-3));border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font:600 10.5px/1.2 var(--font-display);letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--line-hi);white-space:nowrap}
+.pill.war{color:var(--hostile);border-color:color-mix(in srgb,var(--hostile) 50%,transparent);background:color-mix(in srgb,var(--hostile) 9%,transparent)}
+.pill.seat{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+.lbl{font:600 9.5px/1 var(--font-display);letter-spacing:.16em;text-transform:uppercase;color:var(--text-faint)}
+.spacer{flex:1}
+.tsel{background:var(--ink-3);border:1px solid var(--line-hi);border-radius:4px;padding:3px 6px;font-size:var(--fs-s)}
+.unit input{background:var(--ink-3);border:1px solid var(--line-hi);border-radius:4px;padding:4px 8px;font-size:var(--fs-s);min-width:0;flex:1}
+.chip b{font:600 10px/1 var(--font-data);color:var(--accent);margin-right:5px}
+
+/* panels */
+.panel{background:var(--ink-1);border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
+.left{grid-area:left}.right{grid-area:right}.bot{grid-area:bot}
+.ph{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);flex:none}
+.ph h2{margin:0;font:600 11px/1 var(--font-display);letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim)}
+.ph .x{margin-left:auto;background:none;border:0;color:var(--text-faint);font-size:15px;line-height:1;padding:0 2px}
+.ph .x:hover{color:var(--text)}
+.pb{overflow:auto;min-height:0;flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:4px;padding:8px 10px;border-bottom:1px solid var(--line);flex:none}
+.chip{background:transparent;border:1px solid var(--line-hi);border-radius:999px;padding:2px 9px;font:500 11px/1.4 var(--font-ui);color:var(--text-dim)}
+.chip[aria-pressed="true"]{color:var(--text);background:var(--ink-3);border-color:var(--text-faint)}
+.chip i{font-style:normal;font-family:var(--font-data);color:var(--text-faint);margin-left:4px}
+
+/* splitters */
+.sl{grid-area:sl}.sr{grid-area:sr}.hs{grid-area:hs}
+.sl,.sr{cursor:col-resize}.hs{cursor:row-resize}
+.sl,.sr,.hs{position:relative;touch-action:none}
+.sl::after,.sr::after{content:"";position:absolute;inset:40% 2px;border-radius:2px;background:var(--line)}
+.hs::after{content:"";position:absolute;inset:2px 46%;border-radius:2px;background:var(--line)}
+.sl:hover::after,.sr:hover::after,.hs:hover::after{background:var(--accent)}
+
+/* map */
+.mapwrap{grid-area:map;position:relative;min-height:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--sea)}
+#plot{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
+#plot.grab{cursor:grabbing}
+.mtool{position:absolute;left:10px;top:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:calc(100% - 20px);
+  background:color-mix(in srgb,var(--ink-1) 88%,transparent);border:1px solid var(--line);border-radius:6px;padding:6px 8px;backdrop-filter:blur(6px)}
+.mtool select{background:var(--ink-3);border:1px solid var(--line-hi);border-radius:4px;padding:3px 6px;font-size:var(--fs-s)}
+.mtool input[type=range]{width:84px;accent-color:var(--accent)}
+.tg{background:transparent;border:1px solid var(--line-hi);border-radius:4px;padding:3px 8px;font:500 11.5px/1.2 var(--font-ui);color:var(--text-dim)}
+.tg[aria-pressed="true"]{color:var(--text);background:var(--ink-3);border-color:var(--text-faint)}
+.sep{width:1px;height:18px;background:var(--line-hi)}
+.tip{position:absolute;pointer-events:none;z-index:4;background:color-mix(in srgb,var(--ink-1) 94%,transparent);border:1px solid var(--line-hi);border-radius:5px;padding:6px 8px;font:var(--fs-xs)/1.45 var(--font-data);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tip b{font:600 12px/1.3 var(--font-ui);display:block}
+.banner{position:absolute;left:50%;top:58px;transform:translateX(-50%);z-index:5;display:flex;gap:12px;align-items:center;
+  background:color-mix(in srgb,var(--crit) 14%,var(--ink-1));border:1px solid color-mix(in srgb,var(--crit) 55%,transparent);border-radius:6px;padding:8px 12px;max-width:calc(100% - 24px)}
+.banner span{font:500 var(--fs-s)/1.35 var(--font-ui)}
+.banner b{font:600 10.5px/1 var(--font-display);letter-spacing:.14em;color:var(--crit);text-transform:uppercase;display:block;margin-bottom:3px}
+.toast{position:absolute;left:50%;bottom:52px;transform:translateX(-50%);z-index:6;background:color-mix(in srgb,var(--accent) 14%,var(--ink-1));border:1px solid color-mix(in srgb,var(--accent) 50%,transparent);border-radius:6px;padding:8px 12px;font:500 var(--fs-s)/1.35 var(--font-ui);max-width:min(560px,calc(100% - 24px));text-align:center}
+.legend{position:absolute;right:10px;bottom:50px;background:color-mix(in srgb,var(--ink-1) 90%,transparent);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:var(--fs-xs)/1.3 var(--font-ui);color:var(--text-dim)}
+.legend canvas{display:block}
+
+/* timeline */
+.tl{position:absolute;left:10px;right:10px;bottom:10px;display:flex;gap:8px;align-items:center;pointer-events:none}
+.tl > *{pointer-events:auto}
+.tlbox{flex:1;position:relative;height:30px;background:color-mix(in srgb,var(--ink-1) 88%,transparent);border:1px solid var(--line);border-radius:6px;padding:0 10px;display:flex;align-items:center}
+.tlbox input{width:100%;accent-color:var(--accent);position:relative;z-index:1}
+#ticks{position:absolute;left:10px;right:10px;top:3px;height:6px}
+.tlt{font:500 11px/1 var(--font-data);color:var(--text-dim);font-variant-numeric:tabular-nums;min-width:62px}
+
+/* tracks table */
+table{border-collapse:collapse;width:100%;font:var(--fs-xs)/1.3 var(--font-data);font-variant-numeric:tabular-nums}
+th{position:sticky;top:0;background:var(--ink-1);text-align:left;font:600 9.5px/1 var(--font-display);letter-spacing:.14em;text-transform:uppercase;color:var(--text-faint);padding:7px 6px;border-bottom:1px solid var(--line);z-index:1}
+td{padding:4px 6px;border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent);white-space:nowrap}
+td.n{text-align:right}th.n{text-align:right}
+tr{cursor:pointer}
+tbody tr:hover{background:var(--ink-2)}
+tr.sel{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.sw{display:inline-block;width:8px;height:8px;margin-right:6px;vertical-align:0}
+.sw.friend{background:var(--friend);border-radius:50%}
+.sw.hostile{background:var(--hostile);transform:rotate(45deg) scale(.85)}
+.sw.unknown{background:var(--unknown);border-radius:2px}
+.sw.dead{background:var(--text-faint)}
+
+/* unit panel */
+.unit{padding:10px 12px;display:flex;flex-direction:column;gap:12px}
+.uh{display:flex;gap:10px;align-items:center}
+.uh canvas{flex:none}
+.uh h3{margin:0;font:600 18px/1.1 var(--font-display);letter-spacing:.02em}
+.uh p{margin:2px 0 0;color:var(--text-dim);font-size:var(--fs-s)}
+.ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cstate{font:600 10.5px/1.2 var(--font-display);letter-spacing:.12em;text-transform:uppercase;padding:3px 8px;border-radius:4px;border:1px solid var(--line-hi);color:var(--text-dim)}
+.cstate.manual{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 55%,transparent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.cstate.agent{color:var(--friend);border-color:color-mix(in srgb,var(--friend) 45%,transparent)}
+.kv{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px}
+.kv div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.kv b{font:500 var(--fs-m)/1.1 var(--font-data);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
+.sec{display:flex;flex-direction:column;gap:6px}
+.mag{display:grid;grid-template-columns:52px 1fr 54px;gap:8px;align-items:center;font:var(--fs-xs)/1 var(--font-data);font-variant-numeric:tabular-nums}
+.bar{height:6px;border-radius:3px;background:var(--ink-3);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--friend)}
+.bar.dmg i{background:var(--warn)}
+.mag .r{text-align:right;color:var(--text-dim)}
+.win{color:var(--crit)}
+.note{color:var(--text-faint);font-size:11px}
+
+/* bottom tabs */
+.tabs{display:flex;gap:2px}
+.tab{background:transparent;border:0;border-bottom:2px solid transparent;padding:2px 8px 4px;font:600 11px/1 var(--font-display);letter-spacing:.14em;text-transform:uppercase;color:var(--text-faint)}
+.tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.tab i{font-style:normal;font-family:var(--font-data);font-size:10px;color:var(--hostile);margin-left:4px}
+.log{list-style:none;margin:0;padding:0;font:var(--fs-xs)/1.35 var(--font-data)}
+.log li{display:grid;grid-template-columns:66px 74px minmax(0,1fr);gap:8px;padding:4px 10px;border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent);cursor:pointer}
+.log li:hover{background:var(--ink-2)}
+.log .t{color:var(--text-faint);font-variant-numeric:tabular-nums}
+.log .c{font:600 9.5px/1.5 var(--font-display);letter-spacing:.12em;text-transform:uppercase}
+.log .m{font-family:var(--font-ui);font-size:12px;color:var(--text);white-space:normal}
+.c-contact{color:var(--unknown)}.c-weapons{color:var(--friend)}.c-intercept{color:var(--ok)}.c-damage{color:var(--crit)}.c-orders{color:var(--accent)}.c-comms{color:var(--text-dim)}
+.comms{display:grid;grid-template-rows:minmax(0,1fr) auto;height:100%}
+.msg{padding:6px 10px;border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent)}
+.msg .who{font:600 11.5px/1.3 var(--font-ui)}
+.msg .who small{font:400 10.5px var(--font-data);color:var(--text-faint);margin-left:6px}
+.msg .body{font:13px/1.45 var(--font-ui);max-width:72ch}
+.msg.red .who{color:var(--hostile)}.msg.blue .who{color:var(--friend)}.msg.you .who{color:var(--accent)}
+.unv{font:600 9.5px/1 var(--font-display);letter-spacing:.12em;color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 50%,transparent);border-radius:3px;padding:2px 5px;margin-left:6px;text-transform:uppercase}
+.compose{display:flex;gap:6px;padding:8px 10px;border-top:1px solid var(--line)}
+.compose select,.compose input{background:var(--ink-3);border:1px solid var(--line-hi);border-radius:4px;padding:4px 8px;font-size:var(--fs-s)}
+.compose input{flex:1;min-width:0}
+.loss{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.loss section{padding:10px 12px}
+.loss section+section{border-left:1px solid var(--line)}
+.loss h4{margin:0 0 8px;font:600 11px/1 var(--font-display);letter-spacing:.16em;text-transform:uppercase}
+.loss dl{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:0;font:var(--fs-xs)/1.3 var(--font-data);font-variant-numeric:tabular-nums}
+.loss dt{color:var(--text-dim)}.loss dd{margin:0;text-align:right}
+
+@media (max-width:820px){
+  body{overflow:auto;height:auto}
+  html{height:auto}
+  .app{display:flex;flex-direction:column;height:auto;gap:8px}
+  .top{order:-2}.mapwrap{order:-1;height:62svh;min-height:360px}
+  .sl,.sr,.hs{display:none}
+  .left .pb{max-height:320px}.right .pb{max-height:none}.bot{height:340px}
+  .app.no-left .left,.app.no-right .right,.app.no-bot .bot{display:none}
+  .legend{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app" id="app">
+  <header class="top">
+    <div class="brand"><b>Skizzy Command</b><span>Kerbin Strait · air raid on Task Group 1 · sample scenario</span></div>
+    <div class="ut"><small>Universal time (Kerbin)</small><span id="ut">Y1 D014 03:12:00</span></div>
+    <div class="grp" role="group" aria-label="Time">
+      <button class="btn" id="play" aria-label="Pause">❚❚</button>
+      <div class="seg" id="speeds"></div>
+      <button class="btn ghost" id="reset">Restart</button>
+    </div>
+    <span class="pill war" title="Side stance">Blue ↔ Red · War</span>
+    <div class="grp" role="group" aria-label="Blue posture"><span class="lbl">Blue posture</span><div class="seg" id="posture"><button data-p="Defensive" aria-pressed="false">Defensive</button><button data-p="Proactive" aria-pressed="true">Proactive</button></div></div>
+    <div class="grp"><label class="lbl" for="ffSel">Friendly fire</label><select id="ffSel" class="tsel"><option value="0">Off</option><option value="0.001" selected>1 in 1,000 missiles</option><option value="0.01">1 in 100 missiles</option></select></div>
+    <span class="pill seat" id="seatPill">Blue seat · You</span>
+    <button class="btn ghost" id="seatBtn">Hand seat to agent</button>
+    <span class="spacer"></span>
+    <div class="grp" role="group" aria-label="Panels">
+      <span class="lbl">Panels</span>
+      <button class="tg" data-panel="left" aria-pressed="true">Tracks</button>
+      <button class="tg" data-panel="right" aria-pressed="true">Unit</button>
+      <button class="tg" data-panel="bot" aria-pressed="true">Log</button>
+      <button class="btn ghost" id="resetLayout" title="Restore the default panel sizes">Reset layout</button>
+    </div>
+  </header>
+
+  <aside class="panel left" aria-label="Tracks">
+    <div class="ph"><h2>Tracks</h2><span class="note" id="trackCount"></span><button class="x" data-close="left" aria-label="Hide tracks">×</button></div>
+    <div class="chips" id="groupChips" aria-label="Select a whole group"></div>
+    <div class="chips" id="trackChips"></div>
+    <div class="pb"><table><thead><tr><th>Track</th><th>Type</th><th class="n">Brg</th><th class="n">Rng km</th><th class="n">Alt</th><th class="n">m/s</th></tr></thead><tbody id="trackBody"></tbody></table></div>
+  </aside>
+  <div class="sl" data-split="lw" role="separator" aria-orientation="vertical" aria-label="Resize tracks panel" tabindex="0"></div>
+
+  <main class="mapwrap" id="mapwrap">
+    <canvas id="plot" aria-label="Tactical plot"></canvas>
+    <div class="mtool" role="toolbar" aria-label="Plot controls">
+      <label class="lbl" for="sizeMode">Symbols</label>
+      <select id="sizeMode">
+        <option value="auto">Auto: radar size, no overlap</option>
+        <option value="rcs">Radar size only</option>
+        <option value="zoom">Grow with zoom</option>
+        <option value="fixed">Fixed size</option>
+      </select>
+      <input type="range" id="sizeMul" min="0.6" max="1.8" step="0.05" value="1" aria-label="Symbol scale">
+      <span class="sep"></span>
+      <button class="tg" data-t="trails" aria-pressed="true">Trails</button>
+      <button class="tg" data-t="stalks" aria-pressed="true">Altitude</button>
+      <button class="tg" data-t="lines" aria-pressed="false">Target lines</button>
+      <button class="tg" data-t="rings" aria-pressed="true">Rings</button>
+      <button class="tg" data-t="labels" aria-pressed="true">Labels</button>
+      <button class="tg" data-t="counts" aria-pressed="false" title="Optional: group missiles and drones into counts">Counts</button>
+      <span class="sep"></span>
+      <button class="tg" id="zout" aria-label="Zoom out">−</button>
+      <button class="tg" id="zin" aria-label="Zoom in">+</button>
+      <button class="tg" id="fit" title="Fit all (F)">Fit</button>
+    </div>
+    <div class="banner" id="banner" hidden><div><b>Paused on event</b><span id="bannerText"></span></div><button class="btn" id="resume">Resume</button></div>
+    <div class="tip" id="tip" hidden></div>
+    <div class="toast" id="toast" role="status" hidden></div>
+    <div class="legend" id="legend"><canvas id="legendCv" width="208" height="70" aria-label="Symbol key"></canvas></div>
+    <div class="tl"><span class="tlt" id="tlTime">T+0:00</span><div class="tlbox"><canvas id="ticks"></canvas><input type="range" id="scrub" min="0" max="0" value="0" aria-label="Replay position"></div><button class="btn acc" id="live" aria-pressed="true">Live</button></div>
+  </main>
+
+  <div class="sr" data-split="rw" role="separator" aria-orientation="vertical" aria-label="Resize unit panel" tabindex="0"></div>
+  <aside class="panel right" aria-label="Unit">
+    <div class="ph"><h2>Unit</h2><button class="x" data-close="right" aria-label="Hide unit panel">×</button></div>
+    <div class="pb" id="unit"></div>
+  </aside>
+
+  <div class="hs" data-split="bh" role="separator" aria-orientation="horizontal" aria-label="Resize log panel" tabindex="0"></div>
+  <section class="panel bot" aria-label="Log">
+    <div class="ph">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-tab="log" aria-selected="true">Messages</button>
+        <button class="tab" role="tab" data-tab="comms" aria-selected="false">Comms<i id="unread"></i></button>
+        <button class="tab" role="tab" data-tab="loss" aria-selected="false">Losses</button>
+      </div>
+      <button class="x" data-close="bot" aria-label="Hide log">×</button>
+    </div>
+    <div class="chips" id="logChips"></div>
+    <div class="pb" id="botBody"></div>
+  </section>
+</div>
+
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s);
+const cs=getComputedStyle(document.documentElement);
+const tok=n=>cs.getPropertyValue(n).trim();
+const COL={friend:tok('--friend'),hostile:tok('--hostile'),unknown:tok('--unknown'),accent:tok('--accent'),sea:tok('--sea'),grid:tok('--grid'),gridHi:tok('--grid-hi'),
+  text:tok('--text'),dim:tok('--text-dim'),faint:tok('--text-faint'),crit:tok('--crit'),warn:tok('--warn'),ok:tok('--ok'),ink:tok('--ink-0'),line:tok('--line-hi')};
+const F_DATA=tok('--font-data'),F_UI=tok('--font-ui'),F_DISP=tok('--font-display');
+function rgba(hex,a){const h=hex.replace('#','');const n=parseInt(h.length===3?h.split('').map(c=>c+c).join(''):h.slice(0,6),16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`;}
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------- deterministic rng ---------- */
+let seed=11;
+function rnd(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}
+
+/* ---------- classes ---------- */
+const K={
+  cvn:{domain:'surf',rcs:40000,glyph:'CV',cls:'Carrier',spd:.008},
+  ddg:{domain:'surf',rcs:9000,glyph:'DD',cls:'Destroyer',spd:.008},
+  ssn:{domain:'sub',rcs:300,glyph:'SS',cls:'Attack submarine',spd:.006},
+  aew:{domain:'air',rcs:60,glyph:'AEW',cls:'Early warning aircraft',spd:.16},
+  ftr:{domain:'air',rcs:4,glyph:'F',cls:'Fighter',spd:.25},
+  bmr:{domain:'air',rcs:25,glyph:'A',cls:'Strike aircraft',spd:.24},
+  uav:{domain:'air',rcs:.15,glyph:'U',cls:'Attack drone',spd:.05},
+  ucav:{domain:'air',rcs:.3,glyph:'U',cls:'Armed drone',spd:.09},
+  asm:{domain:'air',rcs:.05,glyph:'',cls:'Anti-ship missile',spd:.29,missile:true},
+  sam:{domain:'air',rcs:.08,glyph:'',cls:'Surface-to-air missile',spd:.9,missile:true},
+  aam:{domain:'air',rcs:.03,glyph:'',cls:'Air-to-air missile',spd:.8,missile:true},
+};
+const UT0=13*21600+3*3600+12*60;
+const CODE={cvn:'CVN',ddg:'DDG',ssn:'SSN',aew:'AEW',ftr:'FTR',bmr:'STK',uav:'UAV',ucav:'UCAV',asm:'ASM',sam:'SAM',aam:'AAM'};
+
+/* ---------- state ---------- */
+let objs,byId,nextId,simT,acc,events,log,comms,frames,lastFrame,stats,rep,paused,speed=4,firstLaunch,scriptIdx,seatAgent=false,replayIdx=null;
+const view={cx:90,cy:0,scale:3};
+const sel=new Set();let primary=null;
+const opt={trails:true,stalks:true,lines:false,rings:true,labels:true,counts:false,sizeMode:'auto',sizeMul:1,ff:.001};
+
+function add(o){o.id=nextId++;o.alive=true;o.trail=[];o.lastTrail=-9;o.sizeMul=1;o.cool=0;objs.push(o);byId.set(o.id,o);return o;}
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const wrap=a=>{while(a>Math.PI)a-=2*Math.PI;while(a<-Math.PI)a+=2*Math.PI;return a;};
+function steerTo(o,hd,rate,dt){const d=wrap(hd-o.hdg),m=rate*dt;o.hdg+=Math.max(-m,Math.min(m,d));}
+const brgOf=(from,to)=>((90-Math.atan2(to.y-from.y,to.x-from.x)*180/Math.PI)%360+360)%360;
+const hdgDeg=o=>((90-o.hdg*180/Math.PI)%360+360)%360;
+const pad3=n=>String(Math.round(n)%360).padStart(3,'0');
+
+function setup(){
+  seed=11;alertDone=false;firstLaunchT=0;saidEscorts=false;objs=[];byId=new Map();nextId=1;simT=0;acc=0;events=[];log=[];comms=[];frames=[];lastFrame=-1;firstLaunch=false;scriptIdx=0;replayIdx=null;
+  stats={exp:{blue:{'SM-2':0,ESSM:0,AAM:0,CIWS:0},red:{ASM:0,Drones:0}},lost:{blue:{},red:{}},intercepts:0,hits:0,ciws:0,ff:0};
+  rep={};
+  const ship=(kind,name,x,y,extra)=>add(Object.assign({side:'blue',kind,name,x,y,alt:0,hdg:.12,spd:K[kind].spd,hp:100,ctrl:'Mission',mission:'Sea control ALPHA',doctrine:'Free',emcon:'Active'},extra));
+  ship('cvn','Kestrel',0,0,{mag:{ESSM:[16,16],CIWS:[2,2]},channels:2});
+  ship('ddg','Halyard',14,9,{mag:{'SM-2':[32,32],ESSM:[8,8],CIWS:[1,1]},channels:4});
+  ship('ddg','Bowline',14,-9,{mag:{'SM-2':[32,32],ESSM:[8,8],CIWS:[1,1]},channels:4});
+  ship('ddg','Cleat',-11,2,{mag:{'SM-2':[24,24],ESSM:[8,8],CIWS:[1,1]},channels:3});
+  ship('ssn','Tide',34,-30,{alt:-120,ctrl:'Agent',mission:'ASW screen (sub-agent)',mag:{Torpedo:[12,12]}});
+  add({side:'blue',kind:'aew',name:'Watch 1',x:-25,y:28,alt:9000,hdg:0,spd:K.aew.spd,orbit:{x:-25,y:15,r:13},ctrl:'BDA',mission:'AEW orbit',fuel:.82});
+  const flight=(n,kind,call,cx,cy,r,alt,mission,aam)=>{for(let i=0;i<n;i++)add({side:'blue',kind,name:call+' '+(i+1),x:cx+Math.cos(i*2.4)*r*.6,y:cy+Math.sin(i*2.4)*r*.6,alt:alt+i*60,hdg:Math.PI/2,spd:K[kind].spd,orbit:{x:cx,y:cy,r},aam,aamMax:aam,ctrl:'Mission',mission,group:mission,fuel:.75-(i%4)*.03});};
+  flight(4,'ftr','Viper',62,8,12,6800,'CAP North',6);
+  flight(4,'ftr','Cobra',55,-40,12,6200,'CAP South',6);
+  flight(8,'ftr','Hawk',22,6,8,5200,'Escort',4);
+  flight(24,'ucav','Wasp',38,26,6,1200,'Drone swarm',2);
+  for(const o of objs)if(o.side==='blue'&&o.group==null)o.group=o.kind==='aew'?'AEW':(o.kind==='ssn'?'Submarine':'Surface group');
+  let n=0;
+  for(let g=0;g<4;g++){
+    const cy=-54+g*36,cx=228+g*7;
+    for(let i=0;i<10;i++){
+      const kind=i<4?'bmr':'ftr';
+      const o=add({side:'red',kind,name:'R'+(g+1)+'-'+String(i+1).padStart(2,'0'),x:cx+(rnd()-.5)*12,y:cy+(rnd()-.5)*12,
+        alt:kind==='bmr'?1800+rnd()*2600:4500+rnd()*5000,hdg:0,spd:K[kind].spd+(rnd()-.5)*.02,idState:'unknown',group:g,state:kind==='bmr'?'ingress':'escort',
+        asm:kind==='bmr'?8:0,pair:i>>1,off:(rnd()-.5)*.5,ctrl:'BDA'});
+      o.hdg=Math.atan2(-o.y,-o.x);n++;
+    }
+  }
+  for(let g=4;g<6;g++){const cy=g===4?95:-100,cx=215;for(let i=0;i<10;i++){const o=add({side:'red',kind:'ftr',name:'R'+(g+1)+'-'+String(i+1).padStart(2,'0'),x:cx+(rnd()-.5)*12,y:cy+(rnd()-.5)*12,
+    alt:6000+rnd()*4000,hdg:0,spd:.27,idState:'unknown',group:g,state:'escort',asm:0,pair:i>>1,off:g===4?-.25:.25,ctrl:'BDA'});o.hdg=Math.atan2(-o.y,-o.x);}}
+  for(let i=0;i<20;i++){const o=add({side:'red',kind:'uav',name:'D'+String(i+1).padStart(2,'0'),x:168+(i%5)*1.4+rnd(),y:112+Math.floor(i/5)*1.4+rnd(),alt:200+rnd()*300,spd:.05,idState:'unknown',group:9,ctrl:'Script'});o.hdg=Math.atan2(-o.y,-o.x-10);}
+  logMsg('contact','New air contacts: 6 groups, 60 tracks, bearing 062–120, 215–240 km. Identity unknown.',230,0);
+  logMsg('contact','Slow low contacts: 20 tracks in a tight block, bearing 056, 205 km. Identity unknown.',170,112);
+  logMsg('orders','Sea control ALPHA active. Doctrine: weapons free against missiles, tight against aircraft.',0,0);
+  sel.clear();primary=byId.get(1).id;sel.add(primary);
+  paused=false;
+}
+
+/* ---------- logging ---------- */
+function logMsg(cat,text,x,y){log.push({t:simT,cat,text,x,y});if(log.length>600)log.shift();dirtyBot=true;}
+function event(type,x,y){events.push({t:simT,type,x,y});}
+function sayComms(ch,who,side,text,unverified){comms.push({t:simT,ch,who,side,text,unv:!!unverified});unread++;logMsg('comms',`${who} (${ch}): ${text}`,null,null);dirtyBot=true;}
+let unread=0,dirtyBot=true;
+
+/* ---------- simulation ---------- */
+const STEP=.1;
+function simulate(dt){acc+=dt;let n=0;while(acc>=STEP&&n<400){step(STEP);acc-=STEP;n++;}}
+function nearest(o,pred,maxD){let b=null,bd=maxD;for(const t of objs){if(!t.alive||t===o||!pred(t))continue;const d=dist(o,t);if(d<bd){bd=d;b=t;}}return b;}
+const blueShips=()=>objs.filter(o=>o.alive&&o.side==='blue'&&(o.kind==='cvn'||o.kind==='ddg'));
+function orbit(o,dt){const c=o.orbit,a=Math.atan2(o.y-c.y,o.x-c.x),d=Math.hypot(o.x-c.x,o.y-c.y);steerTo(o,a+Math.PI/2+(d-c.r)*.05,.35,dt);}
+function launch(kind,from,target,weapon){
+  const m=add({side:from.side,kind,name:kind==='asm'?weapon:shotName(from,weapon),x:from.x,y:from.y,alt:kind==='asm'?15:Math.max(30,from.alt||30),hdg:Math.atan2(target.y-from.y,target.x-from.x),spd:K[kind].spd,target:target.id,born:simT,shooter:from.id,weapon,ctrl:'BDA'});
+  if(kind!=='asm')target.engagedBy=m.id;
+  if(kind!=='asm'&&opt.ff>0&&rnd()<opt.ff)m.ff=true; // this one will lose its target and find a friend
+  return m;
+}
+function shotName(from,weapon){from.shots=(from.shots||0)+1;const ab=from.name.replace(/[^A-Za-z]/g,'').slice(0,3).toUpperCase()+(from.name.replace(/\D/g,''));return `${ab}-${(weapon||'MSL').replace('-','')}-${String(from.shots).padStart(2,'0')}`;}
+function alertLaunch(){alertDone=true;const c=byId.get(1);if(!c||!c.alive)return;
+  for(let i=0;i<4;i++)add({side:'blue',kind:'ftr',name:'Lance '+(i+1),x:c.x+1+i*.4,y:c.y+(i-1.5)*.6,alt:4500+i*200,hdg:0,spd:.25,orbit:{x:45,y:i<2?18:-18,r:10},aam:6,aamMax:6,ctrl:'Mission',mission:'Alert intercept',group:'Alert',fuel:.95});
+  logMsg('orders','Kestrel launched four alert fighters (Lance 1–4) to hit the strike aircraft before they reach launch range.',c.x,c.y);}
+function killObj(o,how){o.alive=false;if(o.kind==='asm'||o.kind==='uav'||o.kind==='sam'||o.kind==='aam')return;const side=o.side;stats.lost[side][K[o.kind].cls]=(stats.lost[side][K[o.kind].cls]||0)+1;event('kill',o.x,o.y);logMsg('damage',`${o.name} (${K[o.kind].cls.toLowerCase()}) lost${how?': '+how:''}.`,o.x,o.y);}
+function report(ship,key,n){(rep[ship.id]||(rep[ship.id]={}))[key]=((rep[ship.id]||{})[key]||0)+n;}
+
+function think(o,dt){
+  if(o.order&&doOrder(o,dt))return;
+  if(o.ctrl==='Manual'&&!o.order)return;
+  switch(o.kind){
+  case 'aew':orbit(o,dt);o.fuel=Math.max(0,o.fuel-dt*.00004);break;
+  case 'ftr':case 'ucav':
+    if(o.side==='blue'){
+      o.fuel=Math.max(0,o.fuel-dt*.00008);
+      const t=posture==='Proactive'
+        ?(nearest(o,x=>x.side==='red'&&x.kind==='bmr'&&x.idState==='hostile'&&x.state!=='egress',230)||nearest(o,x=>x.side==='red'&&x.kind==='ftr'&&x.idState==='hostile',75))
+        :nearest(o,x=>x.side==='red'&&(x.kind==='ftr'||x.kind==='bmr')&&x.idState==='hostile',75);
+      if(t){steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.5,dt);
+        if(o.aam>0&&dist(o,t)<(o.kind==='ucav'?20:42)&&simT>o.cool&&!(t.engagedBy&&byId.get(t.engagedBy)?.alive)){launch('aam',o,t,'AAM');o.aam--;stats.exp.blue.AAM++;o.cool=simT+3.5;report(o,'AAM',1);}
+      }else orbit(o,dt);
+    }else{
+      if(o.state==='escort'){steerTo(o,Math.atan2(-o.y,-o.x)+o.off,.2,dt);
+        const thr=objs.some(m=>m.alive&&m.kind==='aam'&&m.target===o.id)||nearest(o,x=>x.side==='blue'&&x.kind==='ftr',40);
+        if(thr){o.state='break';o.breakHdg=o.hdg+(o.pair%2?1:-1)*(1.3+rnd()*.7);o.until=simT+16+rnd()*6;o.spd=.3;}
+      }else if(o.state==='break'){steerTo(o,o.breakHdg,.32,dt);if(simT>o.until)o.state='engage';}
+      else if(o.state==='engage'){const v=nearest(o,x=>x.side==='blue'&&x.kind==='ftr',120);if(v)steerTo(o,Math.atan2(v.y-o.y,v.x-o.x),.3,dt);else o.state='egress';if(simT>o.until+70)o.state='egress';}
+      else{o.spd=.3;steerTo(o,o.off*.8,.25,dt);}
+      if(o.x>330)o.alive=false;
+    }break;
+  case 'bmr':{
+    const cv=byId.get(1),tgt=cv.alive?cv:blueShips()[0];
+    if(o.state==='ingress'){steerTo(o,Math.atan2(-o.y,-o.x),.15,dt);if(tgt&&dist(o,tgt)<118&&o.asm>0){o.state='launch';o.cool=simT+rnd()*1.5;}}
+    else if(o.state==='launch'){
+      if(simT>o.cool&&o.asm>0){const ships=blueShips();if(ships.length){const r=rnd();const t=r<.4&&cv.alive?cv:ships[Math.floor(rnd()*ships.length)];launch('asm',o,t,'V'+String(stats.exp.red.ASM+1).padStart(3,'0'));o.asm--;stats.exp.red.ASM++;o.cool=simT+1.1;
+        if(!firstLaunch){firstLaunch=true;onFirstLaunch(o);}}}
+      if(o.asm<=0){o.state='egress';o.egress=(rnd()-.5)*1.6;o.spd=.27;}
+    }else{steerTo(o,o.egress,.22,dt);if(o.x>330)o.alive=false;}
+  }break;
+  case 'uav':{const c=byId.get(4);const t=c&&c.alive?c:nearest(o,x=>x.side==='blue'&&(x.kind==='ddg'||x.kind==='cvn'),999);if(!t)break;
+    steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.4,dt);if(dist(o,t)<.5){impact(o,t,9+rnd()*6);}}break;
+  case 'asm':{let t=byId.get(o.target);if(!t||!t.alive){const n=nearest(o,x=>x.side==='blue'&&(x.kind==='ddg'||x.kind==='cvn'),999);if(!n){o.alive=false;break;}o.target=n.id;t=n;}
+    steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.6,dt);if(dist(o,t)<.35)impact(o,t,20+rnd()*12);}break;
+  case 'sam':case 'aam':{let t=byId.get(o.target);
+    if(o.ff&&!o.ffDone&&simT-o.born>3){const f=nearest(o,x=>x.side===o.side&&x.id!==o.shooter&&!K[x.kind].missile,25);
+      if(f){if(t&&t.engagedBy===o.id)t.engagedBy=null;o.target=f.id;o.ffDone=true;t=f;}}
+    if(!t||!t.alive){const n=nearest(o,x=>x.side!==o.side&&(o.kind==='sam'?(x.kind==='asm'||x.kind==='uav'||x.kind==='ftr'||x.kind==='bmr'):(x.kind==='ftr'||x.kind==='bmr'))&&!(x.engagedBy&&byId.get(x.engagedBy)?.alive),14);
+      if(!n){o.alive=false;break;}o.target=n.id;n.engagedBy=o.id;t=n;}
+    steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),3,dt);
+    if(simT-o.born>(o.kind==='sam'?80:60)){o.alive=false;break;}
+    if(dist(o,t)<.45&&t.side===o.side){o.alive=false;stats.ff++;event('impact',t.x,t.y);
+      if(t.hp!=null){t.hp=Math.max(0,t.hp-12);logMsg('damage',`Friendly fire: ${o.name} hit ${t.name}. Damage ${Math.round(100-t.hp)}%.`,t.x,t.y);if(t.hp<=0)killObj(t,'friendly fire');}
+      else{logMsg('damage',`Friendly fire: ${o.name} hit ${t.name}.`,t.x,t.y);killObj(t,'friendly fire');}
+      if(pauseOnLaunch){paused=true;showBanner(`Friendly fire: ${o.name} hit ${t.name}. One missile in ${Math.round(1/opt.ff).toLocaleString()} is set to go astray.`);syncPlay();}
+      break;}
+    if(dist(o,t)<.45){o.alive=false;const pk=o.kind==='sam'?(t.kind==='asm'?.72:.8):.62;
+      if(rnd()<pk){killObj(t);if(t.kind==='asm'||t.kind==='uav'){stats.intercepts++;event('intercept',t.x,t.y);}else event('kill',t.x,t.y);t.alive=false;}
+      else{t.engagedBy=null;event('miss',t.x,t.y);}}
+  }break;
+  }
+}
+function impact(m,ship,dmg){m.alive=false;stats.hits++;ship.hp=Math.max(0,ship.hp-dmg);event('impact',ship.x,ship.y);
+  logMsg('damage',`${ship.name} hit by ${m.kind==='uav'?'drone':'missile'} ${m.name}. Damage ${Math.round(100-ship.hp)}%.`,ship.x,ship.y);
+  if(m.kind==='uav')stats.exp.red.Drones++;
+  if(ship.hp<=0)killObj(ship,'sunk');}
+
+/* ---------- orders from the operator ---------- */
+function doOrder(o,dt){
+  const od=o.order;
+  if(od.type==='route')return doRoute(o,dt);
+  if(od.type==='move'){
+    const d=Math.hypot(od.x-o.x,od.y-o.y),air=K[o.kind].domain==='air';
+    if(!air){
+      if(d<.6){o.spd=.0015;if(!od.arrived){od.arrived=true;logMsg('orders',`${o.name} holding at the ordered position.`,o.x,o.y);}return true;}
+      o.spd=o.kind==='ssn'?.009:.012;steerTo(o,Math.atan2(od.y-o.y,od.x-o.x),.03,dt);return true;}
+    if(d<5){if(!od.arrived){od.arrived=true;logMsg('orders',`${o.name} on station, orbiting the ordered point.`,o.x,o.y);}o.orbit={x:od.x,y:od.y,r:5};orbit(o,dt);}
+    else steerTo(o,Math.atan2(od.y-o.y,od.x-o.x),.5,dt);
+    if((o.kind==='ftr'||o.kind==='ucav')&&o.aam>0){const t=nearest(o,x=>x.side==='red'&&(x.kind==='ftr'||x.kind==='bmr')&&x.idState==='hostile',30);
+      if(t&&simT>o.cool&&!(t.engagedBy&&byId.get(t.engagedBy)?.alive)){launch('aam',o,t,'AAM');o.aam--;stats.exp.blue.AAM++;o.cool=simT+3.5;report(o,'AAM',1);}}
+    return true;
+  }
+  if(od.type==='attack'){
+    const t=byId.get(od.target);
+    if(!t||!t.alive){logMsg('orders',`${o.name}: target ${t?t.name:''} destroyed.${o.ctrl==='Order'?' Returning to '+o.mission+'.':''}`,o.x,o.y);o.order=null;if(o.ctrl==='Order')releaseUnit(o);return false;}
+    if(o.kind==='ftr'||o.kind==='ucav'){steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.55,dt);
+      if(o.aam>0&&dist(o,t)<(o.kind==='ucav'?20:42)&&simT>o.cool){launch('aam',o,t,'AAM');o.aam--;stats.exp.blue.AAM++;o.cool=simT+3;report(o,'AAM',1);}
+      if(o.aam===0){logMsg('orders',`${o.name}: out of missiles, returning to ${o.mission}.`,o.x,o.y);o.order=null;if(o.ctrl==='Order')releaseUnit(o);}
+      return true;}
+    return false;
+  }
+  return false;
+}
+function selfDefend(o){
+  if((o.kind==='ftr'||o.kind==='ucav')&&o.aam>0){const t=nearest(o,x=>x.side==='red'&&(x.kind==='ftr'||x.kind==='bmr')&&x.idState==='hostile',30);
+    if(t&&simT>o.cool&&!(t.engagedBy&&byId.get(t.engagedBy)?.alive)){launch('aam',o,t,'AAM');o.aam--;stats.exp.blue.AAM++;o.cool=simT+3.5;report(o,'AAM',1);}}
+}
+function doRoute(o,dt){
+  const od=o.order,air=K[o.kind].domain==='air',last=od.idx>=od.pts.length-1;
+  const p=od.pts[Math.min(od.idx,od.pts.length-1)],tx=p[0]+od.ox,ty=p[1]+od.oy,d=Math.hypot(tx-o.x,ty-o.y),thr=air?3:.8;
+  if(d<thr&&!last){od.idx++;return true;}
+  if(d<thr&&last){o.order={type:'move',x:tx,y:ty};return doOrder(o,dt);}
+  if(!air)o.spd=o.kind==='ssn'?.009:.012;
+  steerTo(o,Math.atan2(ty-o.y,tx-o.x),air?.5:.03,dt);selfDefend(o);return true;
+}
+function issueRoute(pts){
+  const units=[...sel].map(id=>byId.get(id)).filter(u=>u&&u.alive&&u.side==='blue'&&!K[u.kind].missile);
+  if(!units.length){toast('Select your units first, then right-drag a route on the plot.');return;}
+  const n=units.length,cols=Math.ceil(Math.sqrt(n)),rows=Math.ceil(n/cols);
+  units.forEach((u,i)=>{if(u.ctrl!=='Order'&&u.ctrl!=='Manual')u.prevCtrl=u.ctrl;if(!u.home&&u.orbit)u.home=u.orbit;
+    const sp=K[u.kind].domain==='air'?2.2:1.5,r=Math.floor(i/cols),c=i%cols;
+    u.order={type:'route',pts,idx:0,ox:(c-(cols-1)/2)*sp,oy:-(r-(rows-1)/2)*sp};if(u.ctrl!=='Manual')u.ctrl='Order';});
+  const end=pts[pts.length-1],c0=byId.get(1),grp=[...new Set(units.map(u=>u.group))].join(', ');
+  logMsg('orders',`${n>4?n+' units ('+grp+')':units.map(u=>u.name).join(', ')}: follow drawn route, ${pts.length} points, ending bearing ${pad3(brgOf(c0,{x:end[0],y:end[1]}))}, ${Math.round(Math.hypot(end[0]-c0.x,end[1]-c0.y))} km.`,end[0],end[1]);
+  renderUnit();
+}
+function releaseUnit(u){u.ctrl=u.prevCtrl||'Mission';u.order=null;if(u.home)u.orbit=u.home;if(K[u.kind].domain!=='air')u.spd=K[u.kind].spd;}
+function issueOrder(wx,wy,target){
+  const units=[...sel].map(id=>byId.get(id)).filter(u=>u&&u.alive&&u.side==='blue'&&!K[u.kind].missile);
+  if(!units.length){toast('Select one or more of your own units first, then right-click where they should go.');return;}
+  let i=0,j=0;const hostile=target&&target.side==='red';
+  // attacking one member of a group spreads the shooters across the whole group
+  const tgtGroup=hostile&&target.group!=null?objs.filter(x=>x.alive&&x.side==='red'&&x.group===target.group&&!K[x.kind].missile).sort((a,b)=>a===target?-1:b===target?1:0):[];
+  const n=units.length,cols=Math.ceil(Math.sqrt(n)),rows=Math.ceil(n/cols);
+  for(const u of units){
+    if(u.ctrl!=='Order'&&u.ctrl!=='Manual')u.prevCtrl=u.ctrl;
+    if(!u.home&&u.orbit)u.home=u.orbit;
+    if(hostile){const mem=tgtGroup.length?tgtGroup:[target];u.order={type:'attack',target:mem[j++%mem.length].id};}
+    else{const sp=K[u.kind].domain==='air'?2.2:1.5,r=Math.floor(i/cols),c=i%cols;u.order={type:'move',x:wx+(c-(cols-1)/2)*sp,y:wy-(r-(rows-1)/2)*sp};i++;}
+    if(u.ctrl!=='Manual')u.ctrl='Order';
+  }
+  const grpNames=[...new Set(units.map(u=>u.group))].join(', ');
+  const names=n>4?`${n} units (${grpNames})`:units.map(u=>u.name).join(', '),c=byId.get(1);
+  logMsg('orders',hostile?`${names}: attack ${target.name}${tgtGroup.length>1?' and the rest of its group ('+tgtGroup.length+' aircraft)':''}.`:`${names}: move to bearing ${pad3(brgOf(c,{x:wx,y:wy}))}, ${Math.round(Math.hypot(wx-c.x,wy-c.y))} km from Kestrel.`,wx,wy);
+  renderUnit();
+}
+let toastT;
+function toast(t){const el=$('#toast');el.textContent=t;el.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{el.hidden=true;},4500);}
+function drawOrders(){
+  g.save();g.lineWidth=1.2;
+  let nOrd=0;for(const o of objs)if(o.alive&&o.order)nOrd++;const la=nOrd>6?.28:.75;
+  // drawn routes: the shared path once, bright; each unit a faint line to its next point
+  const seen=new Set();
+  for(const o of objs){if(!o.alive||!o.order||o.order.type!=='route')continue;const od=o.order;
+    const nx=od.pts[Math.min(od.idx,od.pts.length-1)],a=toS(o.x,o.y),b=toS(nx[0]+od.ox,nx[1]+od.oy);
+    g.strokeStyle=rgba(COL.accent,.25);g.setLineDash([2,4]);g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.stroke();
+    if(seen.has(od.pts))continue;seen.add(od.pts);g.setLineDash([]);g.strokeStyle=rgba(COL.accent,.8);g.lineWidth=1.6;g.beginPath();
+    od.pts.forEach((p,i)=>{const s=toS(p[0],p[1]);i?g.lineTo(s[0],s[1]):g.moveTo(s[0],s[1]);});g.stroke();g.lineWidth=1.2;
+    const e=toS(od.pts[od.pts.length-1][0],od.pts[od.pts.length-1][1]);g.beginPath();g.arc(e[0],e[1],5,0,7);g.stroke();}
+  if(rdrag&&rdrag.moved){g.setLineDash([]);g.strokeStyle=COL.accent;g.lineWidth=1.8;g.beginPath();rdrag.pts.forEach((p,i)=>{const s=toS(p[0],p[1]);i?g.lineTo(s[0],s[1]):g.moveTo(s[0],s[1]);});g.stroke();g.lineWidth=1.2;}
+  for(const o of objs){if(!o.alive||!o.order||o.order.type==='route')continue;const a=toS(o.x,o.y);let b;
+    if(o.order.type==='move')b=toS(o.order.x,o.order.y);else{const t=byId.get(o.order.target);if(!t||!t.alive)continue;b=toS(t.x,t.y);}
+    g.strokeStyle=rgba(COL.accent,la);g.setLineDash([5,4]);g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.stroke();
+    if(o.order.type==='move'){g.setLineDash([]);g.beginPath();g.moveTo(b[0]-5,b[1]);g.lineTo(b[0],b[1]-5);g.lineTo(b[0]+5,b[1]);g.lineTo(b[0],b[1]+5);g.closePath();g.stroke();}}
+  g.restore();
+}
+
+function shipsFire(){
+  for(const s of objs){
+    if(!s.alive||s.side!=='blue'||(s.kind!=='ddg'&&s.kind!=='cvn'))continue;
+    if(s.doctrine==='Hold'||s.emcon==='Passive')continue;
+    let inflight=0;for(const m of objs)if(m.alive&&m.kind==='sam'&&m.shooter===s.id)inflight++;
+    let free=s.channels-inflight;if(free<=0)continue;
+    const c=[];
+    for(const t of objs){
+      if(!t.alive||t.side!=='red')continue;
+      if(t.engagedBy&&byId.get(t.engagedBy)?.alive)continue;
+      const msl=t.kind==='asm'||t.kind==='uav';
+      if(!msl){if(s.doctrine==='Tight'&&t.idState!=='hostile')continue;if(t.idState==='unknown')continue;}
+      const d=dist(s,t),r=t.alt<100?38:(posture==='Proactive'?90:60);
+      if(d<=r)c.push([d,t]);
+    }
+    c.sort((a,b)=>a[0]-b[0]);
+    if(s.order&&s.order.type==='attack'){const pt=byId.get(s.order.target);
+      if(pt&&pt.alive&&!(pt.engagedBy&&byId.get(pt.engagedBy)?.alive)&&dist(s,pt)<=(pt.alt<100?38:60)){const i=c.findIndex(x=>x[1]===pt);if(i>=0)c.splice(i,1);c.unshift([dist(s,pt),pt]);}}
+    for(const [d,t] of c){if(free<=0)break;
+      let w=null;if(d<=22&&s.mag.ESSM&&s.mag.ESSM[0]>0)w='ESSM';else if(s.mag['SM-2']&&s.mag['SM-2'][0]>0)w='SM-2';else if(d<=22&&s.mag.ESSM&&s.mag.ESSM[0]>0)w='ESSM';
+      if(!w)continue;s.mag[w][0]--;stats.exp.blue[w]++;launch('sam',s,t,w);report(s,w,1);free--;
+      if(s.mag[w][0]===0)logMsg('weapons',`${s.name}: ${w} magazine empty.`,s.x,s.y);}
+  }
+}
+function ciws(dt){
+  for(const s of objs){if(!s.alive||s.side!=='blue'||(s.kind!=='ddg'&&s.kind!=='cvn'))continue;
+    for(const t of objs){if(!t.alive||(t.kind!=='asm'&&t.kind!=='uav'))continue;if(dist(s,t)<1.8&&rnd()<.5*dt){t.alive=false;stats.ciws++;stats.exp.blue.CIWS++;event('ciws',t.x,t.y);report(s,'CIWS',1);}}}
+}
+const groupClassified={};
+function classify(){
+  const sensors=objs.filter(o=>o.alive&&o.side==='blue'&&o.kind!=='ftr'&&o.kind!=='ssn');
+  for(const o of objs){if(!o.alive||o.side!=='red'||o.idState!=='unknown')continue;
+    if(sensors.some(s=>dist(s,o)<(s.kind==='aew'?175:150))){o.idState='hostile';
+      if(!groupClassified[o.group]){groupClassified[o.group]=1;const n=objs.filter(x=>x.group===o.group).length;
+        logMsg('contact',o.kind==='uav'?`Drone block classified hostile (${n} tracks), heading for Cleat.`:`Group R${o.group+1} classified hostile: ${n} aircraft, ${o.group>=4?'fighter sweep':'strike package with escorts'}.`,o.x,o.y);}}}
+}
+function flushReports(){
+  for(const id in rep){const s=byId.get(+id),r=rep[id];const parts=[];
+    for(const k in r){if(k==='CIWS')parts.push(`CIWS ${r[k]} kill${r[k]>1?'s':''}`);else parts.push(`${k} ×${r[k]}`);}
+    if(!parts.length)continue;
+    const left=s.mag?Object.entries(s.mag).filter(([k])=>k!=='CIWS'&&k!=='Torpedo').map(([k,v])=>`${k} ${v[0]}/${v[1]}`).join(', '):`AAM ${s.aam} left`;
+    logMsg('weapons',`${s.name} fired ${parts.join(', ')}. ${left}.`,s.x,s.y);
+    if(s.kind==='ddg'||s.kind==='cvn'||s.kind==='ftr')sayComms('Team',s.name,'blue',`Engaged. ${parts.join(', ')}. ${left}.`);
+  }
+  rep={};
+}
+const SCRIPT=[
+  {t:9,f:()=>sayComms('Diplomatic','Red commander','red','Task Group 1, you are inside our declared exclusion zone. Turn south within ten minutes or you will be engaged.')},
+  {t:16,f:()=>sayComms('Team','Tide (sub-agent)','blue','Holding the ASW screen 45 km ahead. No submerged contacts. Passive sonar only.')},
+  {t:150,f:()=>sayComms('Broadcast','"Kestrel actual"','unknown','All Blue units, cease fire, cease fire. Return to base.',true)},
+];
+function scripted(){while(scriptIdx<SCRIPT.length&&simT>=SCRIPT[scriptIdx].t){SCRIPT[scriptIdx].f();scriptIdx++;}}
+function onFirstLaunch(o){
+  firstLaunchT=simT;const c=byId.get(1);logMsg('contact',`Missile launch. Vampires inbound from bearing ${pad3(brgOf(c,o))}, ${Math.round(dist(c,o))} km.`,o.x,o.y);
+  if(pauseOnLaunch){paused=true;showBanner(`Missile launch detected from ${o.name}, bearing ${pad3(brgOf(c,o))}, ${Math.round(dist(c,o))} km. More launches will follow.`);syncPlay();}
+}
+let pauseOnLaunch=true,posture='Proactive',alertDone=false,firstLaunchT=0,saidEscorts=false;
+
+function step(dt){
+  simT+=dt;
+  for(const o of objs)if(o.alive)think(o,dt);
+  for(const o of objs){if(!o.alive)continue;o.x+=Math.cos(o.hdg)*o.spd*dt;o.y+=Math.sin(o.hdg)*o.spd*dt;
+    if(simT-o.lastTrail>=1){o.trail.push(o.x,o.y);if(o.trail.length>60)o.trail.splice(0,2);o.lastTrail=simT;}}
+  if(Math.floor(simT*2)!==Math.floor((simT-dt)*2))shipsFire();
+  ciws(dt);
+  if(Math.floor(simT)!==Math.floor(simT-dt)){classify();scripted();
+    if(firstLaunchT&&!saidEscorts&&simT>firstLaunchT+45){saidEscorts=true;sayComms('Diplomatic','Red commander','red','Your escorts are spending their last missiles. Withdraw south and we will hold the second wave.');}if(posture==='Proactive'&&!alertDone&&simT>=20)alertLaunch();}
+  if(Math.floor(simT/6)!==Math.floor((simT-dt)/6))flushReports();
+  if(simT-lastFrame>=.5){record();lastFrame=simT;}
+}
+function record(){const a=[];for(const o of objs)if(o.alive)a.push(o.id,o.x,o.y,o.hdg);frames.push({t:simT,buf:new Float32Array(a),hp:objs.filter(o=>o.hp!=null).map(o=>[o.id,o.hp])});
+  if(frames.length>2400)frames.shift();scrub.max=frames.length-1;if(replayIdx==null)scrub.value=frames.length-1;}
+
+/* ---------- rendering ---------- */
+const cv=$('#plot');let g=cv.getContext('2d');let W=0,H=0,DPR=1;
+function resize(){const r=cv.getBoundingClientRect();DPR=Math.min(2,window.devicePixelRatio||1);W=r.width;H=r.height;cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);}
+new ResizeObserver(resize).observe(cv);
+const toS=(x,y)=>[W/2+(x-view.cx)*view.scale,H/2-(y-view.cy)*view.scale];
+const toW=(sx,sy)=>[view.cx+(sx-W/2)/view.scale,view.cy-(sy-H/2)/view.scale];
+const curT=()=>replayIdx==null?simT:frames[replayIdx].t;
+function affOf(o){return o.side==='blue'?'friend':(o.idState==='unknown'?'unknown':'hostile');}
+
+function framePath(aff,domain,r){
+  g.beginPath();
+  if(aff==='friend'){
+    if(domain==='surf')g.arc(0,0,r,0,Math.PI*2);
+    else if(domain==='air'){g.moveTo(-r,r*.4);g.arc(0,r*.4,r,Math.PI,0);g.closePath();}
+    else{g.moveTo(-r,-r*.4);g.arc(0,-r*.4,r,Math.PI,0,true);g.closePath();}
+  }else if(aff==='hostile'){
+    if(domain==='surf'){g.moveTo(0,-r);g.lineTo(r,0);g.lineTo(0,r);g.lineTo(-r,0);g.closePath();}
+    else if(domain==='air'){g.moveTo(-r,r*.45);g.lineTo(-r,0);g.lineTo(0,-r);g.lineTo(r,0);g.lineTo(r,r*.45);g.closePath();}
+    else{g.moveTo(-r,-r*.45);g.lineTo(-r,0);g.lineTo(0,r);g.lineTo(r,0);g.lineTo(r,-r*.45);g.closePath();}
+  }else{
+    const q=r/2;
+    if(domain==='surf'){g.arc(0,-q,q,Math.PI,0);g.arc(q,0,q,-Math.PI/2,Math.PI/2);g.arc(0,q,q,0,Math.PI);g.arc(-q,0,q,Math.PI/2,Math.PI*1.5);g.closePath();}
+    else{g.save();g.translate(0,r*.3);g.moveTo(-r,0);g.arc(-q,0,q,Math.PI,Math.PI*1.5);g.arc(0,-q,q,Math.PI,0);g.arc(q,0,q,-Math.PI/2,0);g.closePath();g.restore();}
+  }
+}
+function drawMissile(x,y,hdg,s,col,hostile){
+  g.save();g.translate(x,y);g.rotate(-hdg);
+  const L=Math.max(5,s),w=L*.42;
+  g.beginPath();g.moveTo(L*.6,0);g.lineTo(-L*.45,w);g.lineTo(-L*.2,0);g.lineTo(-L*.45,-w);g.closePath();
+  if(hostile){g.fillStyle=col;g.fill();}else{g.strokeStyle=col;g.lineWidth=1.2;g.stroke();}
+  g.restore();
+}
+function baseSize(o,zf){
+  const r=K[o.kind].rcs;let s;
+  if(opt.sizeMode==='fixed'||opt.sizeMode==='zoom')s=K[o.kind].missile?9:16;
+  else s=6.5+4.6*Math.log10(1+r*10);
+  if(opt.sizeMode==='auto'||opt.sizeMode==='zoom')s*=zf;
+  return s*opt.sizeMul;
+}
+
+let drawList=[];
+function buildList(){
+  const out=[];
+  if(replayIdx==null){for(const o of objs)if(o.alive)out.push({o,x:o.x,y:o.y,h:o.hdg});}
+  else{const f=frames[replayIdx].buf;for(let i=0;i<f.length;i+=4){const o=byId.get(f[i]);if(o)out.push({o,x:f[i+1],y:f[i+2],h:f[i+3]});}}
+  return out;
+}
+function trailFor(it){
+  if(replayIdx==null)return it.o.trail;
+  const out=[];for(let k=Math.max(0,replayIdx-24);k<replayIdx;k+=2){const fr=frames[k];if(!fr.map){fr.map=new Map();const b=fr.buf;for(let i=0;i<b.length;i+=4)fr.map.set(b[i],[b[i+1],b[i+2]]);}
+    const p=fr.map.get(it.o.id);if(p)out.push(p[0],p[1]);}return out;
+}
+
+function draw(){
+  g.setTransform(DPR,0,0,DPR,0,0);
+  g.fillStyle=COL.sea;g.fillRect(0,0,W,H);
+  drawGrid();drawZones();
+  const list=buildList();drawList=list;
+  const zf=Math.max(.55,Math.min(1.9,Math.pow(view.scale/3,.32)));
+  // screen positions
+  for(const it of list){const p=toS(it.x,it.y);it.sx=p[0];it.sy=p[1];}
+  const vis=list.filter(it=>it.sx>-60&&it.sx<W+60&&it.sy>-60&&it.sy<H+60);
+  // counts view grouping
+  let grouped=new Set(),pills=[];
+  if(opt.counts){const cells=new Map();for(const it of vis){const k=it.o.kind;if(it.o.side!=='red'||(k!=='asm'&&k!=='uav'))continue;const key=k+':'+Math.floor(it.sx/80)+':'+Math.floor(it.sy/80);
+      let c=cells.get(key);if(!c){c={k,n:0,x:0,y:0};cells.set(key,c);}c.n++;c.x+=it.sx;c.y+=it.sy;grouped.add(it);}
+    for(const c of cells.values())pills.push({label:(c.k==='asm'?'MSL ×':'UAV ×')+c.n,x:c.x/c.n,y:c.y/c.n});}
+  const shown=vis.filter(it=>!grouped.has(it));
+  // spacing: grid hash
+  const cell=36,grid=new Map();
+  for(const it of shown){const k=Math.floor(it.sx/cell)+','+Math.floor(it.sy/cell);let a=grid.get(k);if(!a)grid.set(k,a=[]);a.push(it);}
+  for(const it of shown){let nn=110;const cx=Math.floor(it.sx/cell),cy=Math.floor(it.sy/cell);
+    // only peers count: missiles and much smaller tracks never shrink a ship or an aircraft (they are drawn on top instead)
+    const myR=K[it.o.kind].rcs,iM=K[it.o.kind].missile;
+    for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++){const a=grid.get((cx+dx)+','+(cy+dy));if(!a)continue;for(const b of a){if(b===it)continue;const bk=K[b.o.kind];if(!iM&&(bk.missile||bk.rcs<myR/50))continue;const d=Math.hypot(b.sx-it.sx,b.sy-it.sy);if(d<nn)nn=d;}}
+    let s=baseSize(it.o,zf);
+    if(opt.sizeMode==='auto')s=Math.min(s,Math.max(3,nn*.85));
+    s*=it.o.sizeMul*(sel.has(it.o.id)?1.2:1);
+    s=Math.min(s,44);
+    // ease size changes (~150 ms) so symbols never pop
+    const ob=it.o;ob.ds=(ob.ds==null||Math.abs(ob.ds-s)>30)?s:ob.ds+(s-ob.ds)*.18;s=ob.ds;
+    const msl=K[it.o.kind].missile;
+    it.s=s;it.tier=msl?(s>=5?'msl':'dot'):(s>=16?'full':s>=8?'small':'dot');
+  }
+  if(opt.rings)drawRings(shown);
+  if(opt.trails)for(const it of shown)drawTrail(it);
+  if(opt.lines)drawTargetLines(shown);
+  if(replayIdx==null)drawOrders();
+  // draw big first, small on top
+  shown.sort((a,b)=>b.s-a.s);
+  for(const it of shown)drawTrack(it);
+  for(const p of pills)drawPill(p);
+  drawEvents();
+  if(opt.labels)drawLabels(shown);
+  drawSelection(shown);
+  if(boxSel){g.save();g.strokeStyle=COL.accent;g.setLineDash([4,3]);g.lineWidth=1;g.fillStyle=rgba(COL.accent,.06);
+    const x=Math.min(boxSel.x0,boxSel.x1),y=Math.min(boxSel.y0,boxSel.y1),w=Math.abs(boxSel.x1-boxSel.x0),h=Math.abs(boxSel.y1-boxSel.y0);g.fillRect(x,y,w,h);g.strokeRect(x,y,w,h);g.restore();}
+  drawScale();
+}
+function drawGrid(){
+  const steps=[1,2,5,10,20,50,100,200];let st=steps.find(v=>v*view.scale>=80)||200;
+  const [x0,y1]=toW(0,0),[x1,y0]=toW(W,H);
+  g.lineWidth=1;g.font=`10px ${F_DATA}`;g.fillStyle=COL.faint;
+  for(let x=Math.ceil(x0/st)*st;x<=x1;x+=st){const sx=Math.round(toS(x,0)[0])+.5;g.strokeStyle=x%(st*5)===0?COL.gridHi:COL.grid;g.beginPath();g.moveTo(sx,0);g.lineTo(sx,H);g.stroke();g.fillText(x+' km',sx+3,H-48);}
+  for(let y=Math.ceil(y0/st)*st;y<=y1;y+=st){const sy=Math.round(toS(0,y)[1])+.5;g.strokeStyle=y%(st*5)===0?COL.gridHi:COL.grid;g.beginPath();g.moveTo(0,sy);g.lineTo(W,sy);g.stroke();}
+}
+function drawZones(){
+  // Red declared exclusion zone (dashed hostile)
+  g.save();g.setLineDash([6,6]);g.lineWidth=1.2;g.strokeStyle=rgba(COL.hostile,.55);
+  const a=toS(30,-160),b=toS(30,160);g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.stroke();
+  g.fillStyle=rgba(COL.hostile,.035);const c=toS(400,-160);g.fillRect(a[0],b[1],c[0]-a[0],a[1]-b[1]);
+  g.setLineDash([]);g.font=`600 10px ${F_DISP}`;g.fillStyle=rgba(COL.hostile,.8);
+  const lp=toS(30,0);g.save();g.translate(lp[0]+6,Math.max(80,Math.min(H-80,lp[1]-120)));g.fillText('RED DECLARED EXCLUSION ZONE',0,0);g.restore();
+  // CAP North station
+  const cp=toS(62,0);g.setLineDash([3,5]);g.strokeStyle=rgba(COL.friend,.45);g.beginPath();g.arc(cp[0],cp[1],18*view.scale,0,7);g.stroke();
+  g.setLineDash([]);g.fillStyle=rgba(COL.friend,.75);g.fillText('CAP NORTH',cp[0]-24,cp[1]-18*view.scale-6);
+  // bullseye
+  const be=toS(100,40);g.strokeStyle=rgba(COL.text,.28);g.lineWidth=1;for(const r of [10,25]){g.beginPath();g.arc(be[0],be[1],r*view.scale,0,7);g.stroke();}
+  g.beginPath();g.moveTo(be[0]-6,be[1]);g.lineTo(be[0]+6,be[1]);g.moveTo(be[0],be[1]-6);g.lineTo(be[0],be[1]+6);g.stroke();
+  g.fillStyle=rgba(COL.text,.55);g.fillText('BULLSEYE ANVIL',be[0]+8,be[1]-8);
+  g.restore();
+}
+function drawRings(shown){
+  g.save();
+  for(const it of shown){const o=it.o;if(o.side!=='blue'||(o.kind!=='ddg'&&o.kind!=='cvn'))continue;
+    const on=sel.has(o.id);const sm=o.mag['SM-2']?38:0;
+    g.lineWidth=1;g.setLineDash(on?[]:[2,4]);g.strokeStyle=rgba(COL.friend,on?.5:.16);
+    if(sm){g.beginPath();g.arc(it.sx,it.sy,sm*view.scale,0,7);g.stroke();}
+    g.strokeStyle=rgba(COL.friend,on?.4:.12);g.beginPath();g.arc(it.sx,it.sy,22*view.scale,0,7);g.stroke();
+    if(on){g.setLineDash([1,5]);g.strokeStyle=rgba(COL.friend,.35);g.beginPath();g.arc(it.sx,it.sy,150*view.scale,0,7);g.stroke();
+      g.setLineDash([]);g.font=`10px ${F_DATA}`;g.fillStyle=rgba(COL.friend,.7);
+      if(sm)g.fillText('SM-2 38 km (sea-skimmers)',it.sx+sm*view.scale*.71+4,it.sy-sm*view.scale*.71);g.fillText('ESSM 22 km',it.sx+22*view.scale*.71+4,it.sy+22*view.scale*.71+10);g.fillText('Radar 150 km',it.sx+4,it.sy-150*view.scale-4);}
+  }
+  g.restore();
+}
+function drawTrail(it){
+  const t=trailFor(it);if(t.length<4)return;const col=COL[affOf(it.o)];
+  const n=t.length/2;const take=K[it.o.kind].missile?12:20;const st=Math.max(0,n-take);
+  // two strokes per trail: a faint old half and a brighter recent half (cheap, still reads as fading)
+  g.lineWidth=1;const mid=Math.floor((st+n)/2);
+  g.strokeStyle=rgba(col,.12);g.beginPath();let p=toS(t[st*2],t[st*2+1]);g.moveTo(p[0],p[1]);for(let i=st+1;i<=mid;i++){p=toS(t[i*2],t[i*2+1]);g.lineTo(p[0],p[1]);}g.stroke();
+  g.strokeStyle=rgba(col,.4);g.beginPath();g.moveTo(p[0],p[1]);for(let i=mid+1;i<n;i++){p=toS(t[i*2],t[i*2+1]);g.lineTo(p[0],p[1]);}g.lineTo(it.sx,it.sy);g.stroke();
+}
+function drawTargetLines(shown){
+  g.save();g.setLineDash([2,4]);g.lineWidth=1;
+  for(const it of shown){const o=it.o;if(!(o.kind==='asm'||o.kind==='sam'||o.kind==='aam'))continue;const t=byId.get(o.target);if(!t||!t.alive)continue;
+    const p=toS(t.x,t.y);g.strokeStyle=rgba(o.side==='red'?COL.hostile:COL.friend,.22);g.beginPath();g.moveTo(it.sx,it.sy);g.lineTo(p[0],p[1]);g.stroke();}
+  g.restore();
+}
+function altCol(alt){if(alt<0)return '#3c7fb8';if(alt<150)return COL.warn;if(alt<3000)return '#9fb7bf';if(alt<7000)return '#c9d8dd';return '#ffffff';}
+function drawTrack(it){
+  const o=it.o,aff=affOf(o),col=COL[aff],k=K[o.kind];
+  // altitude stalk: length tracks altitude so even dots carry it
+  if(opt.stalks&&k.domain==='air'&&!k.missile){const L=Math.min(16,2+o.alt/900);g.strokeStyle=rgba(altCol(o.alt),.6);g.lineWidth=1;const y0=it.sy+(it.tier==='dot'?2:it.s*.35);g.beginPath();g.moveTo(it.sx,y0);g.lineTo(it.sx,y0+L);g.stroke();}
+  if(it.tier==='dot'){
+    g.fillStyle=col;const r=Math.max(1.5,Math.min(3,it.s*.36));g.beginPath();
+    if(aff==='hostile'&&!k.missile){g.moveTo(it.sx,it.sy-r-.6);g.lineTo(it.sx+r+.6,it.sy);g.lineTo(it.sx,it.sy+r+.6);g.lineTo(it.sx-r-.6,it.sy);g.closePath();}
+    else if(aff==='unknown'){g.rect(it.sx-r,it.sy-r,r*2,r*2);}
+    else g.arc(it.sx,it.sy,r,0,7);
+    g.fill();return;
+  }
+  if(it.tier==='msl'){drawMissile(it.sx,it.sy,it.h,it.s,col,o.side==='red');return;}
+  // speed leader: 45 s of travel
+  if(o.spd>.02){const L=Math.max(it.s*.7,Math.min(46,o.spd*45*view.scale));g.strokeStyle=rgba(col,.6);g.lineWidth=1;g.beginPath();g.moveTo(it.sx+Math.cos(it.h)*it.s*.5,it.sy-Math.sin(it.h)*it.s*.5);g.lineTo(it.sx+Math.cos(it.h)*(it.s*.5+L),it.sy-Math.sin(it.h)*(it.s*.5+L));g.stroke();}
+  g.save();g.translate(it.sx,it.sy);g.lineWidth=it.tier==='full'?1.6:1.3;g.strokeStyle=col;g.fillStyle=rgba(col,o.hp!=null&&o.hp<60?.32:.16);
+  framePath(aff,k.domain,it.s/2);g.fill();g.stroke();
+  if(it.tier==='full'&&k.glyph){g.fillStyle=col;g.font=`600 ${Math.round(it.s*(k.glyph.length>2?.28:.36))}px ${F_UI}`;g.textAlign='center';g.textBaseline='middle';g.fillText(k.glyph,0,k.domain==='air'?it.s*.12:k.domain==='sub'?-it.s*.12:0);}
+  g.restore();
+  // control-state badge (manual / agent) on own units
+  if(o.side==='blue'&&(o.ctrl==='Manual'||o.ctrl==='Agent'||o.ctrl==='Order')&&it.s>=10){const bx=it.sx+it.s*.5,by=it.sy-it.s*.5;g.fillStyle=o.ctrl==='Agent'?COL.friend:COL.accent;g.beginPath();g.arc(bx,by,5.5,0,7);g.fill();
+    g.fillStyle=COL.ink;g.font=`700 8px ${F_UI}`;g.textAlign='center';g.textBaseline='middle';g.fillText(o.ctrl==='Manual'?'M':o.ctrl==='Order'?'O':'A',bx,by+.5);}
+  if(o.hp!=null&&o.hp<100){const w=Math.max(16,it.s);g.fillStyle=rgba(COL.ink,.8);g.fillRect(it.sx-w/2,it.sy+it.s*.5+4,w,3);g.fillStyle=o.hp<40?COL.crit:COL.warn;g.fillRect(it.sx-w/2,it.sy+it.s*.5+4,w*o.hp/100,3);}
+}
+function drawPill(p){g.font=`600 10.5px ${F_DATA}`;const w=g.measureText(p.label).width+12;g.fillStyle=rgba(COL.ink,.85);g.strokeStyle=COL.hostile;g.lineWidth=1;
+  g.beginPath();g.roundRect(p.x-w/2,p.y-9,w,18,9);g.fill();g.stroke();g.fillStyle=COL.hostile;g.textAlign='center';g.textBaseline='middle';g.fillText(p.label,p.x,p.y+.5);g.textAlign='left';g.textBaseline='alphabetic';}
+function drawEvents(){
+  const t=curT();
+  for(let i=events.length-1;i>=0;i--){const e=events[i];const age=t-e.t;if(age<0)continue;if(age>6)break;
+    const p=toS(e.x,e.y);const k=age/(e.type==='kill'?6:2.5);if(k>1)continue;
+    g.lineWidth=1.4;
+    if(e.type==='intercept'){g.strokeStyle=rgba(COL.ok,1-k);g.beginPath();g.arc(p[0],p[1],3+k*14,0,7);g.stroke();}
+    else if(e.type==='ciws'){g.strokeStyle=rgba(COL.warn,1-k);g.beginPath();g.arc(p[0],p[1],2+k*8,0,7);g.stroke();}
+    else if(e.type==='impact'){g.strokeStyle=rgba(COL.crit,1-k);for(let j=0;j<8;j++){const a=j*Math.PI/4;g.beginPath();g.moveTo(p[0]+Math.cos(a)*(4+k*6),p[1]+Math.sin(a)*(4+k*6));g.lineTo(p[0]+Math.cos(a)*(9+k*16),p[1]+Math.sin(a)*(9+k*16));g.stroke();}}
+    else if(e.type==='kill'){g.strokeStyle=rgba(COL.text,.9*(1-k));g.beginPath();g.moveTo(p[0]-5,p[1]-5);g.lineTo(p[0]+5,p[1]+5);g.moveTo(p[0]+5,p[1]-5);g.lineTo(p[0]-5,p[1]+5);g.stroke();}
+    else if(e.type==='miss'){g.strokeStyle=rgba(COL.dim,1-k);g.beginPath();g.arc(p[0],p[1],2+k*5,0,7);g.stroke();}
+  }
+}
+function altText(o){if(o.kind==='ssn')return '−'+Math.abs(o.alt)+' m';if(K[o.kind].domain==='surf')return '';if(o.alt<1000)return Math.round(o.alt)+' m';return (o.alt/1000).toFixed(1)+'k';}
+function drawLabels(shown){
+  g.font=`10.5px ${F_DATA}`;g.textBaseline='middle';
+  const placed=[];
+  const pri=it=>(sel.has(it.o.id)?1e9:0)+(it.o.side==='blue'?2e5:0)+K[it.o.kind].rcs*10+(it.tier==='dot'?-1e6:0);
+  const cand=shown.filter(it=>it.tier!=='dot'||sel.has(it.o.id)).sort((a,b)=>pri(b)-pri(a));
+  for(const it of cand){
+    const o=it.o;const missile=K[o.kind].missile;
+    if(missile&&!sel.has(o.id)&&view.scale<9)continue;
+    const txt=missile?o.name:(o.name+(altText(o)?'  '+altText(o):''));
+    const w=g.measureText(txt).width,h=12;
+    const opts=[[it.s/2+5,-h/2],[-it.s/2-5-w,-h/2],[-w/2,-it.s/2-h-3],[-w/2,it.s/2+6]];
+    for(const [dx,dy] of opts){const r=[it.sx+dx,it.sy+dy,w,h];
+      if(placed.some(q=>r[0]<q[0]+q[2]+2&&r[0]+r[2]+2>q[0]&&r[1]<q[1]+q[3]&&r[1]+r[3]>q[1]))continue;
+      placed.push(r);g.fillStyle=rgba(COL.sea,.7);g.fillRect(r[0]-2,r[1],w+4,h);
+      g.fillStyle=sel.has(o.id)?COL.accent:(o.side==='blue'?rgba(COL.friend,.95):o.idState==='unknown'?rgba(COL.unknown,.9):rgba(COL.hostile,.9));
+      g.fillText(txt,r[0],r[1]+h/2+.5);break;}
+  }
+  g.textBaseline='alphabetic';
+}
+function drawSelection(shown){
+  for(const it of shown){if(!sel.has(it.o.id))continue;const r=Math.max(8,it.s/2+5);g.strokeStyle=COL.accent;g.lineWidth=1.5;
+    const c=r*.45;g.beginPath();
+    for(const [sx,sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){g.moveTo(it.sx+sx*r,it.sy+sy*(r-c));g.lineTo(it.sx+sx*r,it.sy+sy*r);g.lineTo(it.sx+sx*(r-c),it.sy+sy*r);}
+    g.stroke();}
+  if(hover&&!sel.has(hover.o.id)){const it=shown.find(x=>x.o===hover.o);if(it){g.strokeStyle=rgba(COL.accent,.6);g.lineWidth=1;g.beginPath();g.arc(it.sx,it.sy,Math.max(7,it.s/2+4),0,7);g.stroke();}}
+}
+function drawScale(){
+  const steps=[1,2,5,10,20,50,100];const km=steps.find(v=>v*view.scale>=90)||100;const px=km*view.scale;
+  const x=14,y=H-66;g.strokeStyle=COL.dim;g.lineWidth=1;g.beginPath();g.moveTo(x,y);g.lineTo(x+px,y);g.moveTo(x,y-4);g.lineTo(x,y+4);g.moveTo(x+px,y-4);g.lineTo(x+px,y+4);g.stroke();
+  g.fillStyle=COL.dim;g.font=`10px ${F_DATA}`;g.fillText(km+' km',x+px+6,y+3);
+  // north
+  g.save();g.translate(W-24,72);g.strokeStyle=COL.dim;g.beginPath();g.moveTo(0,10);g.lineTo(0,-10);g.lineTo(-4,-4);g.moveTo(0,-10);g.lineTo(4,-4);g.stroke();g.fillStyle=COL.dim;g.textAlign='center';g.fillText('N',0,-14);g.restore();
+}
+
+/* ---------- legend ---------- */
+(function legend(){const c=$('#legendCv'),x=c.getContext('2d');const d=Math.min(2,devicePixelRatio||1);c.width=208*d;c.height=70*d;c.style.width='208px';c.style.height='70px';x.scale(d,d);
+  const items=[['friend','Friend',COL.friend],['hostile','Hostile',COL.hostile],['unknown','Unknown',COL.unknown]];
+  x.font=`10.5px ${F_UI}`;x.fillStyle=COL.dim;x.textBaseline='middle';
+  const dom=['air','surf','sub'];
+  items.forEach(([aff,name,col],row)=>{const y=12+row*22;x.fillStyle=COL.dim;x.fillText(name,0,y);
+    dom.forEach((dm,i)=>{x.save();x.translate(70+i*24,y);x.strokeStyle=col;x.fillStyle=rgba(col,.15);x.lineWidth=1.3;
+      drawFrameOn(x,aff,dm,7);x.fill();x.stroke();x.restore();});
+    x.save();x.translate(150,y);x.rotate(0);x.fillStyle=col;x.strokeStyle=col;x.beginPath();x.moveTo(5,0);x.lineTo(-4,4);x.lineTo(-2,0);x.lineTo(-4,-4);x.closePath();if(aff==='friend'){x.lineWidth=1.1;x.stroke();}else x.fill();x.restore();
+    x.fillStyle=col;x.beginPath();x.arc(176,y,2.4,0,7);x.fill();
+  });
+  x.fillStyle=COL.faint;x.font=`9px ${F_DISP}`;
+  function drawFrameOn(ctx,aff,dm,r){const prev=g;g=ctx;framePath(aff,dm,r);g=prev;}
+})();
+
+/* ---------- interaction ---------- */
+let drag=null,hover=null;
+function pick(sx,sy){let b=null,bd=1e9;for(const it of drawList){if(it.sx==null)continue;const d=Math.hypot(it.sx-sx,it.sy-sy);const r=Math.max(7,(it.s||6)/2+4);if(d<r&&d<bd){bd=d;b=it;}}return b;}
+let pendingMove=false,boxSel=null;
+let lastCtx=0,rdrag=null,suppressCtx=0;
+cv.addEventListener('contextmenu',e=>{e.preventDefault();const now=performance.now();if(now-lastCtx<400||now-suppressCtx<600||(rdrag&&rdrag.moved))return;lastCtx=now;const it=pick(e.offsetX,e.offsetY);const [wx,wy]=toW(e.offsetX,e.offsetY);issueOrder(wx,wy,it&&it.o.side==='red'?it.o:null);});
+cv.addEventListener('pointerdown',e=>{if(e.button===2){cv.setPointerCapture(e.pointerId);rdrag={pts:[toW(e.offsetX,e.offsetY)],sx:e.offsetX,sy:e.offsetY,lx:e.offsetX,ly:e.offsetY,moved:false};return;}cv.setPointerCapture(e.pointerId);drag={x:e.offsetX,y:e.offsetY,cx:view.cx,cy:view.cy,moved:false,box:e.shiftKey};});
+cv.addEventListener('pointermove',e=>{
+  if(rdrag){if(Math.hypot(e.offsetX-rdrag.sx,e.offsetY-rdrag.sy)>10)rdrag.moved=true;
+    if(rdrag.moved&&Math.hypot(e.offsetX-rdrag.lx,e.offsetY-rdrag.ly)>14){rdrag.pts.push(toW(e.offsetX,e.offsetY));rdrag.lx=e.offsetX;rdrag.ly=e.offsetY;}}
+  if(drag){const dx=e.offsetX-drag.x,dy=e.offsetY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3){drag.moved=true;if(!drag.box)cv.classList.add('grab');}
+    if(drag.moved){if(drag.box)boxSel={x0:drag.x,y0:drag.y,x1:e.offsetX,y1:e.offsetY};else{view.cx=drag.cx-dx/view.scale;view.cy=drag.cy+dy/view.scale;}}}
+  hover=pick(e.offsetX,e.offsetY);showTip(hover,e.offsetX,e.offsetY);
+});
+cv.addEventListener('pointerup',e=>{cv.classList.remove('grab');
+  if(e.button===2&&rdrag){if(rdrag.moved){rdrag.pts.push(toW(e.offsetX,e.offsetY));issueRoute(rdrag.pts);suppressCtx=performance.now();}rdrag=null;return;}
+  if(e.button!==0){drag=null;boxSel=null;return;}
+  if(drag&&drag.box&&boxSel){const x0=Math.min(boxSel.x0,boxSel.x1),x1=Math.max(boxSel.x0,boxSel.x1),y0=Math.min(boxSel.y0,boxSel.y1),y1=Math.max(boxSel.y0,boxSel.y1);
+    const inBox=drawList.filter(it=>it.sx>=x0&&it.sx<=x1&&it.sy>=y0&&it.sy<=y1);const own=inBox.filter(it=>it.o.side==='blue'&&!K[it.o.kind].missile);
+    const pickSet=own.length?own:inBox;sel.clear();pickSet.forEach(it=>sel.add(it.o.id));primary=pickSet.length?pickSet[0].o.id:null;boxSel=null;renderUnit();renderTracks();}
+  else if(drag&&!drag.moved){const it=pick(e.offsetX,e.offsetY);
+    if(pendingMove){pendingMove=false;const [wx,wy]=toW(e.offsetX,e.offsetY);issueOrder(wx,wy,it&&it.o.side==='red'?it.o:null);}
+    else{
+      if(it){if(e.shiftKey){sel.has(it.o.id)?sel.delete(it.o.id):sel.add(it.o.id);}else{sel.clear();sel.add(it.o.id);}primary=it.o.id;}
+      else if(!e.shiftKey){sel.clear();}
+      renderUnit();renderTracks(true);}}
+  boxSel=null;drag=null;});
+cv.addEventListener('pointerleave',()=>{hover=null;$('#tip').hidden=true;});
+cv.addEventListener('wheel',e=>{e.preventDefault();zoomAt(e.offsetX,e.offsetY,Math.exp(-e.deltaY*.0015));},{passive:false});
+function zoomAt(sx,sy,k){const [wx,wy]=toW(sx,sy);view.scale=Math.max(.35,Math.min(220,view.scale*k));view.cx=wx-(sx-W/2)/view.scale;view.cy=wy+(sy-H/2)/view.scale;}
+function fitAll(){const l=buildList().filter(it=>Math.abs(it.x)<400);if(!l.length)return;let a=1e9,b=-1e9,c=1e9,d=-1e9;for(const it of l){a=Math.min(a,it.x);b=Math.max(b,it.x);c=Math.min(c,it.y);d=Math.max(d,it.y);}
+  view.cx=(a+b)/2;view.cy=(c+d)/2;view.scale=Math.max(.35,Math.min(60,Math.min((W-80)/Math.max(5,b-a),(H-160)/Math.max(5,d-c))));}
+function center(o){view.cx=o.x;view.cy=o.y;}
+function showTip(it,x,y){const t=$('#tip');if(!it){t.hidden=true;return;}const o=it.o,c=byId.get(1);
+  const lines=[`<b>${esc(o.name||K[o.kind].cls)}</b>`,`${K[o.kind].cls} · ${o.side==='blue'?'friend':o.idState}`];
+  lines.push(`BRG ${pad3(brgOf(c,it))}  RNG ${dist(c,it).toFixed(1)} km  from Kestrel`);
+  lines.push(`HDG ${pad3(hdgDeg(o))}  SPD ${Math.round(o.spd*1000)} m/s  ${K[o.kind].domain==='surf'?'surface':'ALT '+altText(o)}`);
+  if(K[o.kind].missile){const tg=byId.get(o.target);if(tg)lines.push(`Target ${esc(tg.name)}  TTG ${Math.round(dist(o,tg)/o.spd)} s`);}
+  t.innerHTML=lines.join('<br>');t.hidden=false;const r=$('#mapwrap').getBoundingClientRect();t.style.left=Math.min(x+14,r.width-t.offsetWidth-8)+'px';t.style.top=Math.min(y+14,r.height-t.offsetHeight-8)+'px';}
+window.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;
+  if(e.key===' '){e.preventDefault();togglePlay();}
+  else if(e.key==='f'||e.key==='F')fitAll();
+  else if(e.key==='Escape'){sel.clear();renderUnit();}
+  else if(e.key===']'){sizeSel(1.25);}else if(e.key==='['){sizeSel(.8);}
+  else if(/^Digit[1-9]$/.test(e.code)){const d=e.code.slice(5);
+    if(e.altKey){e.preventDefault();const ids=[...sel].filter(i=>byId.get(i)?.side==='blue');if(!ids.length){toast('Select your units first, then press Alt+'+d+'.');return;}
+      const gs=new Set(ids.map(i=>byId.get(i).group));let name=[...gs][0];
+      if(!(gs.size===1&&(ownGroups().get(name)||[]).length===ids.length))name=makeGroup(`Group ${d}`,ids);
+      if(name){slots[d]=name;renderGroupChips();toast(`"${name}" is on key ${d}. Press ${d} to select it.`);}}
+    else if(slots[d])selectGroup(slots[d]);}});
+function sizeSel(k){for(const id of sel){const o=byId.get(id);o.sizeMul=k===0?1:Math.max(.4,Math.min(3,o.sizeMul*k));}renderUnit();}
+
+/* toolbar */
+$('#sizeMode').addEventListener('change',e=>opt.sizeMode=e.target.value);
+$('#sizeMul').addEventListener('input',e=>opt.sizeMul=+e.target.value);
+document.querySelectorAll('.mtool .tg[data-t]').forEach(b=>b.addEventListener('click',()=>{const k=b.dataset.t;opt[k]=!opt[k];b.setAttribute('aria-pressed',opt[k]);}));
+$('#zin').onclick=()=>zoomAt(W/2,H/2,1.4);$('#zout').onclick=()=>zoomAt(W/2,H/2,1/1.4);$('#fit').onclick=fitAll;
+
+/* time */
+const SPEEDS=[.25,.5,1,2,4,8];
+$('#speeds').innerHTML=SPEEDS.map(s=>`<button data-s="${s}" aria-pressed="${s===speed}">${s<1?String(s).replace('0.','.'):s}×</button>`).join('');
+$('#speeds').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;speed=+b.dataset.s;$('#speeds').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',+x.dataset.s===speed));});
+function syncPlay(){$('#play').textContent=paused?'▶':'❚❚';$('#play').setAttribute('aria-label',paused?'Play':'Pause');}
+function togglePlay(){if(replayIdx!=null)goLive();paused=!paused;if(!paused)$('#banner').hidden=true;syncPlay();}
+$('#play').onclick=togglePlay;
+$('#reset').onclick=()=>{for(const k in groupClassified)delete groupClassified[k];setup();unread=0;fitAll();syncPlay();renderAll();$('#banner').hidden=true;};
+function showBanner(t){$('#bannerText').textContent=t;$('#banner').hidden=false;}
+$('#resume').onclick=()=>{paused=false;$('#banner').hidden=true;syncPlay();};
+const scrub=$('#scrub');
+scrub.addEventListener('input',()=>{const v=+scrub.value;if(v>=frames.length-1){goLive();return;}replayIdx=v;$('#live').setAttribute('aria-pressed','false');$('#live').textContent='Back to live';});
+function goLive(){replayIdx=null;scrub.value=frames.length-1;$('#live').setAttribute('aria-pressed','true');$('#live').textContent='Live';}
+$('#live').onclick=goLive;
+
+/* friendly fire */
+$('#ffSel').addEventListener('change',e=>{opt.ff=+e.target.value;logMsg('orders',opt.ff?`Friendly-fire simulation: about one Blue missile in ${Math.round(1/opt.ff).toLocaleString()} loses its target and finds a friend.`:'Friendly-fire simulation off.',null,null);});
+/* posture */
+$('#posture').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;posture=b.dataset.p;
+  $('#posture').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.p===posture));
+  logMsg('orders',posture==='Proactive'?'Blue posture proactive: fighters hunt the strike aircraft, destroyers engage aircraft out to 90 km, the carrier launches alert fighters.':'Blue posture defensive: fighters hold their station, destroyers engage aircraft inside 60 km.',null,null);});
+/* seat */
+$('#seatBtn').onclick=()=>{seatAgent=!seatAgent;$('#seatPill').textContent=seatAgent?'Blue seat · Agent (Claude Code)':'Blue seat · You';$('#seatBtn').textContent=seatAgent?'Take seat back':'Hand seat to agent';
+  logMsg('orders',seatAgent?'Blue seat handed to agent (Claude Code). Missions and orders stay as they are.':'You took the Blue seat back. Agent orders are suspended, not deleted.',null,null);};
+
+/* ---------- panels ---------- */
+let trackFilter='all';
+const TF=[['all','All',o=>true],['air','Aircraft',o=>K[o.kind].domain==='air'&&!K[o.kind].missile],['msl','Missiles',o=>K[o.kind].missile],['ships','Ships & subs',o=>K[o.kind].domain!=='air'],['threat','Inbound',o=>o.side==='red'&&(o.kind==='asm'||o.kind==='uav')]];
+function renderTrackChips(){const l=buildList();$('#trackChips').innerHTML=TF.map(([k,n,f])=>`<button class="chip" data-f="${k}" aria-pressed="${k===trackFilter}">${n}<i>${l.filter(it=>f(it.o)).length}</i></button>`).join('');}
+function ownGroups(){const m=new Map();for(const o of objs){if(!o.alive||o.side!=='blue'||K[o.kind].missile)continue;if(!m.has(o.group))m.set(o.group,[]);m.get(o.group).push(o);}return m;}
+let slots={},grpSeq=0;
+function makeGroup(name,ids){const units=ids.map(i=>byId.get(i)).filter(u=>u&&u.alive&&u.side==='blue'&&!K[u.kind].missile);
+  if(!units.length){toast('Select some of your own units first.');return null;}
+  units.forEach(u=>u.group=name);logMsg('orders',`New group "${name}": ${units.length} units (${units.slice(0,6).map(u=>u.name).join(', ')}${units.length>6?'…':''}).`,units[0].x,units[0].y);
+  toast(`Group "${name}" created with ${units.length} units. Right-click or right-drag on the plot to send it.`);renderGroupChips();renderUnit();return name;}
+function renderGroupChips(){const m=ownGroups();const air=[...m.values()].flat().filter(o=>K[o.kind].domain==='air');const keyOf=n=>Object.keys(slots).find(k=>slots[k]===n);
+  $('#groupChips').innerHTML=`<span class="lbl" style="align-self:center;margin-right:4px">Select group</span>`+[...m.entries()].map(([k,v])=>`<button class="chip" data-g="${esc(k)}">${keyOf(k)?`<b>${keyOf(k)}</b>`:''}${esc(k)}<i>${v.length}</i></button>`).join('')+`<button class="chip" data-g="__air">All aircraft<i>${air.length}</i></button>`;}
+function selectGroup(name){const m=ownGroups();const list=name==='__air'?[...m.values()].flat().filter(o=>K[o.kind].domain==='air'):(m.get(name)||[]);if(!list.length)return;
+  sel.clear();list.forEach(o=>sel.add(o.id));primary=list[0].id;renderUnit();renderTracks();toast(`${list.length} units selected. Right-click the plot to send them, or right-click a hostile to attack its group.`);}
+$('#groupChips').addEventListener('click',e=>{const b=e.target.closest('button');if(b)selectGroup(b.dataset.g);});
+cv.addEventListener('dblclick',e=>{const it=pick(e.offsetX,e.offsetY);if(!it||it.o.group==null)return;
+  if(it.o.side==='blue')selectGroup(it.o.group);else{sel.clear();objs.filter(x=>x.alive&&x.side==='red'&&x.group===it.o.group&&!K[x.kind].missile).forEach(x=>sel.add(x.id));primary=it.o.id;renderUnit();renderTracks();}});
+$('#trackChips').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;trackFilter=b.dataset.f;renderTrackChips();renderTracks(true);});
+function renderTracks(){
+  const c=byId.get(1);const f=TF.find(x=>x[0]===trackFilter)[2];
+  const l=buildList().filter(it=>f(it.o)).map(it=>({it,d:dist(c,it)})).sort((a,b)=>a.d-b.d).slice(0,160);
+  $('#trackCount').textContent=`${buildList().length} live`;
+  $('#trackBody').innerHTML=l.map(({it,d})=>{const o=it.o,a=affOf(o);return `<tr data-id="${o.id}" class="${sel.has(o.id)?'sel':''}"><td><span class="sw ${a}"></span>${esc(o.name)}</td><td title="${K[o.kind].cls}">${CODE[o.kind]}</td><td class="n">${pad3(brgOf(c,it))}</td><td class="n">${d.toFixed(1)}</td><td class="n">${altText(o)||'—'}</td><td class="n">${Math.round(o.spd*1000)}</td></tr>`;}).join('');
+}
+$('#trackBody').addEventListener('click',e=>{const tr=e.target.closest('tr');if(!tr)return;const id=+tr.dataset.id;sel.clear();sel.add(id);primary=id;renderUnit();renderTracks();});
+$('#trackBody').addEventListener('dblclick',e=>{const tr=e.target.closest('tr');if(!tr)return;center(byId.get(+tr.dataset.id));});
+
+function symCanvas(o){const c=document.createElement('canvas');const d=Math.min(2,devicePixelRatio||1);c.width=40*d;c.height=40*d;c.style.width='40px';c.style.height='40px';const x=c.getContext('2d');x.scale(d,d);
+  const prev=g;g=x;const aff=affOf(o),col=COL[aff];x.translate(20,20);x.strokeStyle=col;x.fillStyle=rgba(col,.16);x.lineWidth=1.6;
+  if(K[o.kind].missile){g=prev;x.translate(-20,-20);x.save();x.translate(20,20);x.fillStyle=col;x.strokeStyle=col;x.beginPath();x.moveTo(12,0);x.lineTo(-9,8);x.lineTo(-4,0);x.lineTo(-9,-8);x.closePath();o.side==='red'?x.fill():x.stroke();x.restore();return c;}
+  framePath(aff,K[o.kind].domain,15);x.fill();x.stroke();x.fillStyle=col;x.font=`600 ${K[o.kind].glyph.length>2?9:12}px ${F_UI}`;x.textAlign='center';x.textBaseline='middle';x.fillText(K[o.kind].glyph,0,K[o.kind].domain==='air'?2:K[o.kind].domain==='sub'?-2:0);g=prev;return c;}
+function renderUnit(){
+  const el=$('#unit');const ids=[...sel].filter(id=>byId.get(id));
+  if(!ids.length){el.innerHTML=`<div class="unit"><p class="note">Click a track on the plot or in the list. Shift-click adds to the selection. [ and ] shrink or enlarge the selected symbols.</p></div>`;return;}
+  const o=byId.get(primary&&sel.has(primary)?primary:ids[0]);const c=byId.get(1);const blue=o.side==='blue';
+  const ctrlCls=(o.ctrl==='Manual'||o.ctrl==='Order')?'manual':o.ctrl==='Agent'?'agent':'';
+  const ctrlTxt=o.ctrl==='Order'?(o.order&&o.order.type==='attack'?'Your order · attack':'Your order · move'):o.ctrl==='Manual'?'Manual · you':o.ctrl==='Agent'?'Agent':o.ctrl==='Mission'?'Mission':o.ctrl==='Script'?'Script':'BDArmory AI';
+  let h=`<div class="unit"><div class="uh"><span id="symSlot"></span><div><h3>${esc(o.name)}</h3><p>${K[o.kind].cls} · ${blue?'Blue':'Red'}${o.alive?'':' · <span class="win">lost</span>'}</p></div></div>`;
+  if(ids.length>1)h+=`<p class="note">${ids.length} tracks selected. Size buttons apply to all of them.</p>`;
+  if(ids.length>1&&ids.some(i=>byId.get(i).side==='blue'))h+=`<div class="sec"><span class="lbl">Make a group from the selection</span><div class="ctl"><input id="grpName" placeholder="Group name, e.g. Strike A" autocomplete="off"><button class="btn acc" data-act="mkgroup">Make group</button></div><span class="note">Tip: Alt+1…9 puts the selection on a number key. Press the number to select the group again.</span></div>`;
+  if(blue){h+=`<div class="ctl"><span class="cstate ${ctrlCls}">${ctrlTxt}</span><span class="note">${esc(o.mission||'')}</span></div>
+    <div class="ctl">${(o.ctrl==='Manual'||o.ctrl==='Order')?`<button class="btn acc" data-act="release">Return to mission</button>`:`<button class="btn acc" data-act="take">Take control</button>`}<button class="btn" data-act="send" aria-pressed="${pendingMove}">Send to…</button><button class="btn ghost" data-act="fly">Fly in KSP</button><button class="btn ghost" data-act="center">Center</button></div>
+    <p class="note">Right-click the plot to send the selected units there. Right-click a hostile to attack it. Shift-drag to box-select several units.</p>`;}
+  else h+=`<div class="ctl"><span class="cstate" style="color:${o.idState==='unknown'?COL.unknown:COL.hostile}">${o.idState==='unknown'?'Unknown':'Hostile'}</span><button class="btn ghost" data-act="center">Center</button></div>`;
+  h+=`<div class="kv"><div><span class="lbl">Brg</span><b>${pad3(brgOf(c,o))}</b></div><div><span class="lbl">Rng km</span><b>${dist(c,o).toFixed(1)}</b></div><div><span class="lbl">${K[o.kind].domain==='sub'?'Depth':'Alt'}</span><b>${altText(o)||'surface'}</b></div>
+    <div><span class="lbl">Hdg</span><b>${pad3(hdgDeg(o))}</b></div><div><span class="lbl">Speed</span><b>${Math.round(o.spd*1000)} m/s</b></div><div><span class="lbl">RCS m²</span><b>${K[o.kind].rcs>=1?Math.round(K[o.kind].rcs).toLocaleString():K[o.kind].rcs}</b></div></div>`;
+  if(K[o.kind].missile){const tg=byId.get(o.target);if(tg)h+=`<div class="sec"><span class="lbl">Engagement</span><span>Target <b>${esc(tg.name)}</b> · time to go ${Math.round(dist(o,tg)/o.spd)} s</span></div>`;}
+  if(o.mag){h+=`<div class="sec"><span class="lbl">Magazine</span>`+Object.entries(o.mag).map(([k,v])=>`<div class="mag"><span>${k}</span><span class="bar"><i style="width:${100*v[0]/v[1]}%"></i></span><span class="r ${v[0]===0?'win':''}">${v[0]===0?'empty':v[0]+'/'+v[1]}</span></div>`).join('')+`</div>`;}
+  if(o.aam!=null)h+=`<div class="sec"><span class="lbl">Weapons &amp; fuel</span><div class="mag"><span>AAM</span><span class="bar"><i style="width:${100*o.aam/(o.aamMax||6)}%"></i></span><span class="r ${o.aam===0?'win':''}">${o.aam}/${o.aamMax||6}</span></div><div class="mag"><span>Fuel</span><span class="bar"><i style="width:${o.fuel*100}%"></i></span><span class="r">${Math.round(o.fuel*100)}%</span></div></div>`;
+  if(o.fuel!=null&&o.aam==null)h+=`<div class="sec"><span class="lbl">Fuel</span><div class="mag"><span>Fuel</span><span class="bar"><i style="width:${o.fuel*100}%"></i></span><span class="r">${Math.round(o.fuel*100)}%</span></div></div>`;
+  if(o.hp!=null)h+=`<div class="sec"><span class="lbl">Damage</span><div class="mag"><span>Hull</span><span class="bar dmg"><i style="width:${100-o.hp}%"></i></span><span class="r">${Math.round(100-o.hp)}%</span></div></div>`;
+  if(blue&&o.doctrine){h+=`<div class="sec"><span class="lbl">Weapons control</span><div class="seg" data-doc>${['Free','Tight','Hold'].map(d=>`<button data-v="${d}" aria-pressed="${o.doctrine===d}">${d}</button>`).join('')}</div>
+     <span class="lbl" style="margin-top:6px">Radar</span><div class="seg" data-emcon>${['Active','Passive'].map(d=>`<button data-v="${d}" aria-pressed="${o.emcon===d}">${d}</button>`).join('')}</div>
+     <span class="note">Hold or passive radar stops SAM fire. Close-in guns keep defending the ship.</span></div>`;}
+  h+=`<div class="sec"><span class="lbl">Symbol size</span><div class="ctl"><button class="btn ghost" data-act="smaller">Smaller</button><button class="btn ghost" data-act="larger">Larger</button><button class="btn ghost" data-act="sizereset">Reset</button><span class="note">×${o.sizeMul.toFixed(2)}</span></div></div></div>`;
+  el.innerHTML=h;$('#symSlot').replaceWith(symCanvas(o));
+}
+$('#unit').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const ids=[...sel];const o=byId.get(primary&&sel.has(primary)?primary:ids[0]);if(!o)return;
+  const a=b.dataset.act;
+  if(a==='take'){for(const id of ids){const u=byId.get(id);if(u.side==='blue'){if(u.ctrl!=='Order'&&u.ctrl!=='Manual')u.prevCtrl=u.ctrl;u.order=null;u.ctrl='Manual';}}logMsg('orders',`You took control of ${ids.map(i=>byId.get(i).name).join(', ')}. The mission is suspended, not cancelled.`,o.x,o.y);}
+  else if(a==='release'){for(const id of ids){const u=byId.get(id);if(u.ctrl==='Manual'||u.ctrl==='Order')releaseUnit(u);}logMsg('orders',`${o.name} returned to ${o.mission}. The mission re-plans from the unit's position.`,o.x,o.y);}
+  else if(a==='mkgroup'){const v=($('#grpName')||{}).value;makeGroup((v||'').trim()||`Group ${String.fromCharCode(65+(grpSeq++%26))}`,ids);document.activeElement&&document.activeElement.blur();}
+  else if(a==='send'){pendingMove=!pendingMove;if(pendingMove)toast('Click the plot where the selected units should go, or click a hostile to attack it.');}
+  else if(a==='fly'){toast(`In the real build this makes ${o.name} the active vessel in KSP so you can fly it yourself. The map keeps tracking it.`);}
+  else if(a==='center')center(o);
+  else if(a==='larger')sizeSel(1.25);else if(a==='smaller')sizeSel(.8);else if(a==='sizereset')sizeSel(0);
+  if(b.closest('[data-doc]')){o.doctrine=b.dataset.v;logMsg('orders',`${o.name}: weapons ${o.doctrine.toLowerCase()}.`,o.x,o.y);}
+  if(b.closest('[data-emcon]')){o.emcon=b.dataset.v;logMsg('orders',`${o.name}: radar ${o.emcon.toLowerCase()}.`,o.x,o.y);}
+  renderUnit();});
+
+/* bottom */
+let tab='log';const LC=[['contact','Contacts'],['weapons','Weapons'],['intercept','Intercepts'],['damage','Damage & losses'],['orders','Orders'],['comms','Comms']];
+const logOn=new Set(LC.map(x=>x[0]));let commsCh='All';
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{tab=t.dataset.tab;document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',x===t));if(tab==='comms')unread=0;dirtyBot=true;renderBot(true);}));
+$('#logChips').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(tab==='log'){const k=b.dataset.c;logOn.has(k)?logOn.delete(k):logOn.add(k);}else if(tab==='comms')commsCh=b.dataset.c;dirtyBot=true;renderBot(true);});
+function fmtT(t){const s=UT0+t;const h=Math.floor(s%21600/3600),m=Math.floor(s%3600/60),ss=Math.floor(s%60);return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;}
+let botScrollLock=false;
+function renderBot(force){
+  $('#unread').textContent=unread&&tab!=='comms'?unread:'';
+  if(!dirtyBot&&!force)return;dirtyBot=false;
+  const chips=$('#logChips'),body=$('#botBody');
+  if(tab==='log'){chips.hidden=false;chips.innerHTML=LC.map(([k,n])=>`<button class="chip" data-c="${k}" aria-pressed="${logOn.has(k)}">${n}<i>${log.filter(l=>l.cat===k).length}</i></button>`).join('');
+    body.innerHTML=`<ul class="log">`+log.filter(l=>logOn.has(l.cat)).slice(-200).reverse().map((l,i)=>`<li data-x="${l.x??''}" data-y="${l.y??''}" data-t="${l.t}"><span class="t">${fmtT(l.t)}</span><span class="c c-${l.cat}">${l.cat}</span><span class="m">${esc(l.text)}</span></li>`).join('')+`</ul>`;}
+  else if(tab==='comms'){chips.hidden=false;const chs=['All','Team','Diplomatic','Broadcast'];chips.innerHTML=chs.map(c=>`<button class="chip" data-c="${c}" aria-pressed="${c===commsCh}">${c}<i>${c==='All'?comms.length:comms.filter(m=>m.ch===c).length}</i></button>`).join('');
+    const list=comms.filter(m=>commsCh==='All'||m.ch===commsCh);
+    const listHtml=list.length?list.slice().reverse().map(m=>`<div class="msg ${m.side==='you'?'you':m.side}"><div class="who">${esc(m.who)}<small>${m.ch} · ${fmtT(m.t)}</small>${m.unv?'<span class="unv">Unverified sender</span>':''}</div><div class="body">${esc(m.text)}</div></div>`).join(''):'<p class="note" style="padding:10px">No messages yet. Team reports and enemy transmissions appear here.</p>';
+    const existing=$('#commsList');if(existing){existing.innerHTML=listHtml;return;}
+    body.innerHTML=`<div class="comms"><div id="commsList" style="overflow:auto;min-height:0">${listHtml}</div>
+      <form class="compose" id="compose"><select id="cch" aria-label="Channel"><option>Team</option><option>Diplomatic</option><option>Broadcast</option></select><input id="cmsg" placeholder="Message as Blue commander" autocomplete="off"><button class="btn acc">Send</button></form></div>`;
+    $('#compose').addEventListener('submit',e=>{e.preventDefault();const v=$('#cmsg').value.trim();if(!v)return;comms.push({t:simT,ch:$('#cch').value,who:'Blue commander (you)',side:'you',text:v});
+      logMsg('comms',`You (${$('#cch').value}): ${v}`,null,null);if($('#cch').value==='Diplomatic')setTimeout(()=>sayComms('Diplomatic','Red commander','red','Message received. Your position is noted. Our terms stand.'),2500);dirtyBot=true;renderBot(true);});}
+  else{chips.hidden=true;const L=s=>{const e=Object.entries(stats.lost[s]);return e.length?e.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join(''):'<dt>None</dt><dd>0</dd>';};
+    body.innerHTML=`<div class="loss"><section><h4 style="color:${COL.friend}">Blue</h4><dl>${L('blue')}<dt>&nbsp;</dt><dd></dd>${Object.entries(stats.exp.blue).map(([k,v])=>`<dt>${k==='CIWS'?'CIWS kills':k+' fired'}</dt><dd>${v}</dd>`).join('')}<dt>Missiles intercepted</dt><dd>${stats.intercepts+stats.ciws}</dd><dt>Hits taken</dt><dd>${stats.hits}</dd><dt>Friendly-fire incidents</dt><dd>${stats.ff}</dd></dl></section>
+      <section><h4 style="color:${COL.hostile}">Red</h4><dl>${L('red')}<dt>&nbsp;</dt><dd></dd><dt>Anti-ship missiles fired</dt><dd>${stats.exp.red.ASM}</dd><dt>Drones expended</dt><dd>${stats.exp.red.Drones}</dd><dt>Leak rate</dt><dd>${stats.exp.red.ASM?Math.round(100*stats.hits/(stats.exp.red.ASM+stats.exp.red.Drones||1))+'%':'—'}</dd></dl></section></div>`;}
+}
+$('#botBody').addEventListener('click',e=>{const li=e.target.closest('li[data-t]');if(!li)return;const x=li.dataset.x,y=li.dataset.y;if(x!==''){view.cx=+x;view.cy=+y;view.scale=Math.max(view.scale,8);}
+  if(replayIdx!=null){const t=+li.dataset.t;let i=frames.findIndex(f=>f.t>=t);if(i>=0){replayIdx=i;scrub.value=i;}}});
+
+/* panel toggles + splitters + layout memory */
+const app=$('#app');
+function store(){try{localStorage.setItem('skz-layout',JSON.stringify({lw:app.style.getPropertyValue('--lw'),rw:app.style.getPropertyValue('--rw'),bh:app.style.getPropertyValue('--bh'),off:['left','right','bot'].filter(p=>app.classList.contains('no-'+p))}));}catch(e){}}
+function restore(){try{const s=JSON.parse(localStorage.getItem('skz-layout')||'null');if(!s)return;for(const k of ['lw','rw','bh'])if(s[k])app.style.setProperty('--'+k,s[k]);(s.off||[]).forEach(p=>setPanel(p,false,true));}catch(e){}}
+function setPanel(p,on,quiet){app.classList.toggle('no-'+p,!on);document.querySelector(`.top .tg[data-panel="${p}"]`).setAttribute('aria-pressed',on);if(!quiet)store();}
+document.querySelectorAll('.top .tg[data-panel]').forEach(b=>b.addEventListener('click',()=>setPanel(b.dataset.panel,app.classList.contains('no-'+b.dataset.panel))));
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>setPanel(b.dataset.close,false)));
+$('#resetLayout').onclick=()=>{['lw','rw','bh'].forEach(k=>app.style.removeProperty('--'+k));['left','right','bot'].forEach(p=>setPanel(p,true,true));store();};
+document.querySelectorAll('[data-split]').forEach(sp=>{
+  sp.addEventListener('pointerdown',e=>{sp.setPointerCapture(e.pointerId);const k=sp.dataset.split;const r=app.getBoundingClientRect();
+    const mv=ev=>{let v;if(k==='lw')v=ev.clientX-r.left;else if(k==='rw')v=r.right-ev.clientX;else v=r.bottom-ev.clientY;
+      v=Math.max(k==='bh'?110:220,Math.min(k==='bh'?r.height*.6:r.width*.4,v));app.style.setProperty('--'+k,v+'px');};
+    const up=()=>{sp.removeEventListener('pointermove',mv);sp.removeEventListener('pointerup',up);store();};
+    sp.addEventListener('pointermove',mv);sp.addEventListener('pointerup',up);});
+  sp.addEventListener('keydown',e=>{const k=sp.dataset.split;const cur=parseFloat(getComputedStyle(app).getPropertyValue('--'+k))||300;let d=0;
+    if(e.key==='ArrowLeft'||e.key==='ArrowUp')d=k==='lw'?-20:20;if(e.key==='ArrowRight'||e.key==='ArrowDown')d=k==='lw'?20:-20;if(!d)return;e.preventDefault();app.style.setProperty('--'+k,Math.max(110,cur+d)+'px');store();});
+});
+
+/* timeline ticks */
+function drawTicks(){const c=$('#ticks');const r=c.getBoundingClientRect();const d=Math.min(2,devicePixelRatio||1);if(c.width!==Math.round(r.width*d)){c.width=Math.round(r.width*d);c.height=Math.round(6*d);}
+  const x=c.getContext('2d');x.setTransform(d,0,0,d,0,0);x.clearRect(0,0,r.width,6);if(!frames.length)return;const t0=frames[0].t,t1=Math.max(t0+1,frames[frames.length-1].t);
+  for(const e of events){if(e.type!=='impact'&&e.type!=='kill'&&e.type!=='intercept')continue;x.fillStyle=e.type==='impact'?COL.crit:e.type==='kill'?COL.text:rgba(COL.ok,.6);x.fillRect((e.t-t0)/(t1-t0)*r.width,0,1.5,e.type==='intercept'?3:6);}}
+
+/* ---------- main loop ---------- */
+let last=performance.now(),uiT=0;
+function renderAll(){renderGroupChips();renderTrackChips();renderTracks();renderUnit();renderBot(true);}
+function frame(now){
+  const dt=Math.min(.3,(now-last)/1000);last=now;
+  if(!paused&&replayIdx==null)simulate(dt*speed);
+  draw();
+  const t=curT();$('#ut').textContent=(()=>{const s=UT0+t;const d=Math.floor(s/21600)+1;return `Y1 D${String(d).padStart(3,'0')} ${fmtT(t)}`;})();
+  $('#tlTime').textContent=`T+${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}`;
+  uiT+=dt;if(uiT>.4){uiT=0;renderGroupChips();renderTrackChips();renderTracks();if(!document.activeElement||!$('#unit').contains(document.activeElement))renderUnit();renderBot();drawTicks();}
+  requestAnimationFrame(frame);
+}
+restore();setup();resize();
+requestAnimationFrame(()=>{resize();fitAll();renderAll();requestAnimationFrame(frame);});
+})();
+</script>
