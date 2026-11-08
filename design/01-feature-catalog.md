@@ -1,6 +1,6 @@
 # 01 Feature catalog
 
-Every feature of skizzy-protocol with a priority and an origin tag. `[IDEAS]` = in `IDEAS.md`; `[ADDED]` = added by design pass 1.0 (with a one-line rationale); `[REVIEW-ADDED]` = added by review pass 1.1 (§15). Priorities: **P0** MVP, delivered by the end of M4; **P1** core, by the end of M7; **P2** nice-to-have, by the end of M9 (release); **P3** after 1.0. Several P0 items land as early as M0/M1 because the user needs them first (connect, read, fly, screenshot, log). Milestone contents are in `17-milestones.md`; `19-review.md` §1 maps every `IDEAS.md` bullet to the rows here. Rows changed by the review carry **[R]**.
+Every feature of skizzy-protocol with a priority and an origin tag. `[IDEAS]` = in `IDEAS.md`; `[ADDED]` = added by design pass 1.0 (with a one-line rationale); `[REVIEW-ADDED]` = added by review pass 1.1 (§15). Priorities: **P0** MVP, delivered by the end of M4; **P1** core, by the end of M7; **P2** nice-to-have, by the end of M9 (release); **P3** after 1.0. Several P0 items land as early as M0/M1 because the user needs them first (connect, read, fly, screenshot, log). Milestone contents are in `17-milestones.md`; `19-review.md` §1 maps every `IDEAS.md` bullet to the rows here. Rows changed by the review carry **[R]**. **[R2]** marks pass 2 changes (2026-11-08: the command-model change, communications and diplomacy, and spawn anywhere; `IDEAS.md` §15–16). The new rows are in §17 and §18.
 
 Reading the tables: "Front ends" lists where the feature is usable: **S**cripts, **A**gents (MCP), **M**ap, **G**ame (in-game UI/controls). The rule "nothing exists in only one front end" is checked here: every row has at least S+A, and M/G where a UI makes sense.
 
@@ -11,7 +11,7 @@ Reading the tables: "Front ends" lists where the feature is usable: **S**cripts,
 | In-game host plugin, C# bridge exe, shared protocol library | P0 | [IDEAS] | S A M G | PLAN v0.2 architecture kept |
 | Native WebSocket socket (JSON) for scripts and high-rate agents | P0 | [IDEAS] | S | |
 | MCP projection (stdio) | P0 | [IDEAS] | A | |
-| MCP Streamable HTTP on loopback with per-session actor identity | P1 | [ADDED] | A | multi-agent needs N agents through one bridge without N processes |
+| MCP Streamable HTTP on loopback with per-session actor identity | P1 | [ADDED] | A | **[R2]** a commander and the sub-agents its AI client spawns (delegates) share one bridge without N processes; stdio uses the `as` argument instead (`09-c2-multi-agent.md` §1.2) |
 | MessagePack binary encoding negotiated per session | P0 | [ADDED] | S M | 5–10× smaller than JSON for track/telemetry streams; zero-garbage parse in Python/C# |
 | Compact text encoding for LLM-facing tactical data | P0 | [ADDED] | A | token economy: one track = one short line |
 | Main-thread dispatcher, per-frame adaptive budget, zero idle cost | P0 | [IDEAS] | — | |
@@ -70,7 +70,7 @@ Reading the tables: "Front ends" lists where the feature is usable: **S**cripts,
 | Hand-off to/from BDArmory AI and AtmosphereAutopilot | P0 | [IDEAS] | S A G | |
 | Human + agent co-flying with arbitration | P0 | [IDEAS] | G S A | |
 | Kill switch (hotkey, toolbar, map, API) that always restores manual control | P0 | [IDEAS] | S A M G | |
-| Scene setup and positioning (VesselMover/HyperEdit style): place, lift, drop, teleport, orient | P0 | [IDEAS] | S A M | |
+| Scene setup and positioning (VesselMover/HyperEdit style): place, lift, drop, teleport, orient | P0 | [IDEAS] | S A M | **[R2]** spawning anywhere is now its own set of rows in §18 |
 | Submarine depth control via SubTrim + KP Naval ballast | P1 | [ADDED] | S A M G | **[R]** v1 writes `ModuleSubTrim.manualDepth`/`targetDepth` through the PAW path (M1). The `IDepthCommandSource` route needs an optional separate assembly and a SubTrim selection-priority patch, so it is P2 (`04-ksp-and-mod-access.md` §5) |
 | Carrier launch/recovery sequencing (ACA catapults, wires, hooks; Hangar) | P2 | [ADDED] | S A M | the user flies carriers; deck cycles are a state machine, not a one-shot |
 | Collision/deconfliction advisories for scripted swarms | P2 | [ADDED] | S | BDA avoids collisions for its AI only |
@@ -79,7 +79,7 @@ Reading the tables: "Front ends" lists where the feature is usable: **S**cripts,
 
 | Feature | Pri | Origin | Front ends | Notes |
 |---|---|---|---|---|
-| Spawning: rings, exact formations, single vessels, templates | P0 | [IDEAS] | S A M G | |
+| Spawning: rings, exact formations, single vessels, templates | P0 | [IDEAS] | S A M G | BDA's spawners (M2); **[R2]** Skizzy's own spawn-anywhere and multi-spawn are in §18 (M1) |
 | Teams, guard mode, full weapon-manager configuration incl. 1024 targets / 128 per target / parallel salvo | P0 | [IDEAS] | S A M G | |
 | AI modes (pilot/surface/sub/VTOL/orbital), live parameter changes, commands (attack/fly-to/follow/waypoints/take-off/release) | P0 | [IDEAS] | S A M G | |
 | Direct weapons: fire missile at target, guns, countermeasures incl. bubbles, radar/sonar on/off/lock, targeting pods | P0 | [IDEAS] | S A M G | `destructive`, ask by default |
@@ -106,25 +106,25 @@ Reading the tables: "Front ends" lists where the feature is usable: **S**cripts,
 | Threat scoring with explanations; engagement status (who engages whom, missiles in flight per track) | P0 | [ADDED] | S A M | |
 | Named bullseyes, zones (MEZ/FEZ/JEZ, no-fire, patrol areas, sectors) as shared picture objects | P0 | [ADDED] | S A M | ROE and sector assignment need geometry objects |
 | SITREP: compact own-unit status (fuel, ammo, damage, flooding, leases, orders) | P0 | [ADDED] | S A M | the single most used agent tool |
-| Comms/datalink model: per-team link graph, latency, jamming degrading the shared picture (optional realism) | P2 | [ADDED] | S A M | EW realism; default is perfect comms |
+| Comms/datalink model: per-team link graph, latency, jamming degrading the shared picture (optional realism) | P2 | [ADDED] | S A M | EW realism; default is perfect comms. **[R2]** merged with message comms range and jamming (§17, `22-communications-diplomacy.md` §7) |
 
 ## 7. Command and control
 
 | Feature | Pri | Origin | Front ends | Notes |
 |---|---|---|---|---|
 | Orders as objects: intent, constraints, ROE, priority, owner, status, timeout | P0 | [IDEAS] | S A M G | |
-| Hierarchy: commander → groups → units; roles | P0 | [IDEAS] | S A M | |
+| Hierarchy: commander → groups → units; roles | P0 | [IDEAS] | S A M | **[R2]** one command seat per side (human or one agent) → groups → units; roles commander, advisor, delegate, observer, script, behaviour, harness, human (§17) |
 | Leases per control channel, TTL heartbeats, preemption events | P0 | [IDEAS]+[ADDED] | S A M G | channels and TTL added |
-| Precedence human > commander > unit > script > BDA default (numeric bands) | P0 | [IDEAS] | — | |
+| Precedence human > commander > unit > script > BDA default (numeric bands) | P0 | [IDEAS] | — | **[R2]** bands: human 1000, commander 800, delegate 600 (max 700), script 400, behaviour 300, BDA 0; the referee's surrender locks at 1100 (`09-c2-multi-agent.md` §4) |
 | Tactics library: CAP, intercept, pincer, AD umbrella/sectors, ASW screen, strike package, saturation, sub ambush, carrier launch/recovery | P1 | [IDEAS] | S A M | |
-| Model per role; events pushed to agents | P1 | [IDEAS] | A | **[R]** P0→P1: events reach agents in M2 (`tac_wait_events`); the multi-model orchestrator is M6 |
-| Time control for thinking (auto slow-mo/pause) | P1 | [IDEAS] | A G | |
+| Model per role; events pushed to agents | P3 / P0 | [IDEAS] | A | **[R]** P0→P1: events reach agents in M2 (`tac_wait_events`). **[R2]** model per role → P3 with the built-in agent layers (`09-c2-multi-agent.md` §8.7); events reach any client by long-poll (`tac_wait_events` M2, `comms_wait` M4), P0 |
+| Time control for thinking (auto slow-mo/pause) | P1 | [IDEAS] | A G | **[R2]** a host-side think-time policy for agent seats (`09-c2-multi-agent.md` §8.4), M6; pause-on-event M3 |
 | LLMs one actor among several | P0 | [IDEAS] | — | |
 | Order lifecycle with acknowledgement, progress, unachievable reasons, supersession | P0 | [ADDED] | S A M | |
 | Stale-decision rejection: orders carry `basedOnSeq`/`validUntilUt` | P1 | [ADDED] | S A | an LLM decision made 8 s ago may be wrong now |
 | Doctrine files (YAML): ROE, envelopes, formations, sectors, triggers → tactics | P1 | [ADDED] | S A M | |
-| Agent memory between battles (AAR store, per-role notes, craft performance DB) | P2 | [ADDED] | A | |
-| Token/cost budgets per agent and per battle, spend kill switch | P1 | [ADDED] | A G | |
+| Agent memory between battles (AAR store, per-role notes, craft performance DB) | P3 | [ADDED] | A | **[R2]** P2→P3 (user decision, `IDEAS.md` §15); the user's own client can analyse recordings with the `rec` tools |
+| Token/cost budgets per agent and per battle, spend kill switch | P1 | [ADDED] | A G | **[R2]** optional, and only in the API-key example (`--max-usd`, `--max-turns-per-min`, `09-c2-multi-agent.md` §8.5); per-agent budgets in the core are gone (user decision U2 resolved) |
 | Scenario director: waves, timelines, scripted triggers | P1 | [ADDED] | S A M | |
 | Multiple humans (several map operators) | P2 | [ADDED] | M | loopback in v1; SSH tunnel documented; LAN binding P3 |
 | **Mission command plus direct control**: per unit and group control state (BDA / mission / order / agent / script / manual / piloted), shown on the map and in the SITREP; one-click take-over (all or per channel) and hand-back that re-plans from the unit's position; one-shot interventions (route, assign target, fire this weapon, hold fire) return automatically; "Fly in KSP"; suspension stack so nothing is lost | P0 | [IDEAS] 2026-11-08 (user clarification of the genre reference) | S A M G | `09-c2-multi-agent.md` §4.1, `11-tactical-map.md` §6.1; M4 with orders, M6 with missions |
@@ -201,7 +201,7 @@ Reading the tables: "Front ends" lists where the feature is usable: **S**cripts,
 | Defaults: editor, flight, screenshots allowed; destructive ask | P0 | [IDEAS] | G | D11 |
 | Kill switch, ROE guards, friendly-fire checks, audit, localhost only, token | P0 | [IDEAS] | G S A M | |
 | Actor identities and lease ACLs (which roles may preempt) | P0 | [ADDED] | G | |
-| Two-key confirmation for bulk destructive/cheat operations (remove all vessels, 200-vessel spawn) | P1 | [ADDED] | G A | |
+| Two-key confirmation for bulk destructive/cheat operations (remove all vessels, 200-vessel spawn) | P1 | [ADDED] | G A | **[R2]** spawns are no longer two-key: any count is allowed with a performance warning above 50 (user correction); two-key stays for removing all vessels and kill-everything scenario loads |
 | Prompt-injection isolation of game text; no permission changes over the wire | P0 | [IDEAS]/[ADDED] | — | |
 
 ## 14. Extensibility and extras
@@ -210,7 +210,7 @@ Reading the tables: "Front ends" lists where the feature is usable: **S**cripts,
 |---|---|---|---|---|
 | Other mods add unit types, sensors, weapons, symbology via annotation packs | P1 | [IDEAS] | — | **[R]** part roles + `symbols.json` class mapping are P1 (M3); code-level sensor/unit-type providers are P2 (§15) |
 | Logistics, rearm, damage control | P2/P3 | [IDEAS] | S A M | damage control via HullBreach/SubTrim first |
-| Comms degradation and EW | P2 | [IDEAS] | S A M | |
+| Comms degradation and EW | P2 | [IDEAS] | S A M | **[R2]** specified in `22-communications-diplomacy.md` §7 (§17), M8 |
 | Web dashboard | P3 | [IDEAS] | — | superseded by the desktop map; a read-only web view may come later |
 | AI battle commentator | P3 | [IDEAS] | A | from recordings |
 | CKAN packaging, docs site | P2 | [ADDED] | — | **[R]** detailed by the install and docs rows in §15 |
@@ -254,9 +254,9 @@ Added by review pass 1.1 because they were missing, implied but unspecified, or 
 | Unattended batch profile (no prompts, two-key pre-armed, wall-clock cap) | P2 | S | `14-testing-batch-sim.md` §4 | "headless" honestly means unattended |
 | Sensor and unit-type provider extension point | P2 | — | `04-ksp-and-mod-access.md` §7 | IDEAS 14.1 |
 | `symbols.json`: vessel class → MIL-STD-2525D symbol set / entity, editable | P1 | M G | `11-tactical-map.md` §2 | concrete symbology instead of "APP-6 style" |
-| Orchestrator refusal handling and append-only history with compaction | P1 | A | `09-c2-multi-agent.md` §8.2 | required by the current Claude API behaviour |
+| **[R2]** API-key commander example: refusal handling and append-only history with compaction (was: orchestrator) | P1 | A | `09-c2-multi-agent.md` §8.5 | required by the current Claude API behaviour; the built-in orchestrator is gone |
 
-Count: 122 rows in §1–14 (112 from pass 1.0, the orbital row, and 9 rows from the user's 2026-11-08 additions to IDEAS) and 34 in §15.
+Count: 122 rows in §1–14 (112 from pass 1.0, the orbital row, and 9 rows from the user's 2026-11-08 additions to IDEAS) and 34 in §15. **[R2]** Pass 2 adds 19 rows in §17 and 8 in §18; no row was deleted, and superseded rows say so in their notes.
 
 ## 16. Genre reference additions (CMO-style command features) — [REVIEW-ADDED]
 
@@ -276,8 +276,8 @@ The user named *Command: Modern Operations* as the genre reference for the comma
 | Time compression bar and pause-on-event (`session.pause_on`) | P0 | M G S | `11-tactical-map.md` §12, `09-c2-multi-agent.md` §11.6 | M3 |
 | Loadout/magazine view per unit with winchester/bingo markers | P0 | M G | `11-tactical-map.md` §12 | M3 |
 | Contact classification flow `detected → classified → identified` (`idState`) | P1 | S A M | `09-c2-multi-agent.md` §11.4, `08-tactical-picture.md` §2 | M2/M3 |
-| Side posture via BDA team relations (`bda.team.relations`) | P1 | S A M | `09-c2-multi-agent.md` §11.5 | M4 |
-| Map scenario editor: place units, sides, posture, doctrine, missions, save scenario YAML | P1 | M | `11-tactical-map.md` §12 | M6 |
+| Side posture via BDA team relations (`bda.team.relations`) | P1 | S A M | `09-c2-multi-agent.md` §11.5 | **[R2]** superseded by side stance (§17), M6 |
+| Map scenario editor: place units, sides, posture, doctrine, missions, save scenario YAML | P1 | M | `11-tactical-map.md` §12.8 (**[R2]** spawn specs with any count, waves, respawn, seats, stance, comms, end conditions) | M6 |
 
 **[R] Mission command is added on top of Skizzy's own capabilities, not instead of them** (user clarification 2026-11-08). The take-over and hand-back row is in §7. Skizzy's strengths beyond the genre stay first-class and are not traded away for genre features:
 
@@ -288,3 +288,44 @@ The user named *Command: Modern Operations* as the genre reference for the comma
 - full logging and replay.
 
 They are listed in `09-c2-multi-agent.md` §11.7 and `11-tactical-map.md` §12.
+
+## 17. Command model, communications and diplomacy — [R2, IDEAS §15–16]
+
+The user's pass 2 decisions. Group and unit agents, the orchestrator, per-role models, per-agent budgets and agent memory are P3 (`09-c2-multi-agent.md` §8.7). Their work is done by the in-game logic in `09-c2-multi-agent.md` §11.
+
+| Feature | Pri | Front ends | Where | M |
+|---|---|---|---|---|
+| Any MCP client as commander, advisor or delegate (Claude Code, Codex, other tools, local models); bridge actor options; two clients checked | P0 | A | `09-c2-multi-agent.md` §8.1 | M0/M4 |
+| **Command seat** per side: a human or one agent; take, hand, release; `agentTakeover` ask/allow/deny; seat-owned orders, missions and delegations; hand-over brief; free-play seating | P0 | S A M G | `09-c2-multi-agent.md` §1.1 | M4 |
+| **Delegation** to sub-agents spawned by the commander's AI client: cluster leases (units, group, mission), revocable tokens, own connection or the `as` argument, idle TTL | P0 | S A M G | `09-c2-multi-agent.md` §1.2 | M4 |
+| **Automatic reports without an LLM**: engaged, contact, weapons spent, damaged, kill, winchester, bingo/RTB, on station, mission complete, lost, surrendered | P0 | S A M G | `09-c2-multi-agent.md` §1.3 | M4 |
+| Team and direct channels; message store, recording and replay | P0 | S A M G | `22-communications-diplomacy.md` §1–2, §8 | M4 |
+| Visibility of traffic: own side plus diplomatic, or god view with true senders | P0 | S A M | `22-communications-diplomacy.md` §8 | M4 |
+| Map comms panel v1 and command strip (no LLM chat in the map; the AI client is the chat) | P1 | M | `11-tactical-map.md` §5.2 | M4 |
+| Think-time policy for agent seats | P1 | A M G | `09-c2-multi-agent.md` §8.4 | M6 |
+| API-key commander example with optional spending caps | P1 | S | `09-c2-multi-agent.md` §8.5 | M6 |
+| Broadcast channel; `broadcastCallsigns` setting | P1 | S A M G | `22-communications-diplomacy.md` §2–3 | M6 |
+| Side stance war / ceasefire / peace mapped to `BDTeam.Allies` in both directions; structured terms; expiry | P1 | S A M G | `22-communications-diplomacy.md` §4 | M6 |
+| Surrender: weapons safed, neutral `<Side>·Surrendered` team, referee lock, subdued scoring; surrender demands | P1 | S A M G | `22-communications-diplomacy.md` §5 | M6 |
+| Violations (fired on surrendered, ceasefire broken, perfidy, terms breach) and penalties | P1 | S A M | `22-communications-diplomacy.md` §6 | M6 |
+| End conditions for "subdue or talk it out": `side_surrendered`, `stance_held`, subdued counts in scores | P1 | S A M | `22-communications-diplomacy.md` §5, `10-scripting-sdk.md` §7 | M6 |
+| Comms panel v2 (stance strip, templates, proposal cards, Apply) and the in-game Comms window | P1 | M G | `11-tactical-map.md` §5.2, `22-communications-diplomacy.md` §11 | M6 |
+| Diplomatic channel with two-sided opt-in; negotiation protocol (proposals, counters, terms) | P2 | S A M G | `22-communications-diplomacy.md` §2, §4 | M7 |
+| Psyops: unverified content, unauthenticated broadcast callsigns, private credibility tags; untrusted delivery and the doctor warning | P2 | S A M | `22-communications-diplomacy.md` §3, §10 | M7 |
+| Agent-vs-agent negotiation scenario and its batch form | P2 | S A | `16-scenarios.md` §10 | M7 |
+| Comms range, relays, submarine depth and jamming (off by default) | P2 | S A M | `22-communications-diplomacy.md` §7 | M8 |
+
+## 18. Spawning anywhere — [R2, user requirement 2026-11-08]
+
+VesselMover-style spawning is first-class and available from M1. Skizzy does its own exact pose and velocity and reuses BDA's spawners where they fit (`06-flight-control.md` §9.1 has the reuse table).
+
+| Feature | Pri | Front ends | Where | M |
+|---|---|---|---|---|
+| **Spawn anywhere**: mid-air (altitude, heading, pitch, airspeed, engines, throttle, gear up), sea surface with buoyancy settle, submerged at depth, ground, runway; team, guard, AI, group and mission in the same call | P0 | S A M G | `06-flight-control.md` §9.1 | M1 |
+| **Multi-spawn**: any count (no cap), a line abreast or in trail, auto or fixed spacing, clear-space search (terrain, buildings, water/land, vessels by bounding size plus margin), wrapping into parallel rows, a performance warning above 50, internal batches staggered over frames | P0 | S A M G | `06-flight-control.md` §9.1 | M1 |
+| Formation and swarm spawn in one call (wedge, line, echelon, box, screen) | P0 | S A M G | `06-flight-control.md` §9.1 | M1 |
+| In-game Spawn window (craft picker, mode, count field, spacing, rows, team, guard, AI, group, warning) | P0 | G | `06-flight-control.md` §9.1, `21-user-experience.md` §3 | M1 |
+| Map drag-spawn from the library with the spawn card and slot preview | P0 | M | `11-tactical-map.md` §6 | M3 |
+| Mid-battle reinforcements: scenario waves, respawn rules, BDA continuous spawning wrapper | P1 | S A M | `06-flight-control.md` §9.1, `09-c2-multi-agent.md` §9 | M6 |
+| Orbit spawn | P2 | S A M | `06-flight-control.md` §9.1 | M8 |
+| **OD1, BDArmory Overdrive feature**: multi-spawn with any count, rows and clear-space in the fork's VesselMover spawn window (a fork feature, not a hook) | P1 | G | `07-bdarmory-integration.md` §5.1 | M1 |

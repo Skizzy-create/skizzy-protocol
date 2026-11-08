@@ -132,4 +132,4 @@ Pass 1.0 named these operations across sections and scenarios; this is the one l
 | `ksp.parts.catalog {role?, search?}` | read | any | role filters from `SKIZZY_PART_ROLES` |
 | `lib.craft.list|get|save|promote|tag|compare` | read/control | any | `compare` diffs trials and battle stats between versions |
 | `lib.blueprint.list|get|save|patch`, `lib.loadout.list|get|save|apply` | read/control | any | `patch` applies a JSON merge patch and saves a new blueprint version; `apply` sets missile types per cell (`MultiMissileLauncher`/`ModuleMissileRearm`) |
-| `ksp.vessel.spawn_craft` | cheat | main | spawn any `.craft` at a position (M1; `04-ksp-and-mod-access.md` §2) |
+| `ksp.vessel.spawn_craft` | cheat | main | spawn any `.craft` or library craft anywhere: mid-air at speed, at sea, submerged, ground, runway; **[R2]** any `count` in a line that wraps into rows, with clear-space search and a warning above 50 (M1; `06-flight-control.md` §9.1) |

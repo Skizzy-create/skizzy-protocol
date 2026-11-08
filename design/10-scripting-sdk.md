@@ -6,7 +6,7 @@ Scripts are first-class actors. Python first (`pip install skizzy`), C# second (
 
 **[R] Staging.** M0 ships `skizzy` 0.1: a small synchronous JSON client (`skizzy.connect()`, `sk.call(name, **args)`, `sk.watch(selector, hz)`, `sk.log.start/stop`, `sk.shot()`), REPL/notebook helpers and the `skizzy call|watch|log|shot` CLI, so the user can script against KSP from day one without Claude Code (`21-user-experience.md` §4). The typed, async, msgpack SDK below is M4.
 
-Packages: `skizzy.client` (transport), `skizzy.models` (typed records generated from the protocol schemas), `skizzy.tactical` (track mirror, BRAA/geometry, filters), `skizzy.c2` (orders, leases, groups, doctrine), `skizzy.flight` (holds, setpoint batches, routes, formations), `skizzy.bda`, `skizzy.craft`, `skizzy.rec` (recordings), `skizzy.sim` (mini-sim), `skizzy.agents` (LLM orchestrator), `skizzy.templates`.
+Packages: `skizzy.client` (transport), `skizzy.models` (typed records generated from the protocol schemas), `skizzy.tactical` (track mirror, BRAA/geometry, filters), `skizzy.c2` (orders, leases, groups, doctrine), `skizzy.flight` (holds, setpoint batches, routes, formations), `skizzy.bda`, `skizzy.craft`, `skizzy.rec` (recordings), `skizzy.sim` (mini-sim), **[R2]** `skizzy.comms` (team channel, reports, messages), `skizzy.examples.api_commander` (optional API-key commander example with optional spending caps, `09-c2-multi-agent.md` §8.5; pass 1's `skizzy.agents` orchestrator is removed), `skizzy.templates`.
 
 ```python
 # pseudocode, async-first; sync wrappers exist for notebooks
@@ -89,8 +89,8 @@ Node set: composites (`selector`, `sequence`, `parallel`, `repeat`), decorators 
 |---|---|---|---|
 | steering, fire | BDA AI + Skizzy holds | 50 Hz | physics |
 | swarm laws, station keeping | Python over msgpack or in-game BT | 10–20 Hz | loopback latency 1–3 ms is fine at this rate |
-| tactics, re-tasking | Haiku agents, scripts | event-driven, seconds | LLM latency |
-| command | Opus, human | minutes | |
+| tactics, re-tasking | **[R2]** in-game missions and doctrine, scripts, client-spawned delegates | 1 Hz planners; delegates event-driven, seconds | LLM latency for delegates only |
+| command | the commander: a human or one agent (any MCP client) | minutes | |
 
 ## 6. Mini-sim (`skizzy.sim`, P1) — [ADDED]
 
@@ -100,8 +100,8 @@ A pure-Python kinematic world speaking the same protocol (subset): vessels as po
 
 | File | Schema (summary) | Used by |
 |---|---|---|
-| **Scenario** (`library/scenarios/*.yaml`) | `name`, `site {body, lat, lon}`, `physicsRangeM`, `settings` (BDA overrides), `teams`, `spawn` (template/ring/list with craft from library or paths, positions, headings, formation templates), `groups`, `doctrine`, `orders` (initial), `waves [{at|when, spawn, orders}]`, `end {ut_limit, when}`, `recorder {profile}`, `matrix`, `repeats`, `expect` | `sim.scenario.load`, `skizzy battle run` |
-| **Doctrine** (`library/doctrine/*.yaml`) | `09-c2-multi-agent.md` §5 | C2 engine, orchestrator |
+| **Scenario** (`library/scenarios/*.yaml`) | `name`, `site {body, lat, lon}`, `physicsRangeM`, `settings` (BDA overrides), `teams`, `spawn` (template/ring/list with craft from library or paths, positions, headings, formation templates), `groups`, `doctrine`, `orders` (initial), `waves [{at|when, spawn, orders}]` (**[R2]** `spawn` entries use the spawn-anywhere spec: mode air/sea/submerged/ground/runway, altitude, speed, formation or multi-spawn line, `06-flight-control.md` §9.1), **[R2]** `respawn` rules, `seats {side: human|agent}` with `agentTakeover`, `stance` (initial, per side pair), `comms {model, broadcastCallsigns, agentsMaySurrender}`, `scoring {subduedWeight, violationPenalty}`, `end {ut_limit, when}` (**[R2]** plus `side_surrendered`, `stance_held`, `transit {side, units, min, zone}`, `22-communications-diplomacy.md` §5), `recorder {profile}`, `matrix`, `repeats`, `expect` | `sim.scenario.load`, `skizzy battle run` |
+| **Doctrine** (`library/doctrine/*.yaml`) | `09-c2-multi-agent.md` §5 | C2 engine, mission planners |
 | **Tactic** (`library/tactics/*.yaml`) | `name`, `params` schema, `expand` (order templates), `triggers`, optional `hook: python:module.fn | csharp:Type` | planner |
 | **Behaviour tree** (`library/behaviours/*.yaml`) | §5.1 | Behaviour engine |
 | **Log profile** (`library/logprofiles/*.yaml`) | `12-logging-recording-replay.md` §2 | recorder |

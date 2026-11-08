@@ -48,7 +48,7 @@ All writes to module fields go through the PLAN v0.2 §4.5 PAW-equivalent path (
 | `KerbalKonstructs.cfg` | `LaunchSiteManager.AllLaunchSites` (property over the `allLaunchSites` field) | spawn points |
 | `HyperEdit.cfg` | `DoLander` (land at lat/lon/alt), `OrbitEditor`, `MiscEditor` | cheat. **[R]** no `Model.Lander` type exists in the installed `HyperEdit.dll`; Skizzy's own placement (§5) is preferred anyway |
 | `WildBlueTools.cfg` **[R]** | `WBIBallastTank`, `WBIDiveComputer` fields | read; `flight.depth` defers to SubTrim when both are on a vessel |
-| `VesselMover.cfg` | standalone mod `VesselMove`/`SpawnVesselFromCraftFile`; BDA built-in `VesselMover.PlaceVessel`/`PickUpAndDrop` preferred | cheat |
+| `VesselMover.cfg` | standalone mod `VesselMove`/`SpawnVesselFromCraftFile`; BDA built-in `VesselMover.PlaceVessel`/`PickUpAndDrop` and `VesselSpawner.SpawnVesselFromCraftFile` preferred; **[R2]** Skizzy's spawn-anywhere and multi-spawn build on them (`06-flight-control.md` §9.1) | cheat |
 
 Each pack states `modVersion` and is ignored with a warning when the installed assembly version mismatches (fail closed).
 
@@ -93,7 +93,7 @@ Computed once per vessel and on `onVesselWasModified`: `domain` (air/surface/sub
 
 Unchanged model (levels, policy order, `ask` flow, audit: PLAN v0.2 §6). Defaults change (D11): all areas on except `deep`; `read` and `control` allow for all mods; `cheat` allow for `bdarmory`, `ksp.vessel.place`, `sim.*` (the user is a test director); `destructive` ask; `unsafe` deny. Presets stay (`Observer`, `Test Director`, `Full Combat`, and the new default **`Battle Lab`**).
 
-Additional per-actor clamps (`15-security-permissions.md` §2): unit agents cannot use `cheat`, cannot read god view, cannot preempt leases above their precedence.
+Additional per-actor clamps (`15-security-permissions.md` §2): **[R2]** delegates and advisors cannot use `cheat`, cannot read god view, cannot preempt leases above their precedence, and delegates cannot act outside their cluster.
 
 ## 5. Adapters (what they add beyond Tier 0/1)
 

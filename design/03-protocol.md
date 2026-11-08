@@ -15,21 +15,21 @@ Normative wire design. It extends `PROTOCOL-SPEC-DRAFT.md` 0.2; sections of that
 ```json
 → {"jsonrpc":"2.0","id":1,"method":"session.hello","params":{
      "protocol":"skizzy-protocol","versions":["1.0"],
-     "client":{"name":"skizzy.agents","version":"0.3.0","kind":"orchestrator"},
-     "actor":{"id":"a:ad-coord","kind":"llm","role":"group","model":"claude-haiku-5-5","parent":"a:cmdr","display":"AD Coordinator"},
+     "client":{"name":"skizzy-bridge","version":"1.0.0","kind":"bridge","mcpClient":"claude-code"},
+     "actor":{"id":"a:blue-cmdr","kind":"llm","role":"commander","side":"Blue","display":"Blue Command"},
      "features":["ops","streams","events","enc.msgpack","confirm.client","lockstep"],
      "view":{"team":"Blue","fog":true},
      "resume":{"session":"s-7f3a","fromEventCursor":5531}}}
 ← {"jsonrpc":"2.0","id":1,"result":{
-     "protocol":"skizzy-protocol","version":"1.0","session":"s-9c21","actor":"a:ad-coord",
+     "protocol":"skizzy-protocol","version":"1.0","session":"s-9c21","actor":"a:blue-cmdr",
      "features":["ops","streams","events","enc.msgpack","confirm.game","confirm.client"],
      "limits":{...},"catalogRevision":88,"areas":{...},"grants":{...},
-     "precedence":700,"team":"Blue","fog":true,
+     "precedence":800,"team":"Blue","fog":true,"seat":{"side":"Blue","holder":"a:blue-cmdr"},
      "meta":{"ut":1203.40,"frame":60170,"scene":"FLIGHT","paused":false,"timeScale":1.0,"warp":{"mode":"none","rate":1}}}}
 ```
 
-- **[R]** `actor.kind` ∈ `human | llm | script | behaviour | harness` (who decides). `client.kind` ∈ `map | bridge | orchestrator | sdk | cli` (which process holds the socket); pass 1.0 mixed the two. BDArmory is the implicit precedence-0 actor and never connects. `role` is free text validated against the doctrine's role list when one is loaded. **Precedence** = the doctrine's value for the role (or the default band in `00-overview.md` §3), clamped by the permission file's `ROLE maxPrecedence` (`15-security-permissions.md` §2); the client may request a lower value in `hello`, never a higher one. The hello result returns the effective value.
-- `view.team` selects the team whose picture this session sees under fog-of-war; `fog:false` requests god view, which requires the `tac.god` grant (`read` level but gated per actor: unit agents normally do not get it).
+- **[R]** `actor.kind` ∈ `human | llm | script | behaviour | harness` (who decides). `client.kind` ∈ `map | bridge | sdk | cli` (which process holds the socket); pass 1.0 mixed the two. **[R2]** `orchestrator` is gone with the built-in agent layers; `client.mcpClient` optionally names the AI tool behind the bridge (`claude-code`, `codex`, …) for the Connections window only. BDArmory is the implicit precedence-0 actor and never connects. **[R2]** `role` ∈ `commander | advisor | delegate | observer | script | behaviour | harness | human` (`15-security-permissions.md` §2): an `llm` actor connects as `commander` (it takes the seat if allowed, else it is an advisor), as `delegate` (with a delegation token, `09-c2-multi-agent.md` §1.2) or as `observer`. The hello result returns the effective role, precedence and seat. **Precedence** = the doctrine's value for the role (or the default band in `00-overview.md` §3), clamped by the permission file's `ROLE maxPrecedence` (`15-security-permissions.md` §2); the client may request a lower value in `hello`, never a higher one. The hello result returns the effective value.
+- `view.team` selects the team whose picture this session sees under fog-of-war; `fog:false` requests god view, which requires the `tac.god` grant (`read` level but gated per role: delegates and advisors never get it; agent commanders only when the scenario or the permissions window allows).
 - `resume` lets a reconnecting client keep its session id, event cursor and lease ownership (leases are tied to the actor id, not the socket; the TTL keeps running while disconnected).
 - Every result and notification carries `meta` with `ut`, `frame`, `scene`, `paused`, `timeScale`, `warp`, `catalogRevision`, and `seq` for tactical data (the snapshot sequence number the payload was computed from).
 
@@ -48,10 +48,11 @@ Normative wire design. It extends `PROTOCOL-SPEC-DRAFT.md` 0.2; sections of that
 | `ksp.*` | vessels, parts, modules, query, config, action groups, staging, time, scene, game save/load, log | main/fixed/snapshot | PLAN v0.2 §4.4 plus `ksp.camera.*` (incl. `screenshot`), `ksp.editor.*`, **[R]** `ksp.vessel.place`, `ksp.vessel.spawn_craft`, `ksp.vessel.rename`, `ksp.crew.list|transfer|board` (P2), `ksp.log.tail` |
 | `craft.*`, `lib.*` | craft documents, blueprints, validation, trials, library | main/any | `05-craft-building.md` |
 | `bda.*` | spawn, teams, WM, AI, weapons, radar, competition, settings, logs, hooks | main/fixed/snapshot | `07-bdarmory-integration.md` |
-| `tac.*` | `query`, **[R]** `summary` (counts and the top threats in ≤ 6 lines), `sitrep`, `track.get`, `track.history`, `zones.*`, `bullseye.*`, `threats`, `engagements`, `subscribe` (sugar over stream) | snapshot | `08-tactical-picture.md` |
-| `c2.*` | `order.issue|amend|cancel|get|list|claim|report`, `lease.acquire|release|renew|list|grant|delegate`, `group.*`, `doctrine.*`, `roe.*`, `tactic.run`, `wta.solve`, `plan.*`, `ask_human`, `resume`, `behaviour.attach|detach|list`, **[R]** `mission.create|assign|unassign|update|activate|cancel|list`, `doctrine.effective`, `losses`, **[R]** `control.get|take|release|release_all` (mission command plus direct control, `09-c2-multi-agent.md` §4.1) | main | `09-c2-multi-agent.md`, `10-scripting-sdk.md` §5 |
+| `tac.*` | `query`, **[R]** `summary` (counts and the top threats in ≤ 6 lines), `sitrep`, `track.get`, `track.history`, **[R2]** `track.mark` (manual classification, `09-c2-multi-agent.md` §11.4), `zones.*`, `bullseye.*`, `threats`, `engagements`, `subscribe` (sugar over stream) | snapshot | `08-tactical-picture.md` |
+| `c2.*` | `order.issue|amend|cancel|get|list|claim|report`, `lease.acquire|release|renew|list|grant|delegate`, `group.*`, `doctrine.load|patch|set|unset|effective`, `roe.*`, `tactic.run`, `wta.solve`, `plan.*`, `ask_human`, `resume`, `behaviour.attach|detach|list`, **[R]** `mission.create|assign|unassign|update|activate|pause|resume|cancel|get|list`, `losses`, `control.get|take|release|release_all` (`09-c2-multi-agent.md` §4.1), **[R2]** `seat.get|take|hand|release|brief` (§1.1), `delegate.create|list|update|revoke` (§1.2), `reports.config` (§1.3), `stance.get|propose|respond|declare`, `surrender`, `surrender.demand`, `violations` (`22-communications-diplomacy.md` §4–6) | main | `09-c2-multi-agent.md`, `10-scripting-sdk.md` §5 |
+| `comms.*` **[R2]** | `send`, `inbox`, `wait`, `thread`, `tag`, `apply`, `diplo.open|close|status` | any/main | `22-communications-diplomacy.md` §9 |
 | `flight.*` (alias `ksp.flight.*`) | `state`, `set_controls`, `hold`, `release`, `setpoint_batch`, `direct`, `route`, `formation`, `handoff`, `switch_vessel`, `depth`, `stage`, `action_group`, **[R]** `orbit_point` | fixed | `06-flight-control.md` |
-| `rec.*` | `log.start|stop|list` (log v0, direct CSV/JSONL), `profile.list|get|save|delete|start|stop`, `mark`, `list`, `query` (host: basic; bridge: SQL), `get_file`, `export` (bridge), `append` (orchestrator notes) | main/any | `12-logging-recording-replay.md` |
+| `rec.*` | `log.start|stop|list` (log v0, direct CSV/JSONL), `profile.list|get|save|delete|start|stop`, `mark`, `list`, `query` (host: basic; bridge: SQL), `get_file`, `export` (bridge), `append` (client notes, e.g. a commander's intent line) | main/any | `12-logging-recording-replay.md` |
 | `sim.*` | `clock`, `time.set`, `time.slow`, `hold`, `step`, `release`, `scenario.load|run|snapshot|restore`, `batch.*` | main | `14-testing-batch-sim.md` |
 | `map.*` | `annotations.*` (shared drawings), `view.*` | main/any | shared state for map clients and agents |
 | `naval.*` | HullBreach, SubTrim, ballast, ACA, NAS, MNWS adapters | main/fixed | `04-ksp-and-mod-access.md` §5 |
@@ -82,10 +83,10 @@ Full per-capability schemas are generated from the catalog and published as JSON
 ### 4.2 Order
 
 ```json
-{"id":"o:412","traceId":"tr-7f21","type":"defend_sector","issuer":"a:ad-coord","recipient":"g:sag-1",
+{"id":"o:412","traceId":"tr-7f21","type":"defend_sector","issuer":"a:blue-cmdr","owner":"seat:Blue","recipient":"g:sag-1",
  "params":{"sector":{"center":"bullseye:bravo","fromDeg":300,"toDeg":60,"minM":0,"maxM":60000},"priorityTargets":["missile"]},
  "constraints":{"roe":"tight","zones":{"noFire":["z:harbour"]},"maxMissilesPerTrack":2},
- "priority":700,"validFromUt":1203.4,"validUntilUt":null,"basedOnSeq":88213,
+ "priority":800,"validFromUt":1203.4,"validUntilUt":null,"basedOnSeq":88213,
  "status":"executing","statusReason":null,"progress":{"tracksEngaged":6,"tracksKilled":2},
  "claimedBy":null,"children":["o:413","o:414"],"createdUt":1203.4,"updatedUt":1209.0}
 ```
@@ -120,7 +121,7 @@ Shapes: `circle`, `sector`, `polygon`, `corridor` (polyline + width), `box` (rot
  "wm":{"guard":true,"fireAuthority":"tight","target":"t:117","secondaryTargets":4,"missilesAway":6,"engagedTargets":3,"incomingMissiles":2,"underFire":false},
  "weapons":[{"name":"ESSM","class":"Missile","ready":22,"total":32,"range":{"min":1500,"max":50000}},{"name":"CIWS 20mm","class":"Gun","ammo":1800,"turret":true,"range":{"max":2500}}],
  "sensors":{"radar":[{"name":"SPY","on":true,"locks":3,"maxLocks":8,"rangeM":120000}],"sonar":[],"rwr":true},
- "leases":[{"channel":"targeting","holder":"a:ad-coord"}],"orders":["o:412"],"fuel":0.78}
+ "leases":[{"channel":"targeting","holder":"seat:Blue"}],"orders":["o:412"],"fuel":0.78}
 ```
 
 ## 5. Streams, deltas and thresholds
@@ -165,10 +166,15 @@ Grammar: `T<id> <IFF:FRD|HOS|NEU|UNK> <DOM:AIR|SUR|SUB|LND|MSL> <CLS> B<bearing>
 | `track.*` | `new`, `updated` (threshold), `lost`, `iff`, `class`, `merged`, `split` |
 | `missile.*` | `launch` (source, target guess, kind), `inbound` (to own unit, tcpa), `defeated`, `impact`, `splash`, `timeout` |
 | `engagement.*` | `start`, `end`, `assignment` (who engages whom), `saturation` (target at max missiles) |
-| `unit.*` | `damaged`, `part_lost`, `flooding`, `foundered`, `destroyed`, `out_of_ammo`, `low_fuel`, `ai_status` (BDA status string changes), `rwr_ping`, `sonar_ping` (an active sonar ping received), `under_fire`, **[R]** `not_controllable` (`IsControllable` turned false) |
+| `unit.*` | **[R2]** `surrendered`, `damaged`, `part_lost`, `flooding`, `foundered`, `destroyed`, `out_of_ammo`, `low_fuel`, `ai_status` (BDA status string changes), `rwr_ping`, `sonar_ping` (an active sonar ping received), `under_fire`, **[R]** `not_controllable` (`IsControllable` turned false) |
 | `order.*` | `accepted`, `executing`, `progress`, `achieved`, `failed`, `cancelled`, `superseded`, `expired`, `suspended`, `resumed`, `claimed`, `orphaned` |
 | `lease.*` | `acquired`, `released`, `preempted`, **[R]** `suspended`, `restored`, `expired`, `denied` |
-| `c2.*` | `roe_changed`, `zone_changed`, `group_changed`, `doctrine_loaded`, `trigger_fired` |
+| `c2.*` | `roe_changed`, `zone_changed`, `group_changed`, `doctrine_loaded`, `doctrine_changed`, `trigger_fired` |
+| `seat.*` **[R2]** | `changed {side, from, to, by}`, `requested {side, by}` (agent asking a human holder), `vacant {side}` |
+| `delegate.*` **[R2]** | `created`, `updated`, `revoked`, `expired` (idle TTL) |
+| `comms.*` **[R2]** | `message`, `diplo_requested`, `diplo_opened`, `diplo_closed` (`22-communications-diplomacy.md` §9) |
+| `stance.*` **[R2]** | `proposed`, `accepted`, `rejected`, `changed` |
+| `violation.*` **[R2]** | `recorded {kind, shooter, target, weapon, firedUt}` |
 | `control.*` **[R]** | `changed {unit, channel, from, to, by, reason}`, `reminder {unit, heldS}` (`09-c2-multi-agent.md` §4.1) |
 | `bda.*` | `competition_started|ended`, `vessel_killed`, `team_changed`, `scores_updated`, `spawn_progress` |
 | `vessel.*` **[R]** | `active_changed`, `loaded`, `unloaded`, `packed`, `unpacked`, `renamed`, `split` (parent, children), `pid_changed` (old, new persistentId), `destroyed` |
@@ -177,7 +183,7 @@ Grammar: `T<id> <IFF:FRD|HOS|NEU|UNK> <DOM:AIR|SUR|SUB|LND|MSL> <CLS> B<bearing>
 | `host.*` | `degraded`, `auto_disabled`, `kill_switch`, `kill_switch_released`, `budget_warning`, `memory_warning` |
 | `human.*` | `took_controls` (pilot input detected), `released_controls`, `map_drawing` |
 
-Every event carries `ut`, `frame`, `cursor`, optional `traceId`, a `summary` string suitable for an LLM transcript, and **[R]** a `category` (`contact | weapons | unit | order | mission | c2 | system`) for message-log filtering. **[R]** `mission.*` events: `created`, `activated`, `unit_assigned`, `unit_released`, `unit_suspended`, `unit_resumed`, `state` (`09-c2-multi-agent.md` §11.2, §4.1).
+Every event carries `ut`, `frame`, `cursor`, optional `traceId`, a `summary` string suitable for an LLM transcript, and **[R]** a `category` (`contact | weapons | unit | order | mission | c2 | comms | system`) for message-log filtering. **[R]** `mission.*` events: `created`, `activated`, `paused`, `phase`, `state`, `unit_assigned`, `unit_released`, `unit_suspended`, `unit_resumed`, `complete`, `failed` (`09-c2-multi-agent.md` §11.2, §4.1). **[R2]** Automatic reports (`09-c2-multi-agent.md` §1.3) are delivered as `comms.message` events with `kind:"report"`, not as a separate namespace.
 
 ## 8. Triggers
 
@@ -202,22 +208,22 @@ Pass 1.0 added codes on top of spec 0.2 §10 without saying how the two fit. Thi
 | -32602 | `INVALID_PARAMS` | no | `{errors:[{pointer, message}], candidates?}` |
 | -32603 | `INTERNAL_ERROR` | later | host bug, logged with a trace id |
 | -32001 | `UNAUTHENTICATED` | no | connection closed |
-| -32002 | `PERMISSION_DENIED` | no | `{capability, mod, required, policy, source, role?, hint}`; reasons `policy`, `role_clamp`, `client_cap`, `god_view` |
+| -32002 | `PERMISSION_DENIED` | no | `{capability, mod, required, policy, source, role?, hint}`; reasons `policy`, `role_clamp`, `client_cap`, `god_view`, **[R2]** `out_of_scope` (delegate outside its cluster), `not_seat` (needs the command seat), `seat_held` (agent take-over declined) |
 | -32003 | `CONFIRMATION_REQUIRED` | yes | `{confirmId, summary, level, expiresInMs, twoKey?}` |
 | -32004 | `UNAVAILABLE_IN_SCENE` | later | `{scene, required[]}`; reasons `wrong_scene`, `transition` (scene load in progress) |
 | -32005 | `NOT_FOUND` | no | `{handle}`; reasons `unknown`, `stale` (handle from before a scene reload or a persistentId change), `destroyed` |
 | -32006 | `BUSY` | yes | `{retryAfterMs}` |
 | -32007 | `TIMEOUT` | yes | `{timeoutMs, op?}` |
 | -32008 | `CONFLICT` | no | `{detail}`; reasons `competition_running`, `guard_on`, `already_exists` |
-| -32009 | `PRECONDITION_FAILED` | later | reasons `paused`, `vessel_packed`, `vessel_unloaded`, `not_controllable` (CommNet/RemoteTech/Kerbalism says no), `ai_inactive` (BDA `Command*` would silently do nothing), `bda_api_changed`, `api_missing`, `auto_disabled`, `event_inactive`, `too_large`, `warp_active`, `menu_open` |
+| -32009 | `PRECONDITION_FAILED` | later | reasons **[R2]** `channel_not_open`, `no_link`, `surrendered`, `paused`, `vessel_packed`, `vessel_unloaded`, `not_controllable` (CommNet/RemoteTech/Kerbalism says no), `ai_inactive` (BDA `Command*` would silently do nothing), `bda_api_changed`, `api_missing`, `auto_disabled`, `event_inactive`, `too_large`, `warp_active`, `menu_open` |
 | -32010 | `PROVIDER_ERROR` | later | exception in mod code: `{provider, exceptionType, message}` |
 | -32011 | `CANCELLED` | no | reasons `client`, `scene_change`, `kill_switch`, `timeout`, `superseded` |
 | -32012 | `RATE_LIMITED` | yes | `{retryAfterMs, limit}` |
 | -32013 | `VERSION_UNSUPPORTED` | no | `{supported:["1.0"]}` |
 | -32020 | `LEASE_HELD` | later | `{vessel, channel, holder, precedence, preemptible}` |
-| -32021 | `ROE_VIOLATION` | no | `{rule, zone?, target?}` |
+| -32021 | `ROE_VIOLATION` | no | `{rule, zone?, target?}`; **[R2]** rules `ceasefire`, `surrendered_target` (override with `acceptViolation:true`, which records a violation) |
 | -32022 | `STALE_DECISION` | yes | `{basedOnSeq, currentSeq, maxStaleSeq}` |
-| -32023 | `BUDGET_EXHAUSTED` | no | `{actor, budget, spent}` (bridge/orchestrator side) |
+| -32023 | `BUDGET_EXHAUSTED` | no | `{actor, budget, spent}`; **[R2]** raised only by the optional API-key example's spending cap (`09-c2-multi-agent.md` §8.5), never by the host |
 | -32024 | `SLOW_CONSUMER` | — | close reason only |
 | -32025 | `NOT_IN_VIEW` | no | track or vessel not visible to this session's team under fog |
 | -32026 | `EXECUTOR_UNAVAILABLE` | no | `{orderType}`; reasons `needs_fork_patch`, `needs_script`, `needs_mod` |
@@ -237,21 +243,22 @@ Rules: a new failure mode gets a new `reason` on an existing kind unless clients
 
 ## 11. MCP projection (changes from spec 0.2 §14)
 
-- Transports: stdio (`skizzy mcp`) **and** Streamable HTTP on `127.0.0.1:47551` (`skizzy serve`), both loopback. HTTP sessions carry `X-Skizzy-Actor` (id/role/model) so each agent is a distinct actor at the host; stdio instances pass the actor on the command line (`--actor role=unit,id=a:ddg-1`).
-- Toolsets: `core`, `tactical` (query/summary/sitrep/subscribe-wait/threats/zones), `c2` (orders/leases/groups/report), `flight`, `bda`, `craft`, `rec`, `sim`, `naval`, `map`, `deep`. Default for a unit agent: `core+tactical+c2+flight` ≈ 28 tools; commander: `+bda+rec+sim+map` ≈ 60; builder: `core+craft+bda+rec+sim` (**[R]** `sim` added: the build loop runs `sim.scenario.run`). `core` includes `ksp_read`, `ksp_query`, `ksp_camera_screenshot`, `rec_log_start|stop`, `host_kill_switch`, `catalog_search` and `cap_call`, so the M0 tool list already reads, logs and screenshots.
+- Transports: stdio (`skizzy mcp`) **and** Streamable HTTP on `127.0.0.1:47551` (`skizzy serve`), both loopback; any MCP client works (`09-c2-multi-agent.md` §8.1). HTTP sessions carry `X-Skizzy-Actor` (id/role/side or a delegation token) so each agent is a distinct actor at the host; stdio instances pass the actor on the command line (`--actor blue-cmdr --role commander --side Blue`, or `--actor-token <t>` for a delegate). **[R2]** With the `delegation` option, every tool accepts an optional `as` argument carrying a delegation token, so subagents sharing their parent's MCP connection act under their own identity (`09-c2-multi-agent.md` §1.2).
+- Toolsets: `core`, `tactical` (query/summary/sitrep/subscribe-wait/threats/zones/mark), `c2` (orders/leases/groups/missions/doctrine/control/seat/delegate), **[R2]** `comms` (send/inbox/wait/tag, stance, surrender), `flight`, `bda`, `craft`, `rec`, `sim`, `naval`, `map`, `deep`. **[R2]** Presets: `commander` = `core+tactical+c2+comms+bda+rec+sim+map` ≈ 70 tools; `delegate` = `core+tactical+c2+flight+comms` (comms limited to team/direct) ≈ 35; `builder` = `core+craft+bda+rec+sim` (**[R]** `sim` added: the build loop runs `sim.scenario.run`). Pass 1's unit-agent preset is gone. `core` includes `ksp_read`, `ksp_query`, `ksp_camera_screenshot`, `rec_log_start|stop`, `host_kill_switch`, `catalog_search` and `cap_call`, so the M0 tool list already reads, logs and screenshots.
 - **Output caps [R]** ("never a token dump", enforced by the bridge, not left to the agent): list-shaped tools default to `limit: 10` and refuse more than 50 rows per call; results carry `total`, `truncated` and an opaque `cursor` for the next page; the compact format is the default for tactical tools; a text result over 8 KB (configurable per toolset) is cut at a line boundary with a `…N more, use cursor` trailer. `tac_summary` is the recommended first call: counts by IFF/domain, the top 3 threats and own-force status in ≤ 6 lines.
-- **Event delivery to MCP agents**: MCP has no server-push the model can consume mid-turn, so the bridge offers `tac_wait_events {names, timeoutS, maxEvents}` (blocks up to N seconds, returns the batch in compact text) and `tac_subscribe_digest` (the orchestrator wakes the agent when a digest is ready). The orchestrator (`skizzy.agents`) uses the native socket for events and injects them as the next user turn; MCP tools are for the agent's own queries and actions.
+- **Event delivery to MCP agents**: MCP has no server-push the model can consume mid-turn, so the bridge offers `tac_wait_events {names, timeoutS, maxEvents}` (blocks up to N seconds, returns the batch in compact text) and **[R2]** `comms_wait {channels, kinds, timeoutS}` for reports and messages. Pass 1's `tac_subscribe_digest` and orchestrator injection are gone with the built-in orchestrator. Messages from other sides come back marked `untrusted:true` with a provenance line (`22-communications-diplomacy.md` §10).
 - Tool list stability: tools never appear/disappear with scene or lease state (availability is returned in results), which keeps prompt caches warm.
 - Images: screenshots and map renders are image content blocks (spec 0.2 §14.2).
 
-## 12. Example: a unit agent's turn over MCP
+## 12. Example: a delegate's turn over MCP **[R2]**
+
+A Claude Code subagent that the commander spawned for the ASW screen, sharing the parent's MCP connection:
 
 ```
-tools/call tac_sitrep {}                               → compact SITREP, 12 lines
-tools/call tac_query {filter:{iff:["hostile"],domain:["missile"]}, frame:{type:"braa"}, limit:8, format:"compact"}
-tools/call c2_order_report {order:"o:413", status:"executing", note:"engaging 2 ASM, 1 more lock available"}
-tools/call bda_configure_weapon_manager {vessel:"self", maxMissilesOnTarget:2, parallelFire:true, parallelSalvoSize:2}
-tools/call tac_wait_events {names:["missile.inbound","order.*"], timeoutS:20}
+tools/call comms_wait {channels:["team"], kinds:["report","text"], timeoutS:30, as:"skd_…"}   → "#rpt 1402.1 TEAM FFG-2 contact 1 SUB? B210 R? bearing-only"
+tools/call tac_query {filter:{domain:["sub"]}, frame:{type:"braa", ref:"g:asw"}, limit:5, format:"compact", as:"skd_…"}
+tools/call c2_order_issue {type:"tactic", name:"asw_prosecute", recipient:"g:asw", params:{track:"t:88"}, basedOnSeq:9120, as:"skd_…"}
+tools/call comms_send {channel:"team", to:"seat", kind:"report", body:"ASW: prosecuting T88 with FFG-2/3; ETA datum 6 min", as:"skd_…"}
 ```
 
-Five calls, about 1.5 k input tokens of tool results, with the stable system prompt and tool list cached.
+Four calls, about 1.2 k input tokens of tool results. Every call is attributed to `a:blue/asw` and refused outside `g:asw`.

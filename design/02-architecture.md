@@ -11,7 +11,7 @@
 | `skizzy.exe` (`Skizzy.Cli`) | outside | C# .NET 10, self-contained | `mcp` (stdio MCP server), `serve` (Streamable HTTP MCP + native relay + `/metrics`), `battle run|compare`, `rec export|query|replay-server`, `map`, `doctor`. `skizzy-mcp.exe` = alias of `skizzy mcp` |
 | `skizzy-map.exe` (`Skizzy.Map`) | outside | C# .NET 10, Avalonia + SkiaSharp | tactical map, planning tools, replay, headless PNG renderer (`skizzy map render`) |
 | `Skizzy.Client` | outside | C# netstandard2.0 / net10 | C# SDK used by bridge, map, tests, third parties |
-| `skizzy` (Python package) | outside | Python ≥ 3.11 | SDK, behaviours runtime, agents orchestrator, mini-sim, recordings reader |
+| `skizzy` (Python package) | outside | Python ≥ 3.11 | SDK, behaviours runtime, mini-sim, recordings reader; **[R2]** the API-key commander example (`skizzy.examples.api_commander`) replaces pass 1's built-in orchestrator, which is removed (`09-c2-multi-agent.md` §8) |
 | `Skizzy.Sim` | CI / dev | C# .NET 10 | FakeKsp: implements `IGameWorld` so host engines run headless |
 
 ### 1.1 Host internals
@@ -24,13 +24,16 @@ Skizzy.Host
 │                   stock providers (ksp.*), time/warp control, self-checks
 ├─ Engines/
 │  ├─ Tactical/     TrackTable, SensorFusion, Iff, Frames (BRAA/bullseye), Zones, ThreatScoring, DeadReckoning, Snapshots
-│  ├─ C2/           OrderBook, LeaseTable, Groups, Doctrine loader, RoeEvaluator, Triggers, Executors (order → actions)
+│  ├─ C2/           Seats, OrderBook, LeaseTable (suspension stack), Delegations, Groups, Missions + planners, Doctrine
+│  │                (inheritance cache), RoeEvaluator, Triggers, Executors (order → actions), ReportEngine, Stance + Referee
+│  ├─ Comms/        channels (team, direct, broadcast, diplomatic), message store and delivery, link model (optional)
 │  ├─ Flight/       Holds (PID setpoints), ControllerArbiter, RouteExecutor, FormationExecutor, DirectControl dead-man
 │  ├─ Behaviour/    BT runtime (zero-alloc), plug-in loader (`GameData/SkizzyProtocol/Behaviours/*.dll`), blackboard
 │  ├─ Recorder/     Profiles, samplers, chunk writer (.skzrec), event/audit JSONL, perf telemetry
 │  ├─ Camera/       screenshot pipeline, camera control
 │  ├─ Craft/        CraftDocument model, editor round-trip, validation, blueprint assembler, sea trials
-│  └─ Scenario/     scenario loader, spawn plans, snapshot/restore of battle state, batch cell runner (host side)
+│  └─ Scenario/     scenario loader, spawn plans, **[R2]** spawner (spawn anywhere, multi-spawn with clear-space search,
+│                   formations, staggered batches, waves, respawn), snapshot/restore of battle state, batch cell runner (host side)
 ├─ Abi/             SkizzyAbi (Tier 3b entry point)
 └─ Ui/              IMGUI windows (connections, permissions, leases, orders, recorder, map overlay), prompts, kill-switch banner
 ```
@@ -56,7 +59,7 @@ Rule: **no Unity or KSP object is touched off the main thread, ever.** Carried f
 
 ### 2.1 Affinity classes
 
-`main` (default), `fixed` (physics-aligned), `snapshot` (served from the last published snapshot on the network thread, zero main-thread cost), `any` (pure host). **All tactical queries, SITREPs, track subscriptions and recordings are `snapshot`**: a Haiku agent querying BRAA 20 times a second never costs the main thread anything beyond the one sampling pass that already runs.
+`main` (default), `fixed` (physics-aligned), `snapshot` (served from the last published snapshot on the network thread, zero main-thread cost), `any` (pure host). **All tactical queries, SITREPs, track subscriptions and recordings are `snapshot`**: an agent or script querying BRAA 20 times a second never costs the main thread anything beyond the one sampling pass that already runs.
 
 ### 2.2 Engine tick scheduling
 
@@ -135,7 +138,7 @@ dead-man [R]: applies only to `flight.direct` and to setpoint streams that decla
 - `sim.clock` stream (1 Hz default) reports `{ut, frame, timeScale (Time.timeScale), physicsDeltaTime, warpMode, warpRate, paused, fpsEstimate, physicsStepsPerFrame}`.
 - **Time scale**: `sim.time.set {scale}` drives BDArmory's `TIME_OVERRIDE`/`TIME_SCALE` path (`OtherUtils.SetTimeOverride`, `Time.timeScale`; `BDArmorySetup.cs:3366-3372`) so physics step size is unchanged. Physics warp (`TimeWarp`) is exposed too; on-rails warp is refused while leases or competitions are active. **[R]** KSP's pause menu sets `Time.timeScale = 0` and restores `1` on unpause, which silently drops a BDA time override; the host re-applies the requested scale on `onGameUnpause`. Full warp/pause policy: `20-runtime-lifecycle.md` §3.
 - **BDA timestamps [R]**: `TargetInfo.detectedTime` and other BDA timers are Unity `Time.time` (scaled game seconds since start), not UT. The TPE keeps a `(Time.time, ut)` pair per tick and converts; no code compares the two directly.
-- **Think-time control**: `sim.time.slow {scale, reason, maxSeconds}` by agents is a `control`-level capability; the orchestrator uses it when a decision deadline would be missed; `sim.hold`/`sim.step`/`sim.release` (lockstep, P1) uses `Time.timeScale = 0` for hold and runs exactly N physics steps by counting `FixedUpdate`s before pausing again. **[R]** Unity may run several `FixedUpdate`s in one rendered frame, so exact stepping runs at a low `timeScale` (≤ 1 physics step per frame) and sets `timeScale = 0` from the step-counting `FixedUpdate` itself (`20-runtime-lifecycle.md` §4).
+- **Think-time control**: `sim.time.slow {scale, reason, maxSeconds}` is a `control`-level capability; **[R2]** the host's think-time policy uses it when an urgent event fires while an agent holds the seat (`09-c2-multi-agent.md` §8.4); `sim.hold`/`sim.step`/`sim.release` (lockstep, P1) uses `Time.timeScale = 0` for hold and runs exactly N physics steps by counting `FixedUpdate`s before pausing again. **[R]** Unity may run several `FixedUpdate`s in one rendered frame, so exact stepping runs at a low `timeScale` (≤ 1 physics step per frame) and sets `timeScale = 0` from the step-counting `FixedUpdate` itself (`20-runtime-lifecycle.md` §4).
 - **Subscriptions and timeouts are in UT**, with a wall-clock cap, so slow-motion does not break them.
 - **Determinism limits**: Unity PhysX and KSP are not deterministic; BDArmory uses `UnityEngine.Random` globally and frame-dependent coroutines. Lockstep makes runs reproducible in *structure* (same orders at the same frames), not bit-identical. Batch testing is statistical (`14-testing-batch-sim.md`). A fork patch may seed `UnityEngine.Random.InitState` per competition (P3) to reduce variance from BDA's own randomness.
 
@@ -154,7 +157,8 @@ dead-man [R]: applies only to `flight.direct` and to setpoint streams that decla
 | KSP crash | bridge loses socket; KSP.log tail | bridge degrades to offline mode: logs/recordings still readable; `skizzy doctor` reports |
 | Slow client | outbound queue > 16 MB | disconnect with `SLOW_CONSUMER`; its leases expire normally |
 | Budget overrun | engine timing | TPE and recorder lower their rate and flag `degraded`; dispatcher shrinks the budget; `host.stats.worst` names the culprit |
-| LLM budget exhausted | orchestrator accounting | agent is frozen with `budget_exhausted`; its units fall back to doctrine defaults; commander is told |
+| **[R2]** Commander client disconnects or stalls | session close; no call for `seatGraceS` | the seat stays reserved for 60 s, then becomes vacant (`seat.vacant`); seat-owned missions and orders keep running in the game; delegations run until their idle TTL; the map shows it. The optional API-key example stops at its own spending cap with `BUDGET_EXHAUSTED` and the same seat rule applies |
+| **[R2]** Delegate goes quiet | no call within `idleTtlS` (120 s) | delegation expires (`delegate.expired`); its leases are released with `resume`, so the cluster returns to its missions and orders |
 | Order impossible (target dead, no ammo, out of range) | executor preconditions | `order.failed {reason}` with a machine-readable reason and a hint |
 | Stale decision | `basedOnSeq` older than `maxStaleSeq` | `STALE_DECISION` error with the current seq; agent re-queries |
 
@@ -197,13 +201,15 @@ dead-man [R]: applies only to `flight.direct` and to setpoint streams that decla
 | Scenario | Budget (main thread unless stated) |
 |---|---|
 | Idle (no client, no profile, no lease) | < 0.1 ms/frame, 0 B/frame managed alloc, dispatcher disabled |
-| One map client + one Opus agent, 100 loaded vessels | TPE amortised ≤ 0.1 ms per physics step; total host ≤ 1.5 ms/frame |
+| One map client + one agent commander, 100 loaded vessels | TPE amortised ≤ 0.1 ms per physics step; total host ≤ 1.5 ms/frame |
 | 20-drone swarm script at 20 Hz setpoints + 10 Hz track deltas | ≤ 0.6 ms/frame; network RTT ≤ 5 ms p99 loopback |
-| 200 loaded vessels, 4 teams, fog-of-war, 2 agents, recorder 5 Hz, map | TPE amortised ≤ 0.15 ms per step, worst step ≤ 0.6 ms; recorder ≤ 0.4 ms per sample; total ≤ 3 ms/frame |
+| 200 loaded vessels, 4 teams, fog-of-war, 2 agent commanders + 2 delegates, recorder 5 Hz, map | TPE amortised ≤ 0.15 ms per step, worst step ≤ 0.6 ms; recorder ≤ 0.4 ms per sample; total ≤ 3 ms/frame |
 | 1000 tracked records (synthetic), god view, recorder 2 Hz | TPE amortised ≤ 0.25 ms per step, worst step ≤ 1.0 ms (rate may degrade to 2 Hz); total ≤ 4 ms/frame |
 | Screenshot 1024 px JPEG | ≤ 3 ms main thread with `AsyncGPUReadback` (≤ 30 ms with the `ReadPixels` fallback); ≤ 1 per 2 s per session by default |
 | Editor batch apply of 50 part ops | one reload; ≤ 1.5 s on a 300-part craft (pass 1.0 said 150 ms, which is not credible for a KSP editor reload; the M5 spike measures it and sets the final number) |
-| Steady-state allocation, whole host, all threads | hot paths 0 B per tick (CI assert); whole host ≤ 64 KB/s in a standard battle (200 loaded vessels, map, 2 agents, recorder) |
+| Steady-state allocation, whole host, all threads | hot paths 0 B per tick (CI assert); whole host ≤ 64 KB/s in a standard battle (200 loaded vessels, map, 2 agent commanders, recorder) |
+| **[R2]** C2 additions at 200 units: report engine, 20 missions × 10 units, comms delivery | report engine ≤ 0.05 ms per C2 tick; mission planners ≤ 0.1 ms per 1 Hz tick; comms delivery on the network thread, 0 B main-thread alloc; optional comms link graph ≤ 0.05 ms at 1 Hz; all zero with no subscriber |
+| **[R2]** Spawning (multi-spawn or formation, any count) | built in staggered batches of at most 400 parts per frame with ≥ 2 frames between vessels; the worst frame during a spawn ≤ 1.5× the median frame; the clear-space search for 100 slots ≤ 5 ms, spread over frames |
 
 ### 8.1 How it is measured [R]
 

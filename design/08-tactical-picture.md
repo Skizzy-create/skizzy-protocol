@@ -76,7 +76,7 @@ Filter atoms: `iff`, `domain`, `class`, `team`, **[R]** `role` (friendly units b
 #sum seq=88217 ut=1204.2 view=Blue fog ref=DDG-1 units=nm
 HOS 14 (AIR 4, MSL 8, SUR 2)  UNK 3  FRD 9 (2 dmg)  inbound to own: 6 (tcpa min 41s)
 TOP T117 MSL ASM B271 R17.2 HOT tcpa41 eng:DDG-1(2) | T121 MSL ASM B268 R19.0 HOT unassigned | T093 AIR FTR B015 R41.5 FLANK
-OWN ammo ESSM 22/32, SM2 8/16 | CIWS 1800 | flood 0 | leases: targeting a:ad-coord
+OWN ammo ESSM 22/32, SM2 8/16 | CIWS 1800 | flood 0 | leases: targeting seat:Blue
 ORD o:412 defend_sector executing 6 eng / 2 killed
 ```
 
@@ -89,7 +89,7 @@ Grammar in `03-protocol.md` §6. SITREP compact form:
 ai surface/Water on Free "Engaging"   wm guard on auth TIGHT tgt T117 sec 4 away 6 eng 3 inbound 2
 wpn ESSM 22/32 r1.5-50km | SM-2 20/24 r5-120km | CIWS 1800rd r2.5km turret | chaff 12 | decoys 4
 sns SPY on locks 3/8 r120km | sonar off | rwr on
-flood 0t/820t inflow 0 leaks 0   ctl M:m3 H:w   leases targeting:a:ad-coord steer:bda   orders o:412(defend_sector executing)
+flood 0t/820t inflow 0 leaks 0   ctl M:m3 H:w   leases targeting:seat:Blue steer:bda   orders o:412(defend_sector executing)
 ```
 
 **[R]** `ctl` is the unit's control state (`09-c2-multi-agent.md` §4.1.1):
@@ -97,12 +97,12 @@ flood 0t/820t inflow 0 leaks 0   ctl M:m3 H:w   leases targeting:a:ad-coord stee
 - `M:<mission>` means mission-controlled.
 - `H:<channels>` means a human holds those channels.
 - `P` means the human is flying the unit in KSP.
-- `A:<agent>` means an agent holds it.
+- `C` means the agent commander drives it directly, and `D:<delegate>` means a delegate holds it.
 - The token is omitted when BDA alone is in control.
 
 Agents use it to avoid issuing orders to units the human is micromanaging.
 
-Orders and leases: `o:412 defend_sector g:sag-1 by a:ad-coord EXECUTING prio700 eng6 kill2 valid→∞`.
+Orders and leases: `o:412 defend_sector g:sag-1 by seat:Blue EXECUTING prio800 eng6 kill2 valid→∞`.
 
 ## 8. Subscriptions and events
 
@@ -110,8 +110,8 @@ Orders and leases: `o:412 defend_sector g:sag-1 by a:ad-coord EXECUTING prio700 
 
 | Consumer | Rate | Thresholds | Payload |
 |---|---|---|---|
-| Opus commander (via orchestrator digest) | 0.2 Hz digest + events | pos 1000 m, threat 0.2 | compact, top-20 by threat per group |
-| Haiku unit agent | event-driven; `tac_wait_events` | missile.inbound, order.*, track.new within 60 km | compact |
+| **[R2]** Agent commander (any MCP client) | event-driven: `tac_wait_events` + `comms_wait` (reports); `tac_summary` on wake | pos 1000 m, threat 0.2 | compact, top-20 by threat per group |
+| **[R2]** Delegate (client-spawned sub-agent) | event-driven, filtered to its cluster | missile.inbound, order.*, track.new within 60 km of the cluster | compact |
 | Python swarm script | 10–20 Hz | pos 20 m, course 2° | msgpack columnar (layout `tracks.v1`: parallel arrays id, lat, lon, alt, course, speed, iff, class, quality) |
 | Map | 5 Hz | pos 5 m | msgpack full objects with history ring |
 | Recorder | profile rate | none (full) | msgpack |

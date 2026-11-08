@@ -1,6 +1,6 @@
 # 17 Milestones
 
-**[R] Rewritten by review pass 1.1.** Every milestone ends with something the user can try in KSP. Each one is sized so that a single Opus 5.5 coding agent can implement it from this design plus the previous milestone's code, working through PR-sized tasks in the listed order (spikes first, then acceptance tests, then features). Every entry lists scope, the in-game demo, acceptance tests, performance gates and the governing design files. Estimates assume one developer plus coding agents, part-time.
+**[R] Rewritten by review pass 1.1; [R2] re-scoped by pass 2** (the command-model change, communications and diplomacy, spawn anywhere: `19-review.md` §9). Every milestone ends with something the user can try in KSP. Each one is sized so that a single Opus 5.5 coding agent can implement it from this design plus the previous milestone's code, working through PR-sized tasks in the listed order (spikes first, then acceptance tests, then features). Every entry lists scope, the in-game demo, acceptance tests, performance gates and the governing design files. Estimates assume one developer plus coding agents, part-time.
 
 **No code exists yet.** Pass 1.0 said PLAN v0.2's M0/M1 code "was built offline"; the repository holds only `IDEAS.md`, `PLAN.md`, `PROTOCOL-SPEC-DRAFT.md` and `design/` (checked 2026-11-08). M0 starts from an empty solution.
 
@@ -8,20 +8,30 @@
 
 **Why this order (changed from pass 1.0).** Pass 1.0 put flight control in M2, screenshots nowhere, logging and the map in M3, which meant the user could not fly, see or log anything for two to three months. The new order gives connect, read, screenshot and log in M0 and flying in M1, then BDA and the compact picture, then the map. The order after M2 (map, then control depth, then craft) is a default the user can change (`18-risks-and-decisions.md` §3).
 
+**[R2] What pass 2 changed.**
+
+- **Spawning moves into M1.** The user wants it right away: spawn anywhere (air, sea, submerged, ground, runway), multi-spawn with any count, rows and clear-space search, formations, and the in-game Spawn window. Map drag-spawn follows in M3, waves and respawn in M6.
+- **M4 becomes "Command basics".** It adds the command seat, delegation to client-spawned sub-agents, automatic reports, the team channel and comms panel v1. It grows from 5 to 6 weeks.
+- **M6 becomes "Missions, doctrine and stance".** The built-in orchestrator and the commander-plus-unit-agents demo are gone. In their place come missions and their planners, full doctrine, stance and surrender, the API-key example and the scenario editor. It grows from 5 to 6 weeks.
+- **M7 adds diplomacy.** The diplomatic channel, negotiation, psyops and the agent-vs-agent scenario come in M7, which grows from 4 to 5 weeks.
+- **M8 adds comms realism.** Comms range, relays and jamming come in M8. Agent memory and the analyst role move to Later (P3).
+- **New "Later (P3)" section** for the deferred built-in agent layers.
+
 | M | Theme | What the user can do after it | Est. |
 |---|---|---|---|
-| M0 | First contact | connect Claude Code, a Python script or the CLI; read any vessel/part/module; take screenshots in any camera mode; log any field to CSV/JSONL; use every capability from an in-game console | 3 wk |
-| M1 | Fly and place | fly planes, ships and subs with holds; co-fly with the human override; kill switch; place and spawn vessels anywhere; write module fields; basic BDA AI/guard/team control | 3 wk |
-| M2 | BDA core, compact picture, recorder v1 | spawn fleets, configure WMs (multi-target/salvo), run competitions, ask "what's the threat" and get a ten-line compact answer, assign targets, record a battle and query it | 5 wk |
-| M3 | Tactical map v1 | watch battles on a dockable command screen with 2525 symbols where every one of 40 aircraft and 128 missiles stays individually visible and readable; fog/god windows; replay and slow-motion scrubbing; in-game overlay v1 | 5 wk |
-| M4 | Control depth and C2 basics | leases on all channels, orders, routes, formations, fire authority, swarm scripts with the async SDK, plan on the map (routes, zones, memos) | 5 wk |
+| M0 | First contact | connect any MCP client (Claude Code and Codex checked), a Python script or the CLI; read any vessel/part/module; take screenshots in any camera mode; log any field to CSV/JSONL; use every capability from an in-game console | 3 wk |
+| M1 | **[R2]** Fly, place and spawn | fly planes, ships and subs with holds; co-fly with the human override; kill switch; place vessels anywhere; **spawn anywhere** (mid-air at speed, at sea, submerged, ground, runway), **multi-spawn any count** in lines that wrap into rows with clear-space search, formations and swarms in one call, from scripts, agents and the in-game Spawn window; write module fields; basic BDA AI/guard/team control | 4 wk |
+| M2 | BDA core, compact picture, recorder v1 | configure WMs (multi-target/salvo), run competitions, ask "what's the threat" and get a ten-line compact answer, assign targets, record a battle and query it | 5 wk |
+| M3 | Tactical map v1 | watch battles on a dockable command screen with 2525 symbols where every one of 40 aircraft and 128 missiles stays individually visible and readable; fog/god windows; replay and slow-motion scrubbing; **[R2]** drag-spawn from the map library with count, altitude and speed; in-game overlay v1 | 5 wk |
+| M4 | **[R2]** Command basics | take the command seat (human or agent) and hand it over; leases on all channels, orders, routes, formations, fire authority, take-over; let the AI client spawn sub-agents with cluster leases; get automatic reports; talk on the team channel from the map's comms panel; EMCON and basic doctrine; swarm scripts with the async SDK; plan on the map | 6 wk |
 | M5 | Craft building v1 and analytics | blueprint → ship → trials → library; SQL over recordings; metrics and comparisons | 5 wk |
-| M6 | C2 multi-agent | a commander and unit agents fight under doctrine with budgets; behaviour trees; scenario director | 5 wk |
-| M7 | Batch and CI depth | unattended 200-vessel × 50-run A/B; lockstep; full FakeKsp CI | 4 wk |
-| M8 | Naval depth and extensibility | sub and carrier operations, damage control, EW/comms, mod extension points, training export, parallelism where measured | 6 wk |
+| M6 | **[R2]** Missions, doctrine and stance | run a force through CMO-style missions (patrol, strike, escort) with full doctrine, triggers, tactics and WTA; broadcast, ceasefire, surrender and violations; waves and respawn; behaviour trees; the API-key commander example; the scenario editor | 6 wk |
+| M7 | **[R2]** Batch, CI and diplomacy | unattended 200-vessel × 50-run A/B; lockstep; full FakeKsp CI; the diplomatic channel, negotiation and psyops; agent-vs-agent battles (Claude Code vs Codex) | 5 wk |
+| M8 | Naval depth and extensibility | sub and carrier operations, damage control, **[R2]** comms range, relays and jamming, orbit spawn, mod extension points, training export, parallelism where measured | 6 wk |
 | M9 | Hardening and release | CKAN, docs, PyPI, upgrades, security gate, 4-hour soak, spec 1.0 | 4 wk |
+| Later | **[R2]** P3 | built-in group and unit agents, a built-in orchestrator, per-role models and budgets, agent memory, the analyst role, automatic surrender by doctrine | — |
 
-Total ≈ 45 weeks. P0 features are all delivered by the end of M4, P1 by M7, P2 by M9 (`01-feature-catalog.md`).
+Total ≈ 49 weeks (**[R2]** pass 1.1 had 45; pass 2 adds one week each to M1, M4, M6 and M7). P0 features are all delivered by the end of M4, P1 by M7, P2 by M9 (`01-feature-catalog.md`).
 
 ## M0 — First contact (3 weeks)
 
@@ -35,7 +45,7 @@ Scope:
 - Log v0 (`12-logging-recording-replay.md` §1.1): `rec.log.start|stop|list|tail`, `rec.get_file`, CSV/JSONL.
 - Safety: permission file with the Battle Lab preset and `ROLE` rules, in-game `ask` prompts, audit JSONL, kill switch stub (deny non-read calls, banner).
 - In-game UI (`21-user-experience.md` §3): first-run wizard, connections/permissions window, capability console, recorder window with the **Log…** picker, camera window.
-- Outside: bridge `skizzy mcp` with the `core` toolset and output caps; CLI `skizzy call|watch|log|shot|doctor` (doctor v0: token, port, versions, KSPCF, CommNet); Python `skizzy` 0.1 sync client; README quickstart.
+- Outside: bridge `skizzy mcp` with the `core` toolset, output caps and **[R2]** actor options (`--actor`, `--role`, `--side`; `09-c2-multi-agent.md` §8.1); CLI `skizzy call|watch|log|shot|doctor` (doctor v0: token, port, versions, KSPCF, CommNet); Python `skizzy` 0.1 sync client; README quickstart.
 - `host.stats`, `host.selfcheck` (idle cost, dispatcher timing, heap slope, texture counts).
 
 Demo: scenario `16-scenarios.md` §0 without the flying part: from Claude Code, read the active vessel, take a chase screenshot, log three fields at 5 Hz to CSV and open it in Excel; repeat the same with `skizzy` CLI commands and with the in-game console.
@@ -46,37 +56,45 @@ Acceptance:
 3. 1024 px JPEG ≤ 3 ms main thread (≤ 30 ms on the fallback); 100 captures leave `Texture2D`/`RenderTexture` counts unchanged; all five camera modes work.
 4. Log v0: 100 vessels × 3 fields at 10 Hz for 10 minutes costs ≤ 0.2 ms per FixedUpdate; the CSV opens in Excel; the in-game picker builds the same selector as the CLI.
 5. Five scene switches and one KSP restart with a connected client: no exceptions, no object growth, the client reconnects automatically and gets `NOT_FOUND`/`stale` for old handles.
-6. `Origin`-bearing, token-less and bad-token connections refused (automated); a `unit` actor asking for god view gets `PERMISSION_DENIED`/`god_view`.
-7. A clean install to a working Claude Code connection takes < 5 minutes following the README (manual).
+6. `Origin`-bearing, token-less and bad-token connections refused (automated); **[R2]** an `advisor` actor asking for god view gets `PERMISSION_DENIED`/`god_view`.
+7. A clean install to a working Claude Code connection takes < 5 minutes following the README (manual). **[R2]** Codex CLI connects through the same `skizzy mcp` command and gets the same tool list (any MCP client, `IDEAS.md` §15).
 8. Perf gates: idle, screenshot, log v0.
 
 Governing files: `02`, `03` §1–3, §9, §11, `04` §2, `12` §1.1, `13`, `15`, `21`.
 
-## M1 — Fly and place (3 weeks)
+## M1 — Fly, place and spawn (4 weeks) — [R2]
 
-Spikes first: `OnFlyByWire` ordering with BDA's re-registration; `SetPosition`/`SetWorldVelocity` placement with KJR installed.
+Spikes first: `OnFlyByWire` ordering with BDA's re-registration; `SetPosition`/`SetWorldVelocity` placement with KJR installed; **[R2]** spawn settling at sea and submerged with KJR (buoyancy settle, `settleS`); initial airborne velocity without BDA's `VESSEL_SPAWN_INITIAL_VELOCITY` path, and keeping guard on (BDA's `SpawnUtils.AirborneActivation` turns it off); calibrating the large-spawn performance estimate (ms of physics per part) on the user's machine.
 
 Scope:
 - Flight engine (`06-flight-control.md`): mixer; `flight.set_controls`, `action_group`, `stage` with the staging resolver, `switch_vessel`, `orbit_point`; holds (plane, rocket, boat heading/speed, submarine depth via SubTrim `manualDepth`, pitch-only fallback); `flight.setpoint_batch` with `deadmanMs`; `flight.direct` with dead-man; `flight.release`, `flight.holds`.
 - Arbiter with `steer` leases (acquire, release, TTL, preempt, `onExpire`), implicit human lease with trim-relative axes and throttle-change detection, active-vessel switch handling (`20-runtime-lifecycle.md` §2).
 - Hand-off to BDA / manual / AtmosphereAutopilot with `pilotEnabled` checks; kill switch full semantics including the active-vessel BDA pilot rule.
-- Placement and spawning: `ksp.vessel.place|lift|drop`, `ksp.vessel.spawn_craft`, PRE range get/set via BDA's helper.
+- Placement: `ksp.vessel.place|lift|drop`, PRE range get/set via BDA's helper.
+- **[R2] Spawn anywhere** (`06-flight-control.md` §9.1):
+  - `ksp.vessel.spawn_craft` with modes `air` (altitude, heading, pitch, airspeed, engines, throttle, gear), `sea` (waterline and buoyancy settle), `submerged` (depth), `ground` and `runway`; team, guard, AI, group and mission assignment;
+  - **multi-spawn**: `count` with no cap, `layout:"line"`, abreast or trail, `spacingM` auto or metres, `perRow`; clear-space search against terrain, buildings, water/land and existing vessels by bounding size plus margin; lines that wrap into parallel rows; the `large_spawn` warning with a performance estimate above 50;
+  - `ksp.vessel.spawn_formation` with templates (wedge, line, echelon, box, screen) for swarms;
+  - the staggered spawner (≤ 400 parts per frame);
+  - the in-game **Spawn** window (craft picker, mode, count field, spacing, rows, team, guard, AI, group, warning); CLI `skizzy spawn …`; MCP tool in the `core` and `flight` toolsets.
+- **[R2] Fork feature OD1** (BDArmory Overdrive multi-spawn in the VesselMover spawn window, `07-bdarmory-integration.md` §5.1) as a separate PR to the fork. It is P1 and does not block M1. Skizzy's own spawner does not depend on it.
 - Writes: `ksp.module.set|invoke|action` through the PAW path; confirmations; `ksp.vessel.rename` (control).
 - Deep reflection read (`reflect.get`, enabled per mod in-game only).
 - BDA minimal: `bda.status`, `list_teams`, `set_team`, `set_guard_mode`, `list_ai`, `get_ai`, `set_ai_mode`, `command_ai`.
 - Vessel lifecycle states and warp/pause policy for holds (`20-runtime-lifecycle.md` §1, §3); `sim.time.set|slow` (BDA time scale) and `sim.clock`.
 - In-game flight window (holds, lease holder, human-override banner); MCP `flight` toolset; CLI `skizzy fly …` helpers.
 
-Demo: scenario §0 complete (climb with a hold, take the stick, let go, kill switch); place a destroyer at sea and drive it on heading/speed holds; a SubTrim sub holds 50 m; hand a jet to BDA AI and back.
+Demo: scenario §0 complete, including "spawning on day one" (six destroyers in a line at sea, twelve fighters abreast at 3 km and 250 m/s); 60 drones from the in-game Spawn window wrapping into rows with the warning shown; a 20-drone wedge in one call; a SubTrim sub spawned at 80 m holding depth; hand a jet to BDA AI and back.
 
 Acceptance:
-1. `06-flight-control.md` §12 items 1, 4, 5, 7, 8, 9, 10.
+1. `06-flight-control.md` §12 items 1, 4, 5, 7, 8, 9, 10 and **[R2]** 11–14 (spawn mid-air, sea and submerged, multi-spawn with rows and the warning, swarm formation).
 2. Pausing and unpausing keeps a BDA time scale of 2; holds on a vessel that goes on rails report `vessel_packed` and resume.
 3. A hold set by an agent survives 60 s of agent silence; a `setpoint_batch` stream with `deadmanMs:500` goes to `hold_last` after 500 ms of silence.
 4. After the flown vessel dies and KSP switches, holds on the new active vessel keep running until the human touches a control.
-5. Perf gates: 20 holds ≤ 20 µs each per step; arbiter + mixer ≤ 0.3 ms per step for 20 vessels.
+5. **[R2]** The same multi-spawn (count 12, line, air) gives the same slots from the API, the CLI and the in-game Spawn window.
+6. Perf gates: 20 holds ≤ 20 µs each per step; arbiter + mixer ≤ 0.3 ms per step for 20 vessels; **[R2]** a 100-vessel staggered spawn keeps the worst frame ≤ 1.5× the median, and clear-space search for 100 slots takes ≤ 5 ms.
 
-Governing files: `06`, `09` §4, `20` §1–3, `04` §5 (placement, SubTrim, PRE), `07` §1.1–1.3.
+Governing files: `06` (incl. §9.1), `09` §4, `20` §1–3, `04` §5 (placement, SubTrim, PRE), `07` §1.1–1.3, §5.1.
 
 ## M2 — BDA core, compact picture, recorder v1 (5 weeks)
 
@@ -113,9 +131,10 @@ Scope (`11-tactical-map.md`):
 - Layers (§3), fog and god windows, panels: track list, unit details, orders (read-only), events/log, layers, recorder, host health; command palette.
 - Replay through `skizzy rec replay-server` with timeline scrubbing, 0.1×–16× speed, event stepping, loops and interpolation; the `battle.detailed` profile; live slow motion from the map (last task; may slip into M4 without blocking).
 - In-game overlay v1 (§8); zone creation from the map (`tac.zones.*`).
-- Genre features (§12): message log with category filters, time compression bar and pause-on-event, unit details with the magazine view, live losses & expenditures panel, coverage rings and emission badges, DR uncertainty ellipses, `idState` display.
+- **[R2] Drag-spawn from the map library** (`11-tactical-map.md` §6, `06-flight-control.md` §9.1): drag a craft, set mode, altitude, speed, heading and count on the spawn card, see the slot and row preview and the large-count warning; Shift-drag for a formation.
+- Genre features (§12): message log with category filters, time compression bar and pause-on-event, unit details with the magazine view, live losses & expenditures panel, range rings (weapon, sensor, DLZ, threat), emission badges, DR uncertainty ellipses, `idState` display.
 
-Demo: watch a Blue-vs-Red battle with 40 aircraft and 128 missiles on Blue-fog, Red-fog and god windows, every missile visible on its own path; drag the track list to a second monitor; restart the map and get the same layout; replay the densest 30 seconds at 0.25× and step through the intercepts.
+Demo: drag 40 fighters onto the map in two groups (count 20 each, 4 km, 250 m/s) and watch a Blue-vs-Red battle with 40 aircraft and 128 missiles on Blue-fog, Red-fog and god windows, every missile visible on its own path; drag the track list to a second monitor; restart the map and get the same layout; replay the densest 30 seconds at 0.25× and step through the intercepts.
 
 Acceptance:
 1. `11-tactical-map.md` §11 items 1, 3, 5, 6, 7, 8, 9, 11; the message log filters and jumps; pause-on-event "missile launched at own unit" pauses within one frame (`09-c2-multi-agent.md` §11.8 item 5).
@@ -123,31 +142,41 @@ Acceptance:
 
 Governing files: `11`, `08` §5–7, `12` §6.
 
-## M4 — Control depth and C2 basics (5 weeks)
+## M4 — Command basics (6 weeks) — [R2]
 
-Spikes first: `CommandFlyTo` arrival behaviour for the surface AI; aircraft `FlyTo` orbit radius vs leg geometry.
+Spikes first: `CommandFlyTo` arrival behaviour for the surface AI; aircraft `FlyTo` orbit radius vs leg geometry; **[R2]** delegation identity per AI client: does Claude Code (and Codex) let a subagent start its own `skizzy mcp --actor-token` connection, or does it share the parent's connection, so that the `as` argument is needed (`09-c2-multi-agent.md` §1.2, risk R30); whether BDA guard mode re-activates a radar that EMCON switched off (decides whether F3's radar gate is needed, §11.3).
 
 Scope:
+- **[R2] Command seat** (`09-c2-multi-agent.md` §1.1): `c2.seat.get|take|hand|release|brief`, seat-owned orders, `agentTakeover` (ask, allow, deny) with the in-game and map prompt, `seatGraceS`, free-play seating; the human's Take and Hand buttons on the map and in-game.
+- **[R2] Delegation** (§1.2): `c2.delegate.create|list|update|revoke`, cluster scopes (units, group, mission), tokens (hashed, revocable, shown once), both identity modes (own connection with `--actor-token`, shared connection with the `as` argument), `out_of_scope` denials, idle TTL; the Connections window lists delegates with Revoke.
+- **[R2] Automatic reports** (§1.3): the report engine with the default kinds (engaged, contact, weapons spent, damaged, kill, winchester, bingo/RTB, lost), rate limits and grouping; `c2.reports.config`.
+- **[R2] Comms P0/P1 part** (`22-communications-diplomacy.md` §0): team and direct channels, `comms.send|inbox|wait|thread`, recording and replay of messages; the map **comms panel v1** (Team and Reports tabs, compose, message to own commander or delegate; `11-tactical-map.md` §5.2).
+- **[R2] MCP for commanders**: toolset presets `commander` and `delegate`, `comms_wait` long-poll, the `as` argument when the delegation option is on; `skizzy.testing.FakeCommander` for CI.
 - Leases on all channels with per-channel `onExpire`, `grant`/`delegate`/`renew`, ROLE clamps, suspension on human preemption and the suspension stack (`09-c2-multi-agent.md` §4).
 - **Mission command plus direct control** (`09-c2-multi-agent.md` §4.1, user clarification 2026-11-08):
   - control state per unit and group, with `c2.control.get` and `control.changed` events;
   - sticky take-over and release (`c2.control.take|release|release_all`), one-shot interventions and "Fly in KSP";
   - on the map (`11-tactical-map.md` §6.1): control badges and halos, one-click Take control and Return, the Manual units panel and the in-game Flight window buttons;
   - missions join this in M6.
-- Orders v1 (`move_to`, `move_route`, `patrol_area`, `loiter`, `follow`, `formation`, `engage`, `engage_all`, `weapons_hold|tight|free`, `set_depth`, `report`, `claim`) with the full lifecycle (`suspended`, `orphaned` event), groups, stale-decision check.
+- Orders v1 (`move_to`, `move_route`, `patrol_area`, `loiter`, `follow`, `formation`, `engage`, `engage_all`, `weapons_hold|tight|free`, `set_depth`, `emcon`, `report`, `claim`) with the full lifecycle (`suspended`, `orphaned` event), groups, stale-decision check.
 - Route executor (ships via `CommandFlyTo`; aircraft via holds or guarded native waypoints), formation executor (reflection slots + station keeping), fire authority and target filter (F3/F4 with fallbacks), F6, F8 if merged; friendly-fire check.
 - Map planning tools (route, loiter, zone, assign target, ROE, lease, take/return), reference points and zone roles, shared annotations and memos.
-- Genre features: EMCON executor and layer (`09-c2-multi-agent.md` §11.3), doctrine inheritance at side/group/unit level with winchester/bingo/withdraw actions (§11.1 basic), side posture (§11.5).
-- Python SDK v1 (async, msgpack, mirror, setpoint batch, orders, leases, clock) and C# `Skizzy.Client`; `skizzy run` supervisor; `skizzy.sim` mini-sim.
+- Genre features: EMCON presets, triggers and executor plus the map layer (`09-c2-multi-agent.md` §11.3); doctrine inheritance at side/group/unit level with winchester/bingo/withdraw actions (§11.1 basic); classification marks (`tac.track.mark`, §11.4).
+- Python SDK v1 (async, msgpack, mirror, setpoint batch, orders, leases, clock, **[R2]** comms) and C# `Skizzy.Client`; `skizzy run` supervisor with `--actor-token`; `skizzy.sim` mini-sim.
 
-Demo: scenario §3 (swarm script + Haiku re-tasking can use a scripted fake until M6), §4 (co-fly with wingmen), §8 (draw a route on the map), and take-over: a destroyer on a `patrol_area` order is taken with one click, steered and held fire by hand, then returned and rejoins the patrol from where it is.
+Demo:
+- **Seat hand-over:** the human holds the Blue seat on the map, hands it to Claude Code, takes it back.
+- **Scenario §3** (the swarm), once as a Python script with a delegation token and once as a Claude Code subagent with a cluster lease on `g:swarm-1`, with reports on the team channel.
+- **Scenario §4** (co-fly with wingmen) and **§8** (draw a route; a standing patrol order resumes afterwards; mission re-planning comes in M6).
+- **Take-over:** a destroyer on a `patrol_area` order is taken with one click, steered and held fire by hand, then returned and rejoins the patrol from where it is.
 
 Acceptance:
-1. `06-flight-control.md` §12 items 2, 3, 6; `09-c2-multi-agent.md` §10 items 1, 6, §11.8 items 1, 2, 4 and §4.1.3 items 1–6 (with standing orders in place of missions); `10-scripting-sdk.md` §9 items 1, 2, 4; `11-tactical-map.md` §11 items 2, 4, 10, 12.
+1. `06-flight-control.md` §12 items 2, 3, 6; `09-c2-multi-agent.md` §10 items 1, 4, 5, 6, 7, 8, §11.8 items 1, 2, 4 and §4.1.3 items 1–6 (with standing orders in place of missions); `22-communications-diplomacy.md` §12 items 1, 7, 8; `10-scripting-sdk.md` §9 items 1, 2, 4; `11-tactical-map.md` §11 items 2, 4, 10, 12.
 2. With F3, a ship under `weapons_tight` with an assigned target never fires at a non-assigned hostile; the stock fallback is reported as partial in `bda.hooks`.
-3. Perf gates: swarm (20 drones at 20 Hz) ≤ 0.6 ms/frame; 2-hour soak.
+3. **[R2]** The delegation mode chosen by the spike works in Claude Code and Codex: a subagent's call outside its cluster gets `PERMISSION_DENIED`/`out_of_scope`, and a revoked token is refused.
+4. Perf gates: swarm (20 drones at 20 Hz) ≤ 0.6 ms/frame; **[R2]** report engine ≤ 0.05 ms per C2 tick at 200 units, zero with no subscribers; 2-hour soak.
 
-Governing files: `06` §5–8, `09` §2–4, `10` §1–4, §6, `11` §6–7.
+Governing files: `06` §5–8, `09` §1–4, §11.1, §11.3–11.4, `10` §1–4, §6, `11` §5.2, §6–7, `22` §1–3, §9.
 
 ## M5 — Craft building v1 and recording analytics (5 weeks)
 
@@ -161,45 +190,68 @@ Acceptance: `05-craft-building.md` §9 items 1–4; editor batch of 50 ops withi
 
 Governing files: `05`, `12` §4–5.
 
-## M6 — C2 multi-agent (5 weeks)
+## M6 — Missions, doctrine and stance (6 weeks) — [R2]
 
-Spikes first: Streamable HTTP session identity in the MCP SDK; prompt-cache hit rates with digest injection; compaction behaviour over a 2-hour battle.
+Spikes first: Streamable HTTP session identity in the MCP SDK; how BDArmory's competition counts allied and neutral teams (risk R32; `22-communications-diplomacy.md` §4); compaction behaviour of the API-key example over a 2-hour battle.
 
-Scope: remaining order types (`defend_sector`, `defend_unit`, `intercept`, `screen`, `escort`, `emcon`, `tactic`), doctrine loader and `c2.doctrine.*`, triggers, tactics library v1, WTA solver, `c2.ask_human`; orchestrator `skizzy.agents` (roles and models, event wake, digests, cache-stable prefixes, budgets with the default caps, refusal handling, append-only history with compaction, `resume`); bridge Streamable HTTP with actor identity and per-role toolsets; scripted-fake-LLM CI; fork patches F9, F10, F12; behaviour engine v1 (BT interpreter, `sub_shoot_and_scoot`, C# plug-in loader); scenario director; in-game overlay v2; genre features: missions as first-class objects with the Missions panel (`09-c2-multi-agent.md` §11.2) and mission participation in the control state (take-over suspends it, return re-plans from the unit's position, §4.1), full doctrine inheritance including the mission level, the map scenario editor (`11-tactical-map.md` §12).
+Scope:
+- **Missions** (`09-c2-multi-agent.md` §11.2): first-class objects with planners for `patrol` (AAW, ASuW, ASW, sea control, CAP rotation), `strike` (phases, time on target, threat-aware re-route, abort), `escort`; the Missions panel; mission participation in the control state (take-over suspends it, return re-plans from the unit's position, §4.1); mission events and reports.
+- Remaining order types (`defend_sector`, `defend_unit`, `intercept`, `screen`, `escort`, `tactic`), doctrine loader and `c2.doctrine.*` with full inheritance including the mission level and locks, triggers, tactics library v1, WTA solver, `c2.ask_human`.
+- **[R2] Stance and surrender** (`22-communications-diplomacy.md` §4–6): broadcast channel; `c2.stance.*` mapped to `BDTeam.Allies` (both directions); `c2.surrender` and `c2.surrender.demand`; the referee's weapon locks; violations and scoring (subdued units); the negotiated and surrender end conditions; comms panel v2 (stance strip, templates, proposals with Accept, Reject, Counter and Apply); the in-game Comms window.
+- **[R2] Waves and respawn** (`06-flight-control.md` §9.1): scenario waves and `sim.respawn.*`; `bda.spawn_continuous` wrapper.
+- **[R2] AI-client support:** the think-time policy (§8.4); pause-on-event defaults per seat kind (§11.6); `skizzy.examples.api_commander` (§8.5: tool runner, adaptive thinking, compaction, refusal handling, optional `--max-usd` and `--max-turns-per-min`); bridge Streamable HTTP with actor identity and per-role toolsets; prompt templates for commander and delegate (`21-user-experience.md` §5).
+- Behaviour engine v1 (BT interpreter, `sub_shoot_and_scoot`, C# plug-in loader); scenario director; fork patches F9, F10, F12; in-game overlay v2.
+- The map **scenario editor** (`11-tactical-map.md` §12.8): forces with spawn specs (any count, rows, formations, mid-air), waves and respawn, seats and `agentTakeover`, initial stance, comms settings, missions, zones, end conditions.
 
-Demo: scenario §2 (SAG + sub vs 40 missiles) with a commander, an AD coordinator and three unit agents. The user watches on the map, answers one `ask_human`, takes DDG-2 out of its mission to fire one chosen missile and returns it, and flies one CAP fighter in KSP before handing it back.
+Demo:
+- **Scenario §2** (SAG + sub vs 40 missiles) with a Claude Code commander and an optional ASW subagent; the user watches on the map, answers one `ask_human`, takes DDG-2 out of its mission to fire one chosen missile and returns it, and flies one CAP fighter in KSP before handing it back.
+- **A strike mission** from an airfield with time on target and a re-route around a SAM.
+- **A surrender:** Red's FAC group surrenders to a broadcast demand.
+- **The same §2** with the API-key example and a `--max-usd 3` cap.
 
-Acceptance: `09-c2-multi-agent.md` §10 items 2–5, 7, §11.8 item 3 and §4.1.3 items 1–6 rerun with missions; agent cost report matches `usage` sums; cache reads > 70 % of input on steady-state turns; dollar caps stop an agent and its units fall back; orchestrator kill → fallbacks within 15 s; `10-scripting-sdk.md` §9 item 3.
+Acceptance: `09-c2-multi-agent.md` §10 items 2, 3, 9, §11.8 items 3, 6, 7, 8, 9 and §4.1.3 items 1–6 rerun with missions; `22-communications-diplomacy.md` §12 items 3, 4; `06-flight-control.md` §12 item 15; the API-key example reaching its cap stops with `BUDGET_EXHAUSTED` and the seat becomes vacant after `seatGraceS` while missions keep running; `10-scripting-sdk.md` §9 item 3; a scenario built in the editor round-trips to YAML and runs.
 
-Governing files: `09`, `10` §5, §7, `16` §2.
+Governing files: `09` §5–9, §11, `10` §5, §7, `11` §5.2, §12, `16` §2, §5, `22` §4–6, §11.
 
-## M7 — Batch and CI depth (4 weeks)
+## M7 — Batch, CI and diplomacy (5 weeks) — [R2]
 
-Scope: scenario schema v1 complete (waves, end conditions, matrix, expect); `skizzy battle run|compare` with checkpoint/resume; unattended profile; `sim.scenario.snapshot|restore`; validation scenario pack (`14-testing-batch-sim.md` §6); FakeKsp full `IBdaFacade`; conformance suite; lockstep `sim.hold|step|release`; fork patches F11, F13; `bda.evolution.*`/`bda.autotune.*` wrappers; perf regression gates between builds.
+Scope: scenario schema v1 complete (waves, end conditions, matrix, expect, **[R2]** seats, stance, comms); `skizzy battle run|compare` with checkpoint/resume; unattended profile; `sim.scenario.snapshot|restore`; validation scenario pack (`14-testing-batch-sim.md` §6); FakeKsp full `IBdaFacade`; conformance suite; lockstep `sim.hold|step|release`; fork patches F11, F13; `bda.evolution.*`/`bda.autotune.*` wrappers; perf regression gates between builds.
 
-Demo: scenario §7 (200 vessels × 50 runs A/B) runs overnight unattended; `skizzy rec compare` prints CIs.
+**[R2] Diplomacy** (`22-communications-diplomacy.md` §2–4, P2): the diplomatic channel with two-sided opt-in; the negotiation protocol (proposals, counters, structured terms, `terms_breach`); psyops features (free broadcast callsigns, private credibility tags); untrusted-message delivery and the `skizzy doctor` warning for commanders with non-Skizzy tools (risk R31); the agent-vs-agent scenario (`16-scenarios.md` §10) and its batch form with two API-key commanders.
 
-Acceptance: `14-testing-batch-sim.md` §7 items 1–5; `02-architecture.md` §8 budgets for 200 loaded vessels and the synthetic 1000; an injected regression is caught by `expect`.
+Demo: scenario §7 (200 vessels × 50 runs A/B) runs overnight unattended; `skizzy rec compare` prints CIs. **[R2]** Scenario §10: a Claude Code commander and a Codex commander settle the strait standoff; the replay shows every message with its true sender.
 
-Governing files: `14`, `10` §7, `20` §4.
+Acceptance: `14-testing-batch-sim.md` §7 items 1–5; `02-architecture.md` §8 budgets for 200 loaded vessels and the synthetic 1000; an injected regression is caught by `expect`; **[R2]** `22-communications-diplomacy.md` §12 items 2, 5; 20 batch runs of §10 with API-key commanders complete unattended and report the ending kinds.
+
+Governing files: `14`, `10` §7, `20` §4, `22` §2–4, §10, `16` §10.
 
 ## M8 — Naval depth and extensibility (6 weeks)
 
-Scope: sub operations (bearing-only association, active ping events, comms/EW model v1); HullBreach events and damage-control orders; KP Naval ballast backend; SubTrim v2 (`IDepthCommandSource`, if the SubTrim priority option exists); ACA carrier launch/recover state machine and Hangar; Trajectories and KerbalEngineer adapters; Tier 2/3 and the sensor/unit-type providers (`04-ksp-and-mod-access.md` §7); agent memory and the analyst role (AAR); headless map render; camera extras (`burst`, `multi`, `annotate`); craft thumbnails; training-episode export; lockstep exact stepping; parallelism where measured (`02-architecture.md` §2.4); NTDS symbol style, passive-sonar bearing wedges, `support`-AEW and `ferry` missions.
+Scope: sub operations (bearing-only association, active ping events); **[R2]** comms realism (`22-communications-diplomacy.md` §7: comms range by domain, relays, submarine depth, jammers, queued orders and reports); HullBreach events and damage-control orders; KP Naval ballast backend; SubTrim v2 (`IDepthCommandSource`, if the SubTrim priority option exists); ACA carrier launch/recover state machine and Hangar; Trajectories and KerbalEngineer adapters; Tier 2/3 and the sensor/unit-type providers (`04-ksp-and-mod-access.md` §7); **[R2]** orbit spawn mode (`06-flight-control.md` §9.1); headless map render; camera extras (`burst`, `multi`, `annotate`); craft thumbnails; training-episode export; lockstep exact stepping; parallelism where measured (`02-architecture.md` §2.4); NTDS symbol style, passive-sonar bearing wedges, `support`-AEW and `ferry` missions.
 
 Demo: scenarios §5 (carrier strike: launch + marshal; recovery assisted) and §6 (sub ambush).
 
-Acceptance: `08-tactical-picture.md` §12 item 5; the sub scenario completes with two torpedo hits registered; the carrier launches 6 aircraft unattended at ≤ 60 s cadence; recovery captures a wire in ≥ 3 of 5 attempts with a BDA-assisted approach (documented stretch); the comms model delays a datalink track by the configured latency; an example sensor provider adds bearing-only tracks; a training export loads in pandas; any parallel offload shows its measured saving in `host.stats`.
+Acceptance: `08-tactical-picture.md` §12 item 5; the sub scenario completes with two torpedo hits registered; the carrier launches 6 aircraft unattended at ≤ 60 s cadence; recovery captures a wire in ≥ 3 of 5 attempts with a BDA-assisted approach (documented stretch); the comms model delays a datalink track by the configured latency; **[R2]** `22-communications-diplomacy.md` §12 item 6; an example sensor provider adds bearing-only tracks; a training export loads in pandas; any parallel offload shows its measured saving in `host.stats`.
 
-Governing files: `04` §5, §7, `06` §11, `08` §1, §9, `09` §8.5, `11` §9, `12` §4, `13`.
+Governing files: `04` §5, §7, `06` §9.1, §11, `08` §1, §9, `11` §9, `12` §4, `13`, `22` §7.
 
 ## M9 — Hardening and release (4 weeks)
 
 Scope: security gate (`15-security-permissions.md` §8); CKAN/SpaceDock packaging (`SkizzyProtocol`, recommended by `SkizzyNaval`); docs site, cookbook and agent prompt templates; Python package on PyPI; upgrade and migration paths (`21-user-experience.md` §6); 4-hour soak; first public spec 1.0; upstream PR pitch to BDA Plus (timing per `18-risks-and-decisions.md` §3); optional Harmony stopgap for stock BDA Plus hooks (off by default); MCP SDK pin review; multi-human documentation (SSH tunnel).
 
-Acceptance: a fresh install via CKAN + `pip install skizzy` reproduces the M0–M6 demos; an upgrade from the M8 build migrates settings and permissions without loss; the security checklist is green; 4-hour soak slope < 1 MB/h; the conformance suite is green against host + FakeKsp and host + KSP.
+Acceptance: a fresh install via CKAN + `pip install skizzy` reproduces the M0–M7 demos; an upgrade from the M8 build migrates settings and permissions without loss; the security checklist is green; 4-hour soak slope < 1 MB/h; the conformance suite is green against host + FakeKsp and host + KSP.
 
 Governing files: `15`, `21`, `14` §1.
+
+## Later (P3) — [R2]
+
+Moved out of the core path by the user (`IDEAS.md` §15, `09-c2-multi-agent.md` §8.7). Nothing in the protocol has to change to add them:
+
+- built-in group and unit agent layers, a built-in orchestrator, a fast model per unit by default;
+- per-role models and per-agent budgets;
+- agent memory between battles and a built-in analyst role (the user's own client can analyse recordings with the `rec` tools);
+- automatic surrender by doctrine (`surrenderWhen`, `22-communications-diplomacy.md` §5);
+- `support` tanker missions (BDA does not model refuelling).
 
 ## Implementation notes for coding agents
 

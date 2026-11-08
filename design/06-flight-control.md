@@ -74,13 +74,149 @@ Routes drawn on the map (`11-tactical-map.md` §6) and routes from agents are th
 
 - The pilot's inputs are read from `FlightInputHandler.state` each step. **[R]** Pitch/yaw/roll are measured relative to the current trim; throttle is detected by **change** (the human's throttle value moves by more than 2 % between steps), not by its absolute value, because KSP keeps the last human throttle setting while an agent holds speed. A deviation beyond a dead-band on any axis for 3 consecutive steps raises `human.took_controls` and grants the implicit human lease (precedence 1000) on `steer` for the active vessel; agent holds on that vessel are suspended (not cancelled) and resume after `humanIdleS` (default 5 s) without input, emitting `human.released_controls`. Configurable to "never resume" per doctrine. **[R]** This transient behaviour is for touching the stick. A deliberate take-over ("Fly in KSP" from the map, or **Take control** in the in-game Flight window) gives a sticky pilot lease that lasts until **Return to mission**; the mission or order underneath is suspended and re-plans from the vessel's position on return (`09-c2-multi-agent.md` §4.1).
 - **Active-vessel switches [R].** When the active vessel changes without the human choosing it (the flown vessel died and KSP switched, or BDA's competition camera switched), the implicit human lease does not jump to the new vessel: holds on the new active vessel keep running until the human actually touches an input there. `vessel.active_changed` is emitted with the cause (`20-runtime-lifecycle.md` §2).
-- Agents flying wingmen never touch the active vessel unless the human explicitly grants it (`c2.lease.grant {vessel:"active", to:"a:wing-ai", channel:"steer"}` from the in-game window or the map).
+- **[R2]** Delegates and scripts flying wingmen never touch the active vessel unless the human explicitly grants it (`c2.lease.grant {vessel:"active", to:"a:blue/wing", channel:"steer"}` from the in-game window or the map).
 - The in-game HUD shows a one-line banner: `AI: wingmen 2 (follow) · you: manual · Ctrl+Alt+K stops all`.
 - Voice/text commands from the human to wingmen go through the same orders (`c2.order.issue` from the in-game command window, the map or Claude Code).
 
-## 9. Scene setup and positioning (P0)
+## 9. Scene setup, positioning and spawning (P0)
 
 `ksp.vessel.place {vessel, lat, lon, alt?, heading, pitch?, roll?, aboveTerrain?, speedMps?}` **[R]** is implemented by Skizzy itself (pass 1.0 delegated to BDA's VesselMover, but `PlaceVessel(vessel, skipMovingCheck)` takes no position: it lowers a vessel from where it already is onto the surface, and aborts unless the vessel was picked up first or `skipMovingCheck` is true): position from `body.GetWorldSurfacePosition(lat, lon, alt)` (with `aboveTerrain` adding terrain height, sea level for water), `vessel.SetPosition`, `vessel.SetRotation` from heading/pitch/roll in the local north-east-up frame, `vessel.SetWorldVelocity` (zero or `speedMps` along the heading), `vessel.IgnoreGForces(240)` around the move, Krakensbane velocity offset accounted for, one settle frame for KJR before physics resumes. Landing a vessel gently on terrain uses BDA's `VesselMover.Instance.PlaceVessel(v, skipMovingCheck:true)` when BDA is installed (`VesselSpawning/VesselMover.cs:445`); `PickUpAndDrop` (`:542`) backs `lift`/`drop`; `ksp.vessel.lift {vessel, m}`, `ksp.vessel.drop`; `ksp.vessel.teleport_orbit` via HyperEdit (P2). Formation placement of many vessels uses `bda.spawn_template` (`CustomTemplateSpawning.SpawnCustomTemplate`, `CustomSpawnTemplate.cs:95`) or `sim.scenario.load`. All `cheat`.
+
+### 9.1 Spawn anywhere (P0, M1; formations P0 M1; map drag M3; waves M6; orbit P2) — [IDEAS, user requirement 2026-11-08]
+
+The user likes the VesselMover-style spawner, both the standalone VesselMover mod and BDA's built-in VesselMover window, because it puts a craft **anywhere, including mid-air**. Skizzy makes this first-class and builds it on `ksp.vessel.spawn_craft` and `ksp.vessel.place`. BDA's competition spawners (ring and template, `07-bdarmory-integration.md` §1.6) stay as they are.
+
+```
+ksp.vessel.spawn_craft {
+  craft,                                   // library ref "DDG Burke@v2" or a .craft path in the sandbox
+  at: {lat, lon} | {ref, bearingDeg, rangeM} | {site:"runway"|"<KK launch site>"},
+  mode: "air" | "sea" | "submerged" | "ground" | "runway" | "orbit",
+  altM?, altRef?: "asl"|"agl",             // air (default asl)
+  depthM?,                                 // submerged
+  orbit?: {altKm | smaKm, inc?, ecc?, lan?, argPe?, meanAnomaly?},   // orbit (P2)
+  heading, pitch?, roll?,
+  speedMps?,                               // air default: the craft's BDA pilot idleSpeed, else 150; sea and submerged default 0
+  engines?: "on"|"off", throttle?,         // air default on, throttle 0.8 until the AI or a hold takes over
+  gear?: "up"|"down",                      // air default up
+  team?, guard?: bool, ai?: bool,          // ai default true when the craft has a BDA AI; guard default false unless set
+  group?: "<id>" | {create:"<name>"}, mission?, name?, uniqueName?: "auto"|"strict", crew?,
+  settleS?,                                // default: air 2 s, sea 5 s, submerged 5 s, ground 3 s
+  count?: ≥1 (no cap), layout?: "single"|"line", lineDir?: "abreast"|"trail", spacingM?: "auto"|<m>, perRow?: "auto"|<n>   // multi-spawn, below
+} → op → {vessels:[{vessel, name, pid, slot, row, settled:{residualMps, attitudeErrDeg}}], group?, shifted?:{byM, reason}, warnings?:[{kind:"large_spawn", count, estimate}]}
+```
+
+**Modes.**
+
+| Mode | What Skizzy does | Checks |
+|---|---|---|
+| `air` | Builds the vessel at the requested altitude (ASL, or AGL with `altRef:"agl"`) and attitude. In its first unpacked physics frame it sets `vessel.SetWorldVelocity` along the heading and pitch at `speedMps`, with `IgnoreGForces(240)` and the Krakensbane offset handled. Retracts gear and starts engines (the BDA convention: action group 10 first, then `SpawnUtils.ActivateAllEngines` if no engine is running) at `throttle`. For `settleS`, a heading/altitude/speed hold (`§3`) flies the craft, then hands over to the BDA pilot with `ActivatePilot` (and guard mode if `guard:true`). The craft never drops or stalls on spawn. | Must be inside the loaded physics range (`PRECONDITION`, reason `outside_physics_range`, otherwise): KSP destroys packed vessels in low atmosphere. Extend the range with PRE first, through BDA's helper. |
+| `sea` | Spawns about 2 m above the estimated waterline (from the craft's validated draft, `05-craft-building.md` §4, or its bounds), zero velocity. Then a settle phase: velocity damping until vertical speed is below 0.5 m/s, for at most `settleS`. Reports the residual velocity. | `PRECONDITION`, reason `not_water`, when the terrain at that position is above sea level. |
+| `submerged` | Sets the depth controller before release: SubTrim `manual` mode with `manualDepth = depthM` through the SubTrim adapter (`04-ksp-and-mod-access.md` §5), or KP Naval ballast. Spawns at `depthM` with velocity along the heading, then holds depth with `flight.depth` for `settleS`. | `PRECONDITION`, reason `no_depth_control`, when the craft has neither SubTrim nor ballast (override with `force:true`). |
+| `ground` | Spawns slightly above the terrain, then lowers it gently with BDA's `VesselMover.Instance.PlaceVessel(v, skipMovingCheck:true)` (`VesselSpawning/VesselMover.cs:445`). Without BDA, Skizzy's own terrain raycast and a slow descent. | Slope and obstruction check from the raycast. |
+| `runway` | Position and heading of the KSC runway or a KerbalKonstructs launch site (`LaunchSiteManager.AllLaunchSites`), then as `ground`. | The site exists. |
+| `orbit` (P2) | Builds the vessel, then sets its orbit with stock `Orbit.SetOrbit` on `vessel.orbitDriver` and goes on and off rails; HyperEdit is not needed. | Altitude above the body's minimum safe altitude. |
+
+**Multi-spawn: N in a line, with clear-space finding (P0, M1)** — user addition 2026-11-08, corrected the same day.
+
+- **The count is whatever the user enters.** One action spawns N copies of a craft in a straight line near the chosen point, on the ground, on the sea, submerged or in the air: 5 gives 5, 37 gives 37. There is no cap.
+- **Batching is internal.** For physics stability, large counts are built in internal batches staggered over frames (below). That is an implementation detail, not a limit.
+- **Large counts warn but are allowed.** Above 50 the map, the in-game window and the API result carry a warning with an estimated performance impact, and the spawn still goes ahead. The estimate comes from the per-part physics cost that `host.selfcheck.perf` measured on this machine (before calibration a rough default of 1 ms of physics per 250 parts), and lists:
+  - the loaded-vessel total after the spawn;
+  - the added parts;
+  - the expected frame time;
+  - whether the vessels fit inside the physics range.
+
+- **Line.** With `lineDir:"abreast"` (default) the line is perpendicular to the heading; with `"trail"` it runs behind the leader along the heading. All copies get the same heading, the same altitude or depth, and in the air the same initial speed.
+- **Spacing.** `spacingM:"auto"` (default) uses the craft's size plus a margin:
+  - size: the lateral extent (wingspan) for abreast, the length for trail, taken from the craft's bounding box;
+  - margin: `max(10 m, 0.25 × size)` on the surface, `max(30 m, 0.5 × size)` in the air.
+
+  A number sets the spacing in metres.
+- **Clear space.** Each slot is checked before anything spawns:
+
+  ```
+  slots = line(center = at, direction from lineDir and heading, n = count, spacing)
+  free(slot) =
+      footprint = craft bounding box at slot (+ margin)
+      ground:    land at slot (TerrainAltitude > 0), max slope over a 3×3 raycast grid ≤ 10°, no building or static collider
+                 (Physics.OverlapBox on the scenery and KerbalKonstructs static layers)
+      runway:    as ground, inside the site's rectangle
+      sea:       water deeper than the craft's draft + 2 m, no collider
+      submerged: water deeper than depthM + craft height + 10 m
+      air:       height above terrain ≥ max(50 m, size) at the slot and along the first 10 s of the initial velocity
+      all modes: distance to every loaded vessel ≥ its radius + craft radius + margin, and clear of the slots already accepted
+  for each blocked slot: shift it outward along the line by spacing/2, up to 3 times, keeping the order
+  if any slot is still blocked: move the whole line. Search candidate centres in rings around `at`
+      (step = line length, 8 rings, max 5 km) and take the nearest centre where every slot is free
+  if none: PRECONDITION reason no_clear_space, with the best candidate in data
+  ```
+
+  The result reports `shifted {byM, reason}` when the line moved, and the map previews the final slots before confirming.
+- **Rows.** A long line wraps into parallel rows when space runs out:
+  - Wrapping happens when the slots no longer fit within `maxRowLengthM` (default 2 km), when `perRow` is reached, or when clear space along the line ends.
+  - With `abreast`, the rows stack behind each other along the reverse heading; with `trail`, they sit side by side. Rows are one `spacing` apart, plus the craft's length or width.
+  - Every slot in every row gets the same clear-space check.
+  - When the whole block has to move, the ring search grows with the block size (step = block diagonal, up to 8 rings).
+- **Options.** `count` (any positive number), `spacingM` (`auto` or metres), `lineDir` (abreast or trail), `perRow` (`auto` or a number), `team`, `guard`, `ai`, `group` (existing or `{create}`), `mission`.
+- **Staggering.** Internal batches of one vessel at a time, with the same per-frame part limit as below. A 100-aircraft spawn of 40-part craft takes about 200 frames, roughly 4 s at 50 Hz.
+- **Reachable from:**
+  - the map: drag a craft, type the count on the spawn card, see the slot and row preview and, above 50, the warning;
+  - scripts and agents: `ksp.vessel.spawn_craft {count, layout:"line", …}`;
+  - the in-game **Spawn** window: craft picker, mode, a count field, spacing, abreast or trail, per-row count, team, guard, AI, group, the large-count warning, and spawn at the camera target or at a picked vessel;
+  - the CLI: `skizzy call ksp.vessel.spawn_craft craft=… count=6 layout=line mode=air altM=3000 speedMps=220`.
+- **Also a BDArmory Overdrive feature.** The same count (no cap), line, rows and clear-space options are a good fit for BDA's own VesselMover spawn window in the user's fork, so they work without skizzy-protocol. They are recorded as fork feature **OD1** (P1) in `07-bdarmory-integration.md` §5.1. When OD1 is installed, Skizzy can delegate `layout:"line"` to it. Both use the algorithm above.
+
+**Many at once: formations.** For larger or shaped groups:
+
+```
+ksp.vessel.spawn_formation {
+  craft | crafts:[{craft, count}],
+  count?, formation: {template:"wedge"|"line_abreast"|"echelon_left"|"echelon_right"|"column"|"box"|"ring"|"grid"|"custom", spacingM, slots?},
+  at, mode, altM?, depthM?, heading, speedMps?, team?, guard?, ai?, group?, mission?,
+  stagger?: {maxPartsPerFrame: 400, minFramesBetween: 2}
+} → op (progress per vessel) → {vessels:[…], group}
+```
+
+- **Slots.** Positions come from the template (or the doctrine's `formations`, `09-c2-multi-agent.md` §5) relative to the leader's position and heading. Every member gets the same velocity vector, so an air formation spawns already flying in formation.
+- **Staggering.** Spawning is spread over frames: at most `maxPartsPerFrame` parts are built per frame, with at least `minFramesBetween` frames between vessels. A 20-drone swarm of 30-part drones spawns in about 40 frames, with no physics spike.
+- **Grouping.** The whole set can become a new group, join a mission, and get a team, guard mode and AI in the same call.
+- **Example.** Twenty drones in a wedge at 3 km and 250 m/s:
+
+  ```
+  spawn_formation {craft:"Drone-X@v3", count:20, formation:{template:"wedge", spacingM:120}, at:{ref:"rp:alpha", bearingDeg:270, rangeM:15000}, mode:"air", altM:3000, heading:90, speedMps:250, team:"Blue", ai:true, guard:true, group:{create:"Swarm-1"}}
+  ```
+
+**Mid-battle reinforcements and respawn.**
+
+- **Waves.** The scenario director's waves (`09-c2-multi-agent.md` §9, `10-scripting-sdk.md` §7) use the same spawn spec (`spawn` or `spawn_formation` entries) at a UT or when a trigger fires.
+- **Respawn rules.** Set per group or side, in the scenario or live with `sim.respawn.set|clear|list`:
+
+  ```
+  respawn: {when: lost, delayS: 60, max: 4, at: base|spawn_point|<ref>, mode, rejoin: group|mission}
+  ```
+
+  A respawned unit rejoins its group or mission, and its name gets the next `#n` suffix (`20-runtime-lifecycle.md` §6).
+- **BDA's own continuous spawning.** For BDA-style continuous competitions, `bda.spawn_continuous` wraps `ContinuousSpawning.Instance.SpawnVesselsContinuously` (`VesselSpawning/ContinuousSpawning.cs:93`) with BDA's scoring. Skizzy's respawn rules are separate, for C2 battles that need to know about groups, missions and teams.
+
+**From the map, scripts and agents.**
+
+- **Map (M3).** The map's craft library panel supports drag onto the map, which opens a small spawn card. The mode is chosen from the craft type: aircraft get `air` with altitude and speed defaulting to the craft AI's `defaultAltitude` and `idleSpeed`; ships `sea`; submarines `submerged` with a depth. Dragging out an arrow sets the heading, and Shift-drag spawns a formation (count, template, spacing).
+- **Scripts, agents and the CLI.** They use the same two calls, for example `skizzy call ksp.vessel.spawn_craft craft="F-22@v1" mode=air altM=6000 speedMps=230 …`.
+- **In-game.** The capability console offers the same calls with a position picker ("at camera", "at cursor on the map", "at a vessel").
+
+**What is reused and what is Skizzy's own.**
+
+| Function | Implementation | Why |
+|---|---|---|
+| Craft file → vessel | BDA `VesselSpawner.SpawnVesselFromCraftFile(craftURL, gpsCoords, heading, pitch, roll, out facility, crew)` (`VesselSpawning/VesselSpawner.cs:70`, public static). Fallback: the standalone VesselMover mod's spawner when present, then Skizzy's own `ProtoVessel` builder (P1, M5 with the craft work) | proven code for crew, naming and part loading; the user always has BDA |
+| Exact pose and velocity in air, sea and submerged | Skizzy's placement (§9) | BDA's airborne path (`SingleVesselSpawning.SpawnVessel`, `:57`) treats any altitude above 10 m AGL as airborne and measures altitude from terrain. It sets only the pilot's `idleSpeed`, and only when `VESSEL_SPAWN_INITIAL_VELOCITY` is on (default off, `Settings/BDArmorySettings.cs:368`). Its activation (`SpawnUtils.AirborneActivation`, `:244`) turns guard mode **off**. Skizzy needs exact ASL or AGL altitude, any speed, and guard on when asked |
+| Engine start | BDA's convention: action group 10, then `SpawnUtils.ActivateAllEngines` (`:131`, public static) if `CountActiveEngines` (`:126`) is 0 | same behaviour as BDA spawns, so craft built for BDA work unchanged |
+| Landing on ground | BDA `VesselMover.PlaceVessel(v, skipMovingCheck:true)` | gentle descent already solved |
+| Ring and template spawns | BDA `CircularSpawning` and `CustomTemplateSpawning` (`bda.spawn_*`) | competitions as the user knows them |
+| Continuous spawning | BDA `ContinuousSpawning` | BDA scoring |
+| Formations, staggering, team/guard/AI, groups, missions, waves, respawn, orbit | Skizzy | not offered by BDA in this form |
+
+**Permissions.** All spawn calls are `cheat`, allowed by default in the Battle Lab preset (`15-security-permissions.md` §1). **[R2]** Large spawns are never blocked: above 50 vessels in one call there is a performance warning only. Pass 1's two-key rule for big spawns is dropped by the user's correction; two-key stays for removing all vessels and for loading scenarios that kill everything first.
 
 ## 10. Kill switch (P0)
 
@@ -102,3 +238,8 @@ A `naval.carrier` service wraps ACA: `launch {carrier, aircraft}` = taxi-to-cata
 8. **[R]** `flight.depth 50` on a SubTrim sub holds ±3 m and `flight.release` restores SubTrim's previous mode and depth.
 9. **[R]** A hold on a vessel that goes on rails reports `vessel_packed` and resumes when it unpacks; `flight.stage` on a stage with a missile asks, on a plain engine stage does not.
 10. **[R]** `flight.orbit_point prograde` on a probe in orbit points within 2° in 30 s.
+11. **[R2] Spawn mid-air.** `spawn_craft {mode:"air", altM:3000, speedMps:230, guard:true}` for an F-22 gives level flight at 3000 ± 50 m within 2 s, gear up and engines running, with no stall and no altitude loss over 50 m. The BDA pilot is active and guard mode is on after `settleS`.
+12. **[R2] Spawn at sea and submerged.** A destroyer spawned with `mode:"sea"` settles with vertical speed < 0.5 m/s within 5 s and no part lost. A SubTrim submarine spawned at `depthM:80` holds 80 ± 5 m after 10 s.
+13. **[R2] Multi-spawn.** `count:10, layout:"line"` on the KSC runway area spawns ten aircraft abreast. The line shifts clear of a building and of a parked vessel in the way (`shifted` reported), and no two craft overlap. The same call in the air gives ten aircraft at the same altitude and speed, spaced by wingspan plus margin. Every case is staggered: the worst frame-time spike stays under 1.5× the median. `count:60` in the air wraps into rows, returns the `large_spawn` warning with an estimate, and spawns all 60.
+14. **[R2] Swarm formation.** `spawn_formation` with 20 drones in a wedge at 3 km and 250 m/s produces a flying wedge within 10 % of spacing after 5 s, assigned to group `Swarm-1` with AI and guard on. Spawning more than 50 at once shows the performance warning and proceeds.
+15. **[R2] Respawn and waves.** A respawn rule `{when: lost, delayS: 30, max: 2}` brings back a lost fighter twice, rejoining its CAP mission. A scenario wave spawns a 6-ship formation at its trigger.

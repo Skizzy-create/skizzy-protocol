@@ -10,15 +10,15 @@
 | R4 | `OnFlyByWire` ordering makes the mixer unreliable without F8 | M/M | re-registration on `pilotEnabled` edges and every second; F8 lands in M4 if merged; documented |
 | R5 | Fog-of-war picture diverges from what BDA's AI actually "sees" | M/M | TPE uses BDA's own `detected/detectedTime` as truth source; god view for debugging; tests on FakeKsp with known truth |
 | R6 | Track id churn when KSP reassigns `persistentId` or vessels split (debris, fighters detaching) | M/M | identity by `Vessel` reference + name fallback; `track.split` events; re-index on `onVesselCreate` |
-| R7 | LLM latency too high for tactical decisions | H/M | agents shape engagements, in-game executors and BDA fire regardless; event-driven turns; Haiku for units; slow-mo on urgent triggers; budgets stop runaway loops |
-| R8 | LLM cost surprises | M/M | per-actor dollar budgets, cache-stable prompts, compact text, digest cadence; cost shown live on the map |
-| R9 | Forced tool choice removed on Opus 5.5 / Sonnet 5.5 causes agents to answer in prose instead of acting | M/L | `auto` + strict schemas + explicit instructions; orchestrator treats a turn without tool calls as a report |
+| R7 | LLM latency too high for tactical decisions | H/M | agents shape engagements, in-game executors, mission planners, WTA and BDA fire regardless; event-driven turns; **[R2]** no LLM below the commander at all (reports, missions and doctrine run in the game, `09-c2-multi-agent.md` §11); think-time slow motion on urgent events for agent seats |
+| R8 | LLM cost surprises | M/L | **[R2]** the user's own AI client carries the cost (subscription or their key); one agent per side instead of a hierarchy; compact text and output caps; the API-key example has optional `--max-usd` and `--max-turns-per-min` caps and prints `usage` per turn |
+| R9 | Forced tool choice removed on Opus 5.5 / Sonnet 5.5 causes agents to answer in prose instead of acting | M/L | `auto` + strict schemas + explicit instructions in the prompt templates; **[R2]** only the API-key example controls `tool_choice`, and it treats a turn without tool calls as a report; other clients behave as their vendors design |
 | R10 | Lease logic becomes a usability nightmare (constant `LEASE_HELD`) | M/M | sane defaults (BDA owns everything until someone asks), delegation, clear errors with holder names, map lease panel, doctrine-driven preemption rules |
 | R11 | Editor reload path drops state or spawns floating subassemblies | H/M | reload spike first in M5; headless path independent of the editor; B9PartSwitch/TweakScale state carried in the document; round-trip diff tests |
 | R12 | Blueprint assembler needs curated hull slots for every hull family | H/M | ship slots for the pack's main hulls; `craft.probe_slots` fallback; agents can still place parts by coordinates with validation |
 | R13 | Carrier arrested recovery is beyond BDA AI's landing ability | H/M | P2, scoped as launch + marshal in v1; recovery BDA-assisted or human; measured success rate reported honestly |
 | R14 | Recording volume and disk I/O on long battles (`battle.detailed` ≈ 1.2 GB/h) | M/L | adaptive rates, columnar layouts, lz4 compaction, manual prune and a 20 GB warning |
-| R15 | Multi-agent through one bridge: actor spoofing or confusion | M/M | role clamps in the permission file, bridge asserts identity per MCP session, audit per actor |
+| R15 | Several actors through one bridge: actor spoofing or confusion | M/M | role clamps in the permission file, bridge asserts identity per MCP session, audit per actor; **[R2]** delegation tokens are hashed, revocable and scoped to a cluster (R30) |
 | R16 | Scene changes and quick-loads during battles corrupt orders/leases | M/M | suspend/resume rules, handles invalidated, orders `suspended` (reason `scene`), `sim.scenario.snapshot` as the supported way to save a battle position (`20-runtime-lifecycle.md` §5) |
 | R17 | KSP `Vessel.OnFlyByWire` for non-active vessels only runs when loaded/unpacked; PRE range changes mid-battle | M/M | holds report `inactive` when the vessel is packed; PRE range is a scenario parameter and checked in preflight |
 | R18 | Harmony-based stopgaps destabilise stock installs | L/M | Harmony mode off by default, only for the private-member hooks, removed when the upstream PR lands |
@@ -33,6 +33,10 @@
 | R27 **[R]** | Assembly conflicts (KSPBurst's `System.Runtime*`, netstandard) break the host at load | M/H | net48 build against KSP's `Managed` folder, no external serialisers in-game, CI reference check, doctor check |
 | R28 **[R]** | `Dock.Avalonia` does not fit Avalonia 11 or the layout needs | L/M | M3 spike; fallback of splitters and detachable windows |
 | R29 **[R]** | Duplicate vessel names corrupt BDA scores (scores are keyed by name) | H/M | automatic deconfliction at competition start (`20-runtime-lifecycle.md` §6) |
+| R30 **[R2]** | A sub-agent spawned by Claude Code or Codex shares its parent's MCP connection, so the bridge cannot tell the two apart by session | H/M | the `as` argument carrying the delegation token on every tool call (`09-c2-multi-agent.md` §1.2), or the sub-agent's own `skizzy mcp --actor-token` process where the client allows it; M4 spike per client; without either, the sub-agent acts as the commander and only the audit note distinguishes it |
+| R31 **[R2]** | Prompt injection through enemy messages: an opposing commander writes text meant to make the other agent misuse its non-game tools (files, shell) | M/H | other sides' messages delivered only as data marked `untrusted:true` with a provenance line; never in tool descriptions or prompts; `skizzy doctor` and the scenario runner warn when an agent-vs-agent commander has non-Skizzy tools; docs for running commanders with only Skizzy tools or in a sandbox; in-game permissions still bounded by ROLE rules (`22-communications-diplomacy.md` §10) |
+| R32 **[R2]** | BDA semantics for allied and neutral teams differ from what stance needs (competition end detection counting allies; non-IFF missiles; a team change mid-flight) | M/M | verified in source: `BDTeam.IsEnemy` is one-directional so ceasefire sets both sides; IFF missiles skip allies; `SetTeam` clears targets (`22-communications-diplomacy.md` §4); competition counting is an M6 spike, and Skizzy owns end conditions anyway (D-4) |
+| R33 **[R2]** | Large or mid-air spawns destabilise physics (KJR settle, parts colliding, frame spikes) | M/M | staggered spawner (≤ 400 parts per frame), clear-space search by bounding size plus margin, buoyancy settle with `settleS`, exact pose and velocity set by Skizzy, the large-spawn warning with an estimate; M1 spikes (`06-flight-control.md` §9.1) |
 
 ## 2. Rejected alternatives
 
@@ -53,26 +57,32 @@
 | Multi-agent transport | one stdio bridge process per agent only | works for 2–3 agents; Streamable HTTP on loopback scales to 10+ with per-session identity |
 | Picture | per-unit `CanSeeTarget` calls for fog | O(N²) and allocating; BDA already stores per-team detection |
 | Orders | free-text orders to units | unexecutable by in-game code; typed orders with schemas, free text only as notes |
-| Memory | vector database for agent memory | small, human-editable files suffice; revisit if memories grow |
+| Memory | vector database for agent memory | small, human-editable files suffice; revisit if memories grow (**[R2]** agent memory itself is now P3) |
 | Time | KSP save/load as battle snapshot | unreliable mid-combat (missiles, debris, 200 vessels); scenario snapshot/respawn instead |
 | Encoding (in-game) **[R]** | MessagePack-CSharp inside KSP | needs `System.Memory`/`Unsafe`, which KSPBurst already ships in other versions; an in-house subset codec is ~600 lines |
 | Map **[R]** | clustering/aggregating tracks by default | the user wants every missile visible; aggregation is an optional Counts view |
 | Parallelism **[R]** | Unity Jobs/Burst for the TPE | blittable world copies every tick and a hard KSPBurst dependency for a sub-millisecond gain |
 | Hooks **[R]** | depending on BDA source line numbers | lines move with every commit; members are resolved by name and checked by `bda.hooks` |
 | Bridge name | keep `skizzy-mcp.exe` as the only exe | it is now a CLI with runner/exporter/metrics/map; `skizzy.exe` with an alias |
+| C2 **[R2]** | built-in group and unit agents under a commander, with a built-in orchestrator and per-role models (pass 1) | the user's decision (`IDEAS.md` §15): BDA AI fights well enough, the in-game CMO-style logic fills the gaps, and per-unit agents add cost and latency; deferred to P3, addable later as a client holding delegations |
+| Comms **[R2]** | an LLM chat client inside the map | the user's AI tool is the chat; the map has a comms panel for the side's channels |
+| Comms **[R2]** | verifying message content or blocking deception | the user allows psyops; content is never checked, senders are authenticated except broadcast callsigns |
+| Spawning **[R2]** | capping multi-spawn at 10, or two-key above 50 | the user's correction: any count, warning only |
+| Spawning **[R2]** | using BDA's airborne spawn path as is | it turns guard off and sets only idle speed behind a setting; Skizzy sets pose and velocity itself and reuses BDA's craft loading |
 
 ## 3. Decisions
 
-**[R] Consolidated by review pass 1.1.** Pass 1.0 listed 17 open questions. Most had a clear answer from `IDEAS.md`, the installed mod set or the code, so the review decided them (§3.2). Four need the user (§3.1). Each has a default the design assumes until the user answers.
+**[R] Consolidated by review pass 1.1.** **[R2] Updated by pass 2:** U2 is resolved by the user, U5 is new, and D-6, D-23 and D-25 to D-33 record the pass 2 decisions. Pass 1.0 listed 17 open questions. Most had a clear answer from `IDEAS.md`, the installed mod set or the code, so the review decided them (§3.2). Four need the user (§3.1). Each has a default the design assumes until the user answers.
 
 ### 3.1 Decisions for the user
 
 | # | Question | Recommended default | Why |
 |---|---|---|---|
 | U1 | Who coordinates the BDArmory fork patches, and when do they go upstream? | Small separate PRs to `BDArmory-Skizzy` in the order F1/F2/F5 (M2), then F3/F4/F6 (M4), F8–F12 later; opened only after the current multi-target/leak work is merged; the user reviews each; pitch BDA Plus upstream after M6, when the hooks have been used in real battles | the fork is being changed by another agent right now, and every patch has a shim fallback, so nothing in Skizzy waits on them |
-| U2 | How much may LLM agents spend per battle? | Commander $3, each unit agent $0.50, whole orchestrator $8 per battle; batch runs never use LLMs unless the scenario explicitly opts in | caps stop runaway loops; the SAG scenario estimate is under $1, so the caps leave headroom |
+| U2 | How much may LLM agents spend per battle? | **[R2] Resolved by the user (`IDEAS.md` §15):** spending caps are optional and apply only in API-key mode. The API-key example has `--max-usd` (off by default; the README suggests $3 per battle) and `--max-turns-per-min`. Claude Code and other clients are not capped by Skizzy. Batch runs never use LLMs unless the scenario opts in | — |
 | U3 | Which hull families get blueprint slot templates first? | LBP destroyer hull, LBP carrier hull, and one MNWS/Maritime hull | these are the hulls in the user's naval pack; everything else uses `craft.probe_slots` |
-| U4 | Order of milestones after M2 | M3 tactical map, then M4 control depth and C2 basics, then M5 craft building | the user named the map and the compact picture among the most-missed items; craft building is the largest and least urgent block |
+| U4 | Order of milestones after M2 | M3 tactical map, then M4 command basics, then M5 craft building (**[R2]** spawning moved into M1 by the user) | the user named the map and the compact picture among the most-missed items; craft building is the largest and least urgent block |
+| U5 **[R2]** | When a human holds a side's seat, may an agent take it? | `agentTakeover: ask` for every side: the agent's request shows a prompt on the map and in-game, declined after 30 s; `allow` and `deny` per side and per scenario (agent-vs-agent scenarios use `deny` so spectators cannot take seats by accident) | the user said either can take over from the other; a human should never lose command silently, but one click is enough (`09-c2-multi-agent.md` §1.1) |
 
 ### 3.2 Decided by the review (no action needed; say so to change any)
 
@@ -83,7 +93,7 @@
 | D-3 | Bridge name | `skizzy.exe` with subcommands; `skizzy-mcp.exe` kept as an alias | the exe now does far more than MCP |
 | D-4 | Competition as referee | C2 battles start a BDA competition for scoring only (no killer GM, no duration) | reuses BDA's kill/score logic instead of duplicating it |
 | D-5 | Test range | `saves/skizzy-range` created from a shipped template by the wizard or `skizzy doctor --fix --create-range`; open water at lat -0.15, lon -74.20; loading it from a running game is `ask` | a known site makes trials comparable; loading a save is destructive |
-| D-6 | Orchestrator stack | Python with the `anthropic` SDK (tool runner over the bridge's MCP tools) | Python is the scripting language of the project; no Agent SDK dependency needed |
+| D-6 | Orchestrator stack | **[R2]** no built-in orchestrator. The API-key example (`skizzy.examples.api_commander`) uses Python with the `anthropic` SDK's tool runner over the bridge's MCP tools; everything else is the user's own AI client | the user's decision: any MCP client, the AI tool is the chat |
 | D-7 | Network exposure | loopback only; a second human uses an SSH tunnel; LAN/TLS is P3 | smallest attack surface |
 | D-8 | Harmony stopgap | optional, off by default, only for stock BDA Plus installs without the fork; removed when hooks land upstream | the user's install has the fork |
 | D-9 | Recording format and retention | `.skzrec` + JSONL, CSV/JSONL direct sinks, Parquet on export; **no automatic deletion**, manual prune plus a 20 GB warning | auto-deleting data the user may want to compare is worse than a disk warning |
@@ -100,18 +110,34 @@
 | D-20 | Map clarity | individual tracks always; aggregation only as an optional Counts view (user correction, 2026-11-08) | the user wants to see every missile |
 | D-21 | Map docking | `Dock.Avalonia` (MIT), with a splitter-and-window fallback if it fails the M3 spike | docking is a solved problem; do not hand-build it |
 | D-22 | In-game parallelism | at most one worker thread for pure math on snapshot copies, only where measured, not before M8; no Unity Jobs/Burst | Unity/KSP APIs are main-thread only; complexity must not reach M0–M3 |
-| D-23 | LLM models | `claude-haiku-5-5` for group/unit agents, `claude-opus-5-5` (effort `high`) for the commander and builder, `claude-sonnet-5-5` for the analyst | cost and latency per role |
+| D-23 | LLM models | **[R2]** the user's client decides. The API-key example defaults to `claude-opus-5-5` with adaptive thinking and effort `high`. Per-role models are P3 | pass 1's Haiku-per-unit and Sonnet-analyst defaults went with the agent layers |
 | D-24 | Take-over and hand-back defaults | Default channels are steer, weapons and targeting; take-over changes nothing physically until the human commands (`hold_last`, locks and fire authority kept); release resumes the mission, which re-plans from the unit's position; one-shot interventions return automatically; human take-overs survive a map disconnect for 120 s; no automatic release, only a reminder after 5 min | the user wants mission command and micromanagement together with seamless switching (2026-11-08); surprises at the moment of switching are the main way such a feature fails |
+
+### 3.3 Pass 2 decisions — [R2]
+
+Decided while applying the user's pass 2 decisions (`IDEAS.md` §15–16 and the spawning requirements). Say so to change any.
+
+| # | Topic | Decision | Why |
+|---|---|---|---|
+| D-25 | Where communications live | a new cross-cutting doc, `22-communications-diplomacy.md`; `09-c2-multi-agent.md` §11.5 points to it | comms touches C2, the TPE, permissions, the map, recording and scenarios; one place keeps it consistent |
+| D-26 | Stance mapping onto BDArmory | ceasefire and peace add each team to the other's `BDTeam.Allies` (both directions, because `IsEnemy` is one-directional); surrendered units move to a neutral `<Side>·Surrendered` team with guard off, `isArmed` false and a referee lock at precedence 1100; surrender is final for the battle | uses BDA's own targeting and IFF logic instead of a parallel filter; the lock makes "weapons safed" real, since `isArmed` alone only gates the manual fire key |
+| D-27 | Delegation identity | a 128-bit delegation token per sub-agent; own connection with `--actor-token`, or a shared connection with the `as` argument on every tool call when the bridge's `delegation` option is on; precedence 600 by default, at most 700 | works with clients whose subagents share the parent's MCP connection (R30) |
+| D-28 | Report defaults | engaged, contact, weapons spent, damaged, kill, winchester, bingo/RTB, on station, mission complete, lost, surrendered; 10 s per unit and kind, except kill, lost and winchester which are immediate; grouped per group or mission | enough for a commander to follow a battle without polling, cheap enough to leave on |
+| D-29 | Broadcast callsigns | `broadcastCallsigns: free` by default: anyone may put any callsign on a broadcast, shown as unauthenticated; team and diplomatic senders are always authenticated; true senders kept for god view, audit and replay | the user allows psyops and deception; receivers judge |
+| D-30 | Commander god view | off by default for agent commanders under fog (`god = per-scenario`); the local user may grant it to their own agent; agent-vs-agent keeps fog | a commander that sees through fog makes the fog pointless |
+| D-31 | Spawning: reuse vs own | Skizzy places vessels itself (exact pose, initial velocity, guard kept on) and reuses BDA's `VesselSpawner.SpawnVesselFromCraftFile` for loading the craft and `SpawnUtils` for engine activation; BDA's VesselMover and continuous spawning are wrapped, not copied (`06-flight-control.md` §9.1) | BDA's airborne activation turns guard off and only sets idle speed behind a setting; the user wants mid-air spawns at a given speed with guard on |
+| D-32 | Multi-spawn count | no cap; internal batches staggered over frames; a performance warning with an estimate above 50; never two-key | the user's correction: "the count is whatever the user enters" |
+| D-33 | Comms panel, not chat | the map gets a comms panel and a command strip; there is no LLM chat in the map; the human talks to their agent in their own AI tool or by a direct message on the team side | the user's decision: the AI tool is the chat |
 
 ## 4. Open technical spikes
 
 Spikes are now the first tasks of each milestone in `17-milestones.md`. The full list:
 
 - M0: `EncodeArrayToJPG` off the main thread; `AsyncGPUReadback` support on the user's graphics API; `UnitySynchronizationContext` idle wake; `NoStdLib` build against KSP's `Managed` folder.
-- M1: `OnFlyByWire` ordering with BDA's re-registration; placement with KJR installed.
+- M1: `OnFlyByWire` ordering with BDA's re-registration; placement with KJR installed; **[R2]** spawn settling at sea and submerged with KJR; initial airborne velocity with guard kept on; calibration of the large-spawn performance estimate.
 - M2: VRD `displayedTargets` reflection cost at 200 radars; `TargetInfo.detected` semantics for allied teams; BRAA test vectors; in-house msgpack zero-alloc on Mono.
 - M3: `Dock.Avalonia` on Avalonia 11; Skia `DrawAtlas` throughput; Avalonia headless rendering in CI.
-- M4: `CommandFlyTo` arrival behaviour for the surface AI; aircraft `FlyTo` orbit radius vs leg geometry.
+- M4: `CommandFlyTo` arrival behaviour for the surface AI; aircraft `FlyTo` orbit radius vs leg geometry; **[R2]** delegation identity per AI client (own connection or `as`, R30); whether BDA guard mode re-activates radars switched off by EMCON.
 - M5: editor reload path and its time at 300 parts; GM estimate vs observed roll period.
-- M6: Streamable HTTP session identity in the MCP SDK; prompt-cache hit rates with digest injection; compaction over a 2-hour battle.
+- M6: Streamable HTTP session identity in the MCP SDK; **[R2]** BDA competition counting of allied and neutral teams (R32); compaction of the API-key example over a 2-hour battle. Pass 1's prompt-cache spike with digest injection is dropped with the orchestrator.
 - M8: ACA catapult attach sequence; passive sonar bearing noise model from BDA's acoustic signature; whether any in-game parallel offload saves ≥ 0.2 ms.

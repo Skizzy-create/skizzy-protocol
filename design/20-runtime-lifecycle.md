@@ -54,7 +54,7 @@ Whenever time stops, wall-clock caps on operations keep running so a forgotten p
 BDArmory's competition scores are a `Dictionary<string, ScoringData>` keyed by **vessel name** and its death order is a list of names (`07-bdarmory-integration.md` §1.6), so two craft called "DDG" share one score row and the second death is lost.
 
 - Skizzy identifies vessels by persistentId everywhere; names are only labels.
-- **Before Skizzy starts a competition** (and in `bda.spawn_*` with `uniqueNames` default `auto`) duplicate names are made unique by appending ` #2`, ` #3` … (`ksp.vessel.rename`, which is control level); a `vessel.renamed` event records old and new names. `uniqueNames:"strict"` fails with `DUPLICATE_NAME` instead; `"off"` leaves names alone and warns.
+- **Before Skizzy starts a competition** (and in `bda.spawn_*` and **[R2]** `ksp.vessel.spawn_craft`/`spawn_formation`, multi-spawn and respawn, with `uniqueNames` default `auto`) duplicate names are made unique by appending ` #2`, ` #3` … (`ksp.vessel.rename`, which is control level); a `vessel.renamed` event records old and new names. `uniqueNames:"strict"` fails with `DUPLICATE_NAME` instead; `"off"` leaves names alone and warns.
 - If a competition is started from BDA's own UI with duplicates, Skizzy warns in the SITREP and the event log and keys its own statistics by persistentId.
 
 ## 7. Vessel splits and debris

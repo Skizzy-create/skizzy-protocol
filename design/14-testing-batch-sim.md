@@ -12,7 +12,7 @@
 | Bridge | MCP projection against the real host Core + FakeKsp; toolsets; actor identity over Streamable HTTP; op/wait; image blocks | CI | ModelContextProtocol SDK test client |
 | SDKs | Python and C# against FakeKsp (via the real host Core) and against `skizzy.sim` | CI | pytest, xUnit; shared conformance vectors |
 | Map | symbol rendering snapshots (Skia bitmaps), delta application, planning tools issuing orders against FakeKsp | CI | Avalonia headless |
-| Agents | orchestrator loop with a **scripted fake LLM** (deterministic tool calls) against FakeKsp; prompt size and cache-prefix stability assertions; budget enforcement | CI | no API spend |
+| Agents **[R2]** | a **scripted fake MCP client** (`skizzy.testing.FakeCommander`: deterministic tool-call scripts for a commander, an advisor and a delegate) against FakeKsp: seat take and hand-over, delegation scope, `as` token routing, report delivery, comms and stance flows; tool-list stability assertions; the API-key example's optional cap tested with a fake model | CI | no API spend |
 | Conformance | `spec/conformance`: wire-level checks of `03-protocol.md` against host + FakeKsp, and optionally against a live KSP | CI / manual | |
 | In-game self-checks | idle cost, dispatcher timing, PAW write path, hook availability, screenshot leak check, TPE tick cost at current vessel count, recorder cost | KSP start / on demand (`host.selfcheck`) | log lines + `skizzy doctor` |
 | In-game acceptance | per-milestone checklists (`17-milestones.md`), run by the user with Claude Code | KSP | |

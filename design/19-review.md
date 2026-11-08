@@ -2,6 +2,8 @@
 
 Reviewer and gap-filler pass over design pass 1.0 (commit `cd337ef`), 2026-11-08. Every BDArmory claim was checked against the fork source (`D:\KerbalSpaceProgram\BDArmory\BDArmory`, branch `multitarget-1.13.1`, HEAD `ff5130c19`); mod API claims against the installed DLLs and patched sources; runtime claims against KSP's `KSP_x64_Data/Managed` assemblies and `boot.config`; Claude API claims against the current API reference. Changed text in the other files is marked **[R]**, new features **[REVIEW-ADDED]**.
 
+**[R2] Design pass 2** (the command-model change, communications and diplomacy, spawn anywhere) is recorded in §9.
+
 ## 0. Summary
 
 - **Coverage of `IDEAS.md`:** 77 bullets. Before: 56 covered, 21 partial, 0 missing. After: 77 covered. The user's additions made during the review (§8) add 13 more rows, all covered.
@@ -367,3 +369,167 @@ Genre coverage check:
   - the detected → classified → identified flow (P1)
   - side posture (P1)
   - the map scenario editor (P1)
+
+## 9. Pass 2: command-model change (2026-11-08) — [R2]
+
+**Inputs.**
+
+- `IDEAS.md` §15 (commit `e6f48b0`) and §16 (commit `237827d`).
+- Three user requirements relayed during the pass:
+  - spawn anywhere as a first-class feature from M1;
+  - multi-spawn in a line with clear-space finding, also as a BDArmory Overdrive feature;
+  - the correction that the multi-spawn count has no cap.
+- BDArmory claims re-checked read-only against the fork at `db8db1078` (branch `multitarget-1.13.1`). Another agent is committing there, so members are cited by name with the line at that commit.
+
+Changed text carries **[R2]**.
+
+### 9.1 What changed, by file
+
+| File | Change |
+|---|---|
+| `00-overview.md` | Status and vision: any AI client, one commander per side, BDA fights. Layer table, architecture diagram, actor table (commander 800, delegate 600/700, advisor and observer, harness 500), seat paragraph, `client.kind` without `orchestrator`, the referee, D10 rewritten, reading order with doc 22 |
+| `01-feature-catalog.md` | §7 rows re-prioritised: model per role → P3, agent memory → P3, budgets only in the API-key example. Two-key row: spawns warn only. New §17 (19 rows: command model, comms, diplomacy) and §18 (8 rows: spawning, OD1) |
+| `02-architecture.md` | Python package without the orchestrator; host internals gain Seats, Delegations, Missions, ReportEngine, Stance and Referee, `Comms/` and the spawner; think-time line; failure rows for commander disconnect and delegate idle; budget rows for the C2 additions and spawning |
+| `03-protocol.md` | Hello example as `a:blue-cmdr`; roles; `c2.seat.*`, `c2.delegate.*`, `c2.reports.config`, `c2.stance.*`, `c2.surrender*`, `c2.violations`; the `comms.*` family; events `seat.*`, `delegate.*`, `comms.*`, `stance.*`, `violation.*`; error reasons `out_of_scope`, `not_seat`, `seat_held`, `channel_not_open`, `no_link`, `surrendered`; MCP `--actor-token` and the `as` argument; toolset presets `commander`, `delegate`, `builder`; `comms_wait`; examples use the seat as owner |
+| `04`, `05`, `08`, `10`, `12`, `14`, `20` | Small alignments: delegate clamps; spawn rows pointing to `06` §9.1; `seat:Blue` and the `C`/`D:` control tokens in the picture; SDK packages, loops and the scenario schema (spawn specs, respawn, seats, stance, comms, scoring, new end conditions); recording of comms and notes, AAR by the user's own client; `FakeCommander` in CI; name de-duplication for every spawn path |
+| `06-flight-control.md` | New §9.1 **Spawn anywhere**: modes, the uncapped multi-spawn with clear-space search and rows, formations, staggering, waves and respawn, the reuse-vs-own table, surfaces, permissions (warning, never two-key); acceptance items 11–15 |
+| `07-bdarmory-integration.md` | New §5.1: Overdrive feature **OD1**, multi-spawn in the fork's VesselMover spawn window (P1, M1), listed next to the F-patches |
+| `09-c2-multi-agent.md` | Rewritten. §0 summary of the decision; §1.1 command seat (with free-play seating); §1.2 delegation; §1.3 automatic reports; new precedence bands; §4.1 controllers `commander`/`delegate`; doctrine without models or budgets; §8 AI clients (any MCP client, event delivery, guidance, think-time, API-key example, human in the loop, deferred agent layers); acceptance renumbered 1–9; §11 strengthened (below) |
+| `11-tactical-map.md` | New §5.2 comms panel and command strip; actors panel replaces the agents panel; control badges `C`/`D`/`S`; spawn and message tools; §12 table rows updated and new specs §12.1–12.9; acceptance items 13–15 |
+| `15-security-permissions.md` | ROLE rules for commander, advisor, delegate, observer, script, behaviour, harness, human; tokens; comms injection handling; spawns removed from two-key; whole-side surrender is `destructive` |
+| `16-scenarios.md` | §0 gains "spawning on day one"; §2–6 and §8 rewritten for the command model; new §10 agent-vs-agent strait standoff; the latency table (now §11) drops the Haiku row and adds reports, diplomatic messages and spawning |
+| `17-milestones.md` | Re-scoped (§9.6 below); new "Later (P3)" section; acceptance references renumbered |
+| `18-risks-and-decisions.md` | R7, R8, R9 and R15 updated; R30–R33 new; U2 resolved, U5 new; D-6 and D-23 changed; D-25 to D-33 new; five rejected alternatives; spikes for M1, M4 and M6 |
+| `21-user-experience.md` | Wizard offers the MCP command per client; Connections lists delegation tokens; new Spawn, Command and Comms windows replace the Agents window; API-key path; cookbook and prompt templates for commander and delegate |
+| `22-communications-diplomacy.md` | **New.** Channels, message model, authenticity and deception, stance mapped to BDA, surrender, violations, optional realism, visibility and recording, interfaces, permissions and prompt-injection handling, surfaces, acceptance |
+| `IDEAS.md` | §4 gains the spawn-anywhere and multi-spawn bullet (with the uncapped count); short design notes on the §7 and §16 bullets that §15 supersedes |
+
+### 9.2 Traceability for the new requirements
+
+| ID | Requirement (short) | Where | Pri | M |
+|---|---|---|---|---|
+| 15.1 | Any MCP client (Claude Code, Codex, others, local model); API key and scripts first-class; spending caps optional, API-key mode only | `09` §8.1, §8.5; `03` §11; `21` §1, §4; `18` U2 | P0 (client), P1 (example) | M0, M6 |
+| 15.2 | The AI tool is the chat; the map has only a comms panel | `11` §5.2; `22` §11; `18` D-33 | P1 | M4 |
+| 15.3 | Commander is a human or one agent; either can take over | `09` §1.1; `11` §5.2; `21` §3; `18` U5 | P0 | M4 |
+| 15.4 | BDA AI flies and fights each craft | `09` §0, §11; `00` D10 | P0 | — |
+| 15.5 | Units and groups report automatically without an LLM | `09` §1.3; `22` §1–2 | P0 | M4 |
+| 15.6 | The commander controls assets directly; gaps filled by CMO-style in-game logic | `09` §4.1, §11; `11` §6.1, §12.1–12.9 | P0/P1 | M4, M6 |
+| 15.7 | Group and unit agents removed (later); no Haiku-per-unit default | `09` §8.7; `17` Later; `01` §7 | P3 | Later |
+| 15.8 | Team-internal delegation: the client spawns a sub-agent with its own identity and a cluster lease, reporting on the team channel | `09` §1.2; `03` §11; `15` §2; `18` R30, D-27 | P0 | M4 |
+| 15.9 | Plain guard mode still works with nothing connected | `09` §1.1; `00` principle | P0 | M0 |
+| 16.1 | Channels team, diplomatic (both open), broadcast, direct; every message logged with sender, recipient, channel, time | `22` §1–2, §8 | P0 (team, direct), P1 (broadcast), P2 (diplomatic) | M4, M6, M7 |
+| 16.2 | Agents in a team talk to each other | `22` §2; `09` §1.2–1.3 | P0 | M4 |
+| 16.3 | Surrender demands, ceasefire, threats, bluffs | `22` §4–5; `16` §10 | P1 (stance), P2 (negotiation) | M6, M7 |
+| 16.4 | Psyops and deception: unverified messages, receivers judge | `22` §3, §10; `18` R31, D-29 | P2 | M7 |
+| 16.5 | "Subdue or talk it out" as a win | `22` §5; `10` §7 | P1 | M6 |
+| 16.6 | Stance war/ceasefire/peace/surrender mapped to BDA allies and weapons hold; surrender safes, marks and scores; firing on surrendered is a violation | `22` §4–6; `18` D-26 | P1 | M6 |
+| 16.7 | Optional comms range and jamming, off by default | `22` §7 | P2 | M8 |
+| 16.8 | Visibility own side plus diplomatic, or god view; agent-vs-agent scenario | `22` §8; `16` §10 | P1, P2 | M4, M7 |
+| S.1 | Spawn anywhere, first-class | `06` §9.1; `01` §18 | P0 | M1 |
+| S.2 | Positions: mid-air, sea surface, submerged, ground/runway; orbit later | `06` §9.1 modes | P0 (orbit P2) | M1 (orbit M8) |
+| S.3 | Formation or swarm in one call, staggered, with team, guard, AI, group, mission | `06` §9.1 `spawn_formation` | P0 | M1 |
+| S.4 | Sources: map drag with altitude and speed, scripts, agents | `11` §6, §12.8; `06` §9.1 | P0 | M1, M3 |
+| S.5 | Mid-battle reinforcements: waves, BDA continuous spawning, respawn rules | `06` §9.1; `09` §9; `10` §7 | P1 | M6 |
+| S.6 | `cheat` level, allowed in Battle Lab | `15` §1; `06` §9.1 | P0 | M1 |
+| S.7 | Note reuse of BDA's VesselMover/VesselSpawner vs Skizzy's own placement | `06` §9.1 table; `18` D-31 | — | — |
+| S.8 | Multi-spawn: N in a line, clear-space search, ground/sea/air, options, staggered, from map, scripts, agents, in-game | `06` §9.1; `21` §3 | P0 | M1 |
+| S.9 | Multi-spawn as a BDArmory Overdrive fork feature | `07` §5.1 (OD1); `01` §18 | P1 | M1 |
+| S.10 | No cap on count; warning above about 50 with an estimate; rows when space runs out | `06` §9.1; `15` §3; `18` D-32 | P0 | M1 |
+
+All 27 rows are covered. None is partial.
+
+### 9.3 Scenarios re-checked under the new model
+
+| Scenario | Still works? | How now |
+|---|---|---|
+| §0 first contact | yes | The agent takes the vacant seat in free play (precedence 800); spawning added on day one |
+| §1 destroyer design | yes | Any client with the `builder` toolset; the cost is on the user's client |
+| §2 SAG vs 40 missiles | yes | The `ad_umbrella` tactic, the WTA solver, BDA guard and the `leaker` trigger do the AD coordinator's and unit agents' work; reports reach the commander; an ASW delegate is optional |
+| §3 20-drone swarm | yes | Spawned mid-air in one call; run by a script with a delegation token, or by a client-spawned sub-agent with a cluster lease |
+| §4 co-fly with wingmen | yes | Formation executor plus the human's direct orders; automatic reports; optional delegate |
+| §5 carrier strike | yes (P2) | The strike mission planner (phases, time on target, re-route, abort) replaces the strike-lead agent |
+| §6 submarine ambush | yes | `sub_shoot_and_scoot` behaviour tree with reports; the commander or a delegate can take targeting |
+| §7 200-vessel batch | unchanged | Never used agents |
+| §8 map route | yes | The mission planner re-slots the screen; the commander agent is told |
+| §9 logging | unchanged | — |
+| §10 agent vs agent | new | Claude Code vs Codex in a strait standoff, three endings (negotiated, surrender, fight) |
+
+### 9.4 CMO-style features: completeness check
+
+These features now carry the work the agents used to do, so each was checked for a usable specification on both the C2 side and the map side.
+
+| Feature | C2 side | Map side | Before pass 2 | Pass 2 change |
+|---|---|---|---|---|
+| Missions | `09` §11.2: JSON, lifecycle, assignment, type table (patrol subtypes, strike, escort; support and ferry P2), planners, API, events | `11` §12.7 | C2 specified; map one row | Planners for CAP rotation, strike timing and threat-aware re-route, escort; Missions panel spec; acceptance `09` §11.8 items 6–8 |
+| Doctrine inheritance | `09` §11.1: resolution, locks, API, key table, cached evaluation | `11` §12.9 | specified without locks or UI | Locks with `locked_by`, `c2.doctrine.effective` sources, the editor tree |
+| EMCON | `09` §11.3: presets, triggers, executor, effects | badges, layer, `11` §12.9 | executor sketched | Presets table, `goActiveWhen` and `revertAfterS`, radar re-apply with the M4 spike, editor |
+| Range rings | layers from `bda.dlz` and radar data | `11` §12.1 | one line in §3 | Per unit and per side, threat rings, altitude slider, cost rule |
+| Message log | `09` §11.6: one stream of events, reports and comms | `11` §12.2 | one row | Filters, saved views, jump, export, retention |
+| Magazine view | `bda.ammo`, SITREP | `11` §12.3 | one row | Full unit details spec with doctrine sources and multi-selection table |
+| Losses report | `09` §11.6: `c2.losses` with a compact format | `11` §12.4 | one row | Subdued and surrendered, fog rule, drill-down, scorecard |
+| Contact classification | `09` §11.4: thresholds, confidence growth, manual marks (`tac.track.mark`) | `11` §12.6 | specified without manual marks | Manual marks, track card |
+| Time compression and pause-on-event | `09` §11.6: scale limits, `sim.time.drop_on`, defaults per seat kind | `11` §12.5 | one row | Defaults table for human and agent seats, think-time banner with veto, multi-human rule |
+| Scenario editor | scenario schema (`10` §7) | `11` §12.8 | one row | Forces as spawn specs (any count, rows, mid-air), sides and seats, stance, comms, missions, waves, respawn, end conditions, validate and run |
+
+### 9.5 Verified claims (BDArmory fork at `db8db1078`)
+
+| Claim | Evidence | Result |
+|---|---|---|
+| Team hostility is one-directional | `BDTeam.IsEnemy` (`Competition/BDTeam.cs:35-40`): false if either is `Neutral`, names match, or *this* team's `Allies` has the other | ceasefire sets both teams' `Allies` (D-26) |
+| One shared team object | `BDTeam.Get` and `Deserialize` return the instance from `BDArmorySetup.Instance.Teams` | stance changes reach every weapon manager at once |
+| Allies do not share radar | `VesselRadarData.cs:687, 717` compare team identity | a ceasefire hands over no picture |
+| IFF missiles skip friendly teams | `MissileBase.cs:1112, 1266, 1432`; `MissileLauncher.cs:2867`; `MultiMissileLauncher.cs:1465` | missiles in flight drop new allies |
+| Proximity fuse treats allies as friendly | `MissileFire.cs:11328` | no proximity kills across a ceasefire |
+| `isArmed` only gates the manual fire key | `MissileFire.isArmed` `:1246`, used at `:1814` | surrender also needs guard off and a referee lock |
+| Team change clears targeting | `MissileFire.SetTeam` `:1175` clears the target, removes `TargetInfo`, raises `OnChangeTeam` | used to move surrendered units |
+| Craft loading from a file | `VesselSpawner.SpawnVesselFromCraftFile(craftURL, gpsCoords, heading, pitch, roll, out EditorFacility, crew)` (`VesselSpawning/VesselSpawner.cs:70`, public static) | reused by Skizzy's spawner |
+| BDA airborne spawn | `SingleVesselSpawning.SpawnVessel` (`:57`) treats more than 10 m AGL as airborne; `SpawnUtils.AirborneActivation` (`:244`) fires AG10, activates the pilot, commands take-off and turns guard off; idle speed only when `VESSEL_SPAWN_INITIAL_VELOCITY` (default false, `BDArmorySettings.cs:368`) | Skizzy sets pose and velocity itself and keeps guard on (D-31) |
+| Engine helpers | `SpawnUtils.ActivateAllEngines` (`:131`), `CountActiveEngines` (`:126`), public static | reused |
+| VesselMover | `PlaceVessel` (`VesselMover.cs:445`) lowers from the current position; its spawn path `SpawnVessel` (`:614`) is where OD1 goes | wrapped, not copied |
+| Continuous spawning | `ContinuousSpawning.SpawnVesselsContinuously` (`:93`) | wrapped as `bda.spawn_continuous` |
+
+### 9.6 Not verified (spikes)
+
+- **M0:** Codex CLI against the same `skizzy mcp` tool list.
+- **M1:**
+  - spawn settling at sea and submerged with KJR;
+  - initial airborne velocity with guard kept on;
+  - calibrating the large-spawn performance estimate.
+- **M4:**
+  - whether Claude Code and Codex subagents can open their own connection or share the parent's (R30);
+  - whether BDA guard mode re-activates radars that EMCON switched off.
+- **M6:** how BDA's competition counts allied and neutral teams when it decides a battle is over (R32).
+
+### 9.7 New milestone list
+
+| M | Theme | Est. |
+|---|---|---|
+| M0 | First contact (any MCP client; Claude Code and Codex checked) | 3 wk |
+| M1 | Fly, place and **spawn** (spawn anywhere, uncapped multi-spawn with rows and clear-space, formations, in-game Spawn window, OD1) | 4 wk |
+| M2 | BDA core, compact picture, recorder v1 | 5 wk |
+| M3 | Tactical map v1 (with map drag-spawn) | 5 wk |
+| M4 | **Command basics**: seat, delegation, automatic reports, team and direct channels, comms panel v1, leases, orders, take-over, EMCON, basic doctrine, SDK | 6 wk |
+| M5 | Craft building v1 and analytics | 5 wk |
+| M6 | **Missions, doctrine and stance**: mission planners, full doctrine, WTA, broadcast, stance, surrender, violations, comms panel v2, waves and respawn, API-key example, think-time, scenario editor | 6 wk |
+| M7 | **Batch, CI and diplomacy**: diplomatic channel, negotiation, psyops, agent vs agent | 5 wk |
+| M8 | Naval depth and extensibility (comms range and jamming, orbit spawn) | 6 wk |
+| M9 | Hardening and release | 4 wk |
+| Later | P3: built-in agent layers, per-role models and budgets, agent memory, analyst, automatic surrender | — |
+
+Total ≈ 49 weeks, up from 45.
+
+### 9.8 Decisions
+
+- **Resolved by the user.** U2: spending caps are optional, in API-key mode only.
+- **New for the user.** U5: may an agent take a seat a human holds? The default is `ask` (a prompt, declined after 30 s).
+- **Decided in this pass.**
+  - D-25: comms in its own doc.
+  - D-26: stance mapping.
+  - D-27: delegation identity.
+  - D-28: report defaults.
+  - D-29: free broadcast callsigns.
+  - D-30: no god view for agent commanders by default.
+  - D-31: spawn reuse vs own.
+  - D-32: uncapped multi-spawn.
+  - D-33: comms panel, not chat.
+- **Changed.** D-6: no orchestrator. D-23: the client picks the model.

@@ -139,6 +139,14 @@ Replacing BDA's `AutoPilot` entirely for a unit is possible with the `SteeringOv
 
 Each patch is small, additive, default-off, and has a reflection or emulation fallback in the shim so nothing in Skizzy *requires* the fork; `bda.hooks` tells the truth about what is available. Zero cost when no Skizzy host is present: the hooks are null delegates checked with one branch.
 
+### 5.1 BDArmory Overdrive features (in-game features for the user's fork, not hooks) — [R2]
+
+Some features are worth having inside BDArmory itself, so they work without skizzy-protocol. They are listed here because they live in the same fork as the F-patches, but unlike the patches they are user-facing features, not hooks. Skizzy never depends on them.
+
+| # | Pri | Where | Feature | Skizzy relation |
+|---|---|---|---|---|
+| OD1 | P1 | `VesselSpawning/VesselMover.cs` spawn window (the craft browser path in `SpawnVessel`, `:614`) | **Multi-spawn:** any count the user enters (no cap; a performance warning above 50; internal batches staggered over frames), a straight line abreast or in trail that wraps into parallel rows when space runs out, auto spacing from craft size plus margin, and clear-space finding against terrain, buildings, land or water, and existing vessels, with slot shifting or moving the whole line. Works on ground, sea and in the air (same altitude, heading and initial speed). Spawns are staggered over frames. The algorithm is in `06-flight-control.md` §9.1. | `ksp.vessel.spawn_craft {layout:"line"}` implements the same algorithm in Skizzy (M1) and may delegate to OD1 when it is installed |
+
 ## 6. Performance at 100–1000 vessels
 
 - The TPE reads `BDATargetManager.LoadedVessels` once per tick and `TargetList(team)` per team: O(N + T·N_enemy). No `CanSeeTarget` calls (that one allocates and raycasts; BDA already computed the result into `detected`/`detectedTime`).

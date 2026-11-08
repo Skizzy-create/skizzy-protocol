@@ -96,14 +96,58 @@ Smooth zoom on the mouse wheel and touchpad pinch, animated and anchored at the 
 
 ## 5. Panels
 
-**Command palette [R]** (Ctrl+K): searches the host catalog and opens a form generated from the capability's JSON Schema, the same component as the in-game console (`21-user-experience.md` §3), so every capability is usable from the map even before it has a dedicated panel; results and errors show in the events panel. Units (SITREP table, sortable), orders (tree by group with status), leases, agents (role, model, last turn, tokens, $ spent, budget bar, "freeze"/"wake" buttons), events log (filterable, compact text), recorder (profiles start/stop, marks), scenario (load/snapshot/waves), doctrine/ROE editor (profiles, zones, envelopes), craft library (spawn from library), host health (frame time, budgets, degraded flags, auto-disabled tools).
+**Command palette [R]** (Ctrl+K): searches the host catalog and opens a form generated from the capability's JSON Schema, the same component as the in-game console (`21-user-experience.md` §3), so every capability is usable from the map even before it has a dedicated panel; results and errors show in the events panel. Units (SITREP table, sortable), orders (tree by group with status), leases, **[R2]** actors (the side's seat holder with Take, Hand and Release; advisors; delegates with their cluster, last call and **Revoke**; scripts and behaviours; pass 1's per-agent model, token and budget columns are gone, and the API-key example's spending shows only when it reports it), comms (§5.2), missions (§12.7), losses (§12.4), events log (filterable, compact text), recorder (profiles start/stop, marks), scenario (load/snapshot/waves), doctrine/ROE editor (profiles, zones, envelopes), craft library (drag-spawn, §6), host health (frame time, budgets, degraded flags, auto-disabled tools).
 
 ### 5.1 Layout and docking (P0, M3) — [IDEAS, added 2026-11-08]
 
 - The main window is freely resizable and remembers its size, position and monitor.
-- Every panel (track list, unit details, orders, timeline, events/log, layers, agents, leases, recorder, memos, host health) is dockable, movable, tabbable and detachable into its own window (multi-monitor). Map views are documents: several can be open (Blue fog, Red fog, god view) and tiled.
+- Every panel (track list, unit details, orders, timeline, events/log, layers, **[R2]** actors, comms, missions, losses, leases, recorder, memos, host health) is dockable, movable, tabbable and detachable into its own window (multi-monitor). Map views are documents: several can be open (Blue fog, Red fog, god view) and tiled.
 - Docking uses the MIT-licensed `Dock.Avalonia` library (layout model with serialisation); its Avalonia 11 compatibility and licence are checked at the start of M3, with a fallback of fixed splitters plus detachable windows if it does not fit.
 - Layouts are saved per Windows user in `%APPDATA%/skizzy/map/layouts/<name>.json` (panels, sizes, open map views and their size mode, overrides, filters, layers), restored on start, with named layouts ("watch battle", "plan strike") and "reset to default".
+
+### 5.2 Comms panel and command strip (P1: v1 M4, v2 M6, diplomatic M7) — [R2, IDEAS §15–16]
+
+The AI client is the chat, so the map has no LLM chat. It has a **comms panel** for the side's channels (`22-communications-diplomacy.md`) and a **command strip** for the seat.
+
+**Command strip** (top of the map window, always visible):
+
+- **Seat.** "Blue: Claude Code (agent) since 14:02", with buttons **Take**, **Hand to…** and **Release**.
+  - An agent asking for a human-held seat shows a prompt with Allow and Deny, declined after 30 s (`09-c2-multi-agent.md` §1.1).
+  - A vacant seat shows in amber.
+- **Stance chips** (M6). One chip per other side: `Red: WAR`, `Green: CEASEFIRE 12:40 left`, `Red·Surrendered ×3`. Clicking a chip opens the stance thread.
+- **Comms state.** "Diplomatic: Red requested" when the other side has asked to open the channel; link quality when comms realism is on (M8).
+- **Kill switch** and the time bar (§12.5).
+
+**Comms panel** (dockable; tabs with unread counts):
+
+| Tab | Contents | M |
+|---|---|---|
+| Team | the side's team channel: messages from the commander, advisors, delegates, scripts and humans | M4 |
+| Reports | automatic reports (`09-c2-multi-agent.md` §1.3), grouped per group or mission, newest first; filter chips per kind (engaged, contact, weapons spent, damaged, kill, winchester, bingo/RTB, lost, surrendered) | M4 |
+| Direct | one thread per counterpart (own commander agent, a delegate, the other seat while diplomatic is open) | M4 (own side), M7 (cross-side) |
+| Broadcast | the open frequency; unauthenticated callsigns shown as `"Blue Command" (unauth)` | M6 |
+| Diplomatic | the negotiation, one thread per topic, with the formal messages shown as cards | M7 |
+
+- **Compose.**
+  - A channel and addressee picker: seat, actor, delegate, group, unit, side, all. Only what the holder may use is offered.
+  - Free text up to 2 KB.
+  - Attachments by drag from the map: a track, a zone, a unit, a point or an order.
+  - **Templates** (M6), with fields filled from the selection:
+    - "Report status", "Hold fire", "Return to mission" (team);
+    - "Warning: leave zone X within N minutes", "Surrender demand" (broadcast and diplomatic);
+    - "Propose ceasefire N minutes with zones…", "Propose peace" (diplomatic).
+- **Proposals as cards** (M6).
+  - A stance proposal, demand or surrender offer shows its structured part: stance, duration, zones drawn on the map, action.
+  - Buttons: **Accept**, **Reject**, **Counter** (opens the same card for editing).
+  - Only the seat holder, or a human, can press them.
+- **Order proposals from own advisors and delegates** show the order payload with **Apply** (`comms.apply`) and a map preview.
+- **Credibility tags** (M7): per message, believe, doubt, false or unknown, with a note. They are private to the side, kept in the recording, and shown as a coloured edge on the message.
+- **Every message** shows the time (UT and wall), sender, addressee, channel and authenticated or unauthenticated state.
+  - Messages from other sides carry the `untrusted` mark.
+  - Clicking a message pans to its attachments. In replay, it jumps to its UT.
+- **Diplomatic handshake** (M7): **Open diplomatic channel with…** sends the request. An incoming request shows in the command strip and the tab, with Open and Ignore. Either side can close.
+- **Visibility** follows `22-communications-diplomacy.md` §8. A fog window shows only its own side's channels plus broadcast and diplomatic. A god window shows all traffic with true senders and marks spoofed callsigns.
+- **Talking to one's own agent.** A `direct` message to the seat (or to a delegate) is how the human talks to their commander agent from the map. The agent reads it with `comms_wait`. Users can just as well talk to it in their own AI tool.
 
 ## 6. Planning tools (human → orders)
 
@@ -118,7 +162,8 @@ Smooth zoom on the mouse wheel and touchpad pinch, animated and anchored at the 
 | ROE | buttons hold/tight/free on selection | `weapons_*` orders |
 | Take / return **[R]** | `T` or the toolbar button on the selection; right-click → Take control (default channels, or steer, weapons, targeting or sensors only), Return to mission, Return to BDA, Give to agent ▸, Fly in KSP; `R` returns the selection | `c2.control.take/release` (§6.1) |
 | Lease | right-click → "lease channel…" for fine-grained cases | `c2.lease.acquire/grant` |
-| Ask agent | text box to the commander agent | orchestrator message |
+| Message | **[R2]** comms panel compose (§5.2): to the own commander agent, a delegate, or the other side | `comms.send` |
+| Spawn **[R2]** | drag a craft from the library onto the map; spawn card with mode, altitude, depth, speed, heading arrow, count (any number; multi-spawn line that wraps into rows, with slot preview and a performance warning above 50) or Shift-drag for a formation | `ksp.vessel.spawn_craft`, `ksp.vessel.spawn_formation` (`06-flight-control.md` §9.1) |
 | Mark | M key | `rec.mark {label}` |
 
 Every tool issues the same orders agents issue, with the operator actor at precedence 1000. Agent orders appear live with status and the issuing actor's tag; the operator can amend or cancel them (preemption rules apply).
@@ -136,7 +181,7 @@ The user commands at mission level and drops to direct control of any unit or gr
   | none | BDA AI and guard (the quiet default) |
   | `M` + the mission's colour tag | mission-controlled |
   | `O` | explicit standing order |
-  | `A` / `S` | agent / script or behaviour |
+  | `C` / `D` / `S` | **[R2]** the commander agent / a delegate (with its name on hover) / a script or behaviour |
   | `H` | manual: a human holds channels |
   | stick icon | flown by the human in KSP |
 
@@ -206,6 +251,18 @@ Delta application is O(changed tracks); rendering uses one `SKPicture` per symbo
     - Weapons-only take-over shows `H` with a `w` tick, and the ship keeps following the mission.
     - The Manual units panel lists exactly the units the user holds, and **Return all** empties it.
     - "Fly in KSP" switches the active vessel and shows the stick icon.
+13. **[R2] Comms panel and command strip (M4 v1, M6 v2, M7 diplomatic).**
+    - A delegate's team message and an automatic `kill` report appear in the Team and Reports tabs within 300 ms, and clicking the report pans to the unit.
+    - The human's direct message to the seat reaches the commander agent's `comms_wait`.
+    - **Take** on the strip moves the seat from the agent to the human, and the badge on agent-controlled units changes from `C` to `H` without any order being re-issued.
+    - (M6) A ceasefire proposal card shows its zones on the map. **Accept** changes the stance chip, and the countdown runs.
+    - (M7) A spoofed broadcast callsign shows as unauthenticated in the Blue fog window and with its true sender in the god window.
+14. **[R2] Drag-spawn (M3).** Dragging a fighter with count 30, 3 km and 250 m/s shows a slot preview that wraps into two rows and moves clear of a parked vessel. Count 60 shows the warning and still spawns, and the spawned aircraft fly at the set speed.
+15. **[R2] CMO-style specs (M3–M6).**
+    - Range rings for a selected destroyer match `bda.dlz` and radar ranges within 2 %.
+    - The magazine view matches `bda.ammo` after each salvo.
+    - The losses panel matches `c2.losses`.
+    - A scenario built in the editor (two sides, an agent seat, a 20-drone mid-air wave, a ceasefire start, a `stance_held` end condition) validates, saves, reloads identically and runs.
 
 ## 12. Genre reference: CMO-style command-screen features — [REVIEW-ADDED]
 
@@ -215,24 +272,117 @@ The user's reference for the command screen is the genre of *Command: Modern Ope
 |---|---|---|---|
 | Symbology: MIL-STD-2525 | §2 (`symbols.json`, procedural 2525D) | P0 | M3 |
 | Symbology: NTDS option | alternative symbol style (NTDS shapes: friend circle/arc, hostile diamond/caret, unknown square, by domain), chosen per map window; same `symbols.json` with an `ntds` key | P2 | M8 |
-| Posture colours (friendly/hostile/neutral/unknown) | 2525 affiliation colours from `iff` (§2); side posture from BDA team relations (`09-c2-multi-agent.md` §11) | P0 | M3 |
+| Posture colours (friendly/hostile/neutral/unknown) | 2525 affiliation colours from `iff` (§2); side posture from BDA team relations; **[R2]** stance (war, ceasefire, peace) and the surrendered white-flag modifier from `22-communications-diplomacy.md` §4–5, shown in the command strip (§5.2) | P0 | M3 (M6 stance) |
 | Track uncertainty for passive/bearing-only contacts | bearing-only tracks drawn as a bearing line or wedge from the detecting unit (width = bearing error); dead-reckoned and passively ranged tracks drawn with an uncertainty ellipse from `drErrorM`; both fade with age | P1 | M3 (DR ellipses), M8 (passive sonar wedges) |
-| Coverage display: sensor and weapon range rings, radar/sonar coverage | §3 layers (sensor coverage, weapon envelopes/DLZ), per unit or union per side | P1 | M3 |
+| Coverage display: sensor and weapon range rings, radar/sonar coverage | §3 layers (sensor coverage, weapon envelopes/DLZ), per unit or union per side; **[R2]** specified in §12.1 | P1 | M3 |
 | Emission state per unit | small badges on own-unit symbols: radar on/off and lock count, sonar active/passive/off, jammer on; an EMCON layer colouring units by emission state | P1 | M3 (badges), M4 (EMCON layer with the executor) |
 | Reference points and zones | §6 planning tools: named reference points (fixed or relative to a unit, e.g. a screen station astern of the carrier), zones built from reference points, zone roles `patrol`, `prosecution`, `exclusion`, `no_fire`, `mez`, `fez`, `jez`, bullseye | P1 | M4 (zones from M2 data, drawing in M3) |
-| Message log with filters | events panel becomes a **message log**: category chips (contact new/lost/classified/identified, weapon fired, hit, miss, unit damaged, unit lost, orders/missions, leases, system), side filter, text search; clicking a message pans to the position and, in replay, jumps to the time | P0 | M3 |
-| Losses and expenditures report; post-battle scorecard | live **Losses & Expenditures** panel per side (units lost by class, weapons expended by type, hits/misses, kills by weapon) from BDA scores and Skizzy events; post-battle **scorecard** view from `rec metrics` (exchange ratio, missiles per kill, mission outcomes, survival) | P1 | M3 (live panel), M5 (scorecard) |
-| Time compression controls and pause-on-event | time bar: pause, 0.25×, 0.5×, 1×, 2×, 4× (BDA time scale, `sim.time.set`), lockstep step (M7); **pause-on-event** toggles: new hostile/unknown contact, missile launched at own units, own unit lost, own weapon fired, mission state change → `sim.hold` (or slow motion) with a banner naming the event | P0 | M3 |
-| Loadout/magazine view per unit | unit details panel: per weapon ready/total and reload state, countermeasures left, fuel, damage, flooding (from SITREP and `bda.ammo`), with "winchester" and "bingo" markers from doctrine | P0 | M3 |
-| Contact classification flow (unknown → classified → identified) | TPE `idState` (`08-tactical-picture.md` §2): the symbol shows frame-only for detected, icon with a `?` modifier for classified, full symbol and name for identified | P1 | M3 (display; TPE side in M2) |
-| Side and scenario editor | map **Scenario editor** mode: place units from the craft library by drag, set side/team, side posture, doctrine at side/group/unit level, missions, waves; save as a scenario YAML (`sim.scenario.save`) that the batch runner and director load | P1 | M6 |
-| Missions as first-class objects | Missions panel: create, assign units by drag, see status (`09-c2-multi-agent.md` §11) | P1 | M6 |
+| Message log with filters | events panel becomes a **message log**: category chips (contact new/lost/classified/identified, weapon fired, hit, miss, unit damaged, unit lost, orders/missions, leases, system), side filter, text search; clicking a message pans to the position and, in replay, jumps to the time; **[R2]** reports and comms join it in M4; specified in §12.2 | P0 | M3 |
+| Losses and expenditures report; post-battle scorecard | live **Losses & Expenditures** panel per side (units lost by class, weapons expended by type, hits/misses, kills by weapon) from BDA scores and Skizzy events; post-battle **scorecard** view from `rec metrics` (exchange ratio, missiles per kill, mission outcomes, survival); **[R2]** subdued and surrendered units listed separately; specified in §12.4 | P1 | M3 (live panel), M5 (scorecard) |
+| Time compression controls and pause-on-event | time bar: pause, 0.25×, 0.5×, 1×, 2×, 4× (BDA time scale, `sim.time.set`), lockstep step (M7); **pause-on-event** toggles: new hostile/unknown contact, missile launched at own units, own unit lost, own weapon fired, mission state change → `sim.hold` (or slow motion) with a banner naming the event; **[R2]** defaults per seat kind and the think-time banner, specified in §12.5 | P0 | M3 |
+| Loadout/magazine view per unit | unit details panel: per weapon ready/total and reload state, countermeasures left, fuel, damage, flooding (from SITREP and `bda.ammo`), with "winchester" and "bingo" markers from doctrine; **[R2]** specified in §12.3 | P0 | M3 |
+| Contact classification flow (unknown → classified → identified) | TPE `idState` (`08-tactical-picture.md` §2): the symbol shows frame-only for detected, icon with a `?` modifier for classified, full symbol and name for identified; **[R2]** manual marks, §12.6 | P1 | M3 (display; TPE side in M2) |
+| Side and scenario editor | map **Scenario editor** mode: place units from the craft library by drag, set side/team, side posture, doctrine at side/group/unit level, missions, waves; save as a scenario YAML (`sim.scenario.save`) that the batch runner and director load; **[R2]** spawn specs with any count, rows and mid-air starts, respawn rules, seats and `agentTakeover`, initial stance, comms settings and the negotiated end conditions, specified in §12.8 | P1 | M6 |
+| Missions as first-class objects | Missions panel: create, assign units by drag, see status (`09-c2-multi-agent.md` §11.2); **[R2]** specified in §12.7 | P1 | M6 |
+| Doctrine and ROE with inheritance; EMCON | **[R2]** doctrine, ROE and EMCON editor with the side → mission → group → unit tree and locks, §12.9 (`09-c2-multi-agent.md` §11.1, §11.3) | P1 | M4 (basic), M6 (full) |
+| Message traffic between sides | **[R2]** beyond the genre: comms panel with broadcast and diplomatic channels, proposals and credibility tags (§5.2, `22-communications-diplomacy.md`) | P1/P2 | M6/M7 |
 | Mission command alongside direct control **[R]** | not a choice between the two: every unit shows whether it is mission-controlled or manual, and the user can take any unit or group with one click, micromanage it, and return it to its mission (§6.1, `09-c2-multi-agent.md` §4.1) | P0 | M4 (orders), M6 (missions) |
+
+**[R2] Why the specs below are fuller now.** With no built-in agent layers (`09-c2-multi-agent.md` §0), the human or the single commander agent runs the force through these features, so each one is specified as a usable tool, not only as a checklist row. Each feature reads the same host data that agents get (`c2.*`, `tac.*`, `rec.*`), so whatever the map shows, an agent can query as compact text.
+
+### 12.1 Range rings and coverage (P1, M3)
+
+- **Per unit** (selected or pinned): rings for each weapon's maximum and no-escape range (from `bda.dlz` and weapon data), each sensor's detection range (radar per RCS reference, IRST, sonar active and passive), and the jammer's burn-through range when known.
+- **Per side** (layer): the union of sensor coverage and the union of weapon envelopes, drawn as filled areas with outline only at the edge, so 30 ships do not draw 90 circles.
+- **Threat rings** for hostile tracks with a known or classified type: the expected weapon range from the class's doctrine envelope (`tac.threats`), dashed while the type is only classified.
+- **Altitude awareness.** Air-defence rings can show the radius at a chosen altitude (radar horizon and missile envelope at that altitude), set by a slider on the layer.
+- **Controls.** Toggles per kind (weapon, sensor, threat, jammer), per domain, and per side; opacity; "only for selection".
+- **Cost.** Envelopes are recomputed only on change (loadout, EMCON, track class) and drawn from cached paths.
+
+### 12.2 Message log (P0, M3; reports and comms from M4)
+
+- **One stream** of events, automatic reports and comms (`09-c2-multi-agent.md` §11.6), newest at the top, one line per item in the compact text form.
+- **Filter chips** by category (contact, weapons, unit, order, mission, c2, comms, system), by side (fog windows show only their own), by unit or group (from the selection), by severity, and by text search.
+- **Pinned filters** save as named views ("weapons only", "Strike 1").
+- **Clicking a line** pans to its position and selects the unit or track. In replay, it jumps to its UT.
+- **Unread markers and sounds** for the pause-on-event keys (§12.5).
+- **Export** of the visible lines to CSV, and the same filter as a `rec.query` for agents.
+- **Retention:** live, 10,000 lines in memory; everything in the recording.
+
+### 12.3 Unit details and magazine view (P0, M3)
+
+- **Header.** Name, class, side, the control badge (none, `M`, `O`, `C`, `D`, `S`, `H` or the stick icon, §6.1), the mission and group, and the effective doctrine summary (weapons control, EMCON) with the level each value comes from (`c2.doctrine.effective`).
+- **Magazine.** One row per weapon type: ready, total, reloading (with time left), in flight, and the winchester threshold marker. Countermeasures (chaff, flares, smoke, decoys) left.
+- **State.** Fuel with the bingo marker, HP, flooding (HullBreach inflow and flooded fraction), speed, altitude or depth, current target and guard state, and sensors with their EMCON state.
+- **Recent.** The unit's last 10 reports and orders.
+- **Actions.** Take control, Return, Fly in KSP, and edit unit doctrine (with locked keys greyed out and the locking level shown).
+- **Multi-selection** shows a table: one row per unit with the same columns, sortable, with totals per weapon type.
+
+### 12.4 Losses and expenditures panel (P1, M3 live; M5 scorecard)
+
+- **Live panel** per side, from `c2.losses` (`09-c2-multi-agent.md` §11.6):
+  - lost by class, with the killing weapon;
+  - subdued and surrendered (M6);
+  - expended by weapon type, with hits and kills;
+  - countermeasures;
+  - exchange ratio and missiles per kill.
+- **Drill-down.** Clicking a row lists the units or shots, which pan the map. In replay, it jumps to the time.
+- **Fog.** A fog window shows own losses and expenditures exactly, and enemy losses only as observed (kills claimed by own units and observed deaths). God view shows both sides exactly.
+- **Post-battle scorecard** (M5) from `rec metrics`: the same numbers plus mission outcomes, the ending kind (victory, surrender, negotiated, timeout), violations and survival.
+
+### 12.5 Time bar and pause-on-event (P0, M3)
+
+- **Time bar.** Pause, 0.25×, 0.5×, 1×, 2× and 4×, plus lockstep step (M7). UT and wall clock are shown, and the current scale is highlighted. An amber banner shows when think-time slow motion is active (`09-c2-multi-agent.md` §8.4) with **Veto**.
+- **Drop to 1×** on the `sim.time.drop_on` events (§11.6 there), shown as a small toggle list.
+- **Pause-on-event toggles** with the defaults for human and agent seats (`09-c2-multi-agent.md` §11.6). When a pause fires:
+  - a banner names the event and the unit;
+  - the map pans to it;
+  - **Resume** continues.
+- **Several humans.** Only one pause policy applies per session: that of the human holding the seat, or else the first human on the map.
+
+### 12.6 Contact classification display (P1, M3)
+
+- **States.** Frame-only for `detected`, icon with `?` for `classified`, full symbol and name for `identified` (`08-tactical-picture.md` §2), and a hand mark for manual marks (`tac.track.mark`).
+- **Track card.** `idState` and its source (sensor, visual, hostile act, shared, manual), `classConf` as a bar, and the sensors holding the track.
+- **Mark action.** Right-click → **Mark as…** (hostile, friendly, neutral, class) with a note. The mark applies only to this side's picture.
+
+### 12.7 Missions panel (P1, M6)
+
+- **List** of the side's missions, with type, state and phase, assigned units, and status counters (on station, transit, RTB, engaged, kills, losses, subdued).
+- **Create** from the toolbar or by dragging a zone: pick the type, fill the type's parameters (`09-c2-multi-agent.md` §11.2) in a schema-generated form, and assign units by dragging them from the map or the unit list.
+- **Map drawing.** The mission's area, prosecution zone, route, time on target and station are drawn in the mission's colour. Strike phases show on a small timeline.
+- **Actions.** Activate, pause, resume and cancel, plus edit mission doctrine. A unit's take-over and return show in the list (§6.1).
+
+### 12.8 Scenario editor (P1, M6)
+
+A mode of the map that builds a scenario YAML (`10-scripting-sdk.md` §7) and can run it straight away.
+
+- **Forces.**
+  - Drag craft from the library onto the map with the full spawn card (`06-flight-control.md` §9.1): mode (air, sea, submerged, ground, runway; orbit at M8), altitude or depth, speed, heading, count with no cap (with the line, row and clear-space preview and the warning above 50), formation, team, guard, AI, group and mission.
+  - Placed forces stay editable as spawn specs, not as vessels, until the scenario runs.
+- **Sides.**
+  - Name and team, colour, seat (`human`, `agent <actor>` or `vacant`), `agentTakeover`, god-view grants, initial doctrine with locks, and EMCON.
+  - Initial stance per side pair, with an optional ceasefire duration.
+  - Comms settings: `broadcastCallsigns`, `agentsMaySurrender`, realism on or off.
+- **Missions and zones.** Create them as on the live map. They are saved as part of the scenario and activate at load or at a set UT.
+- **Waves and respawn.** A wave list (trigger by UT, by event or by condition; spawn spec; group and mission assignment) and respawn rules (`sim.respawn.*`: when lost, delay, maximum, rejoin mission) per group.
+- **End conditions.** Victory by score or elimination, `transit`, `side_surrendered`, `stance_held`, and `timeout`, with scoring weights (`subduedWeight`, `violationPenalty`).
+- **Run.** **Validate** checks the craft exist, the spawn slots are clear, the zones are closed and the missions are complete. **Run** loads the scenario (`sim.scenario.load`), and **Save** writes YAML to the library. The batch runner and director use the same file.
+
+### 12.9 Doctrine, ROE and EMCON editor (P1: basic M4, full M6)
+
+- **A tree** with the side, then missions, then groups, then units. Each key shows its effective value, its source level and its lock state (`c2.doctrine.effective`).
+- **Editing.** Setting a key at a level shows which units change. Locking a key at side or mission level greys it out below.
+- **EMCON.** Choose a preset per level, with per-sensor overrides and the `goActiveWhen` triggers. The EMCON layer previews the result.
+- **ROE zones** come from the planning tools (§6). Their effect is shown per unit in the unit details.
+- **Import and export** as a doctrine YAML (`09-c2-multi-agent.md` §5).
 
 **[R] Beyond the genre (user clarification 2026-11-08).** The map presents Skizzy's own strengths up front rather than hiding them behind the genre features (`09-c2-multi-agent.md` §11.7):
 
 - **Real physics.** Units are real KSP vessels under real physics, fighting with BDArmory's AI, sensors and damage.
-- **Agents and scripts.** LLM agents and scripts show on the map as actors with tags, orders and budgets. The user can take over from them or hand units to them.
+- **Agents and scripts.** The commander agent, its delegates and scripts show on the map as actors with tags and their orders. The user can take over from them or hand units to them.
 - **Fly it yourself.** "Fly in KSP" is one click from any own unit.
+- **[R2] Spawn anywhere.** Any craft, any count, mid-air at speed, at sea or submerged, by drag from the library (§6).
+- **[R2] Talking to the enemy.** Ceasefires, surrender demands, threats and bluffs between commanders in the comms panel (§5.2).
 - **Craft building.** The craft library panel spawns the user's own designs into scenarios and missions.
 - **Logging and replay.** Full recording and replay with slow-motion scrubbing, markers, the Log… picker and battle comparisons are part of the same screen.

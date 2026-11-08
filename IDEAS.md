@@ -37,6 +37,12 @@ This is the combined list of every MCP and server idea so far (2026-11-08). It's
 - Human and agent co-flying: the human flies one jet while agents fly the wingmen.
 - A kill switch that always restores manual control.
 - Scene setup and positioning in the style of VesselMover and HyperEdit.
+- **Spawn anywhere, first-class (added 2026-11-08):** VesselMover-style spawning from M1, built on `ksp.vessel.spawn_craft` and `ksp.vessel.place`.
+  - Positions: mid-air (altitude, heading, pitch, airspeed, engines, gear up), sea surface with buoyancy settle, submerged at depth, ground or runway; orbit later.
+  - Many at once: a formation or swarm in one call (e.g. 20 drones in a wedge at 3 km, 250 m/s), with team, guard, AI, group and mission set.
+  - **Multi-spawn:** N copies in a line near the spawn point with automatic clear-space finding (terrain, buildings, water/land, other vessels), on the ground, at sea or in the air. **The count is whatever the user enters; there is no cap.** Above about 50 a warning shows the estimated performance impact, but the spawn still goes ahead. Long lines wrap into parallel rows. Also a BDArmory Overdrive feature in the VesselMover spawn window.
+  - Sources: drag from the map library, scripts, agents, the in-game Spawn window. Mid-battle reinforcements by waves and respawn rules.
+  - Design: `design/06-flight-control.md` §9.1, `design/07-bdarmory-integration.md` §5.1 (OD1).
 
 ## 5. BDArmory
 - **Spawning:** fleets in a ring or in exact formations (naval groups).
@@ -62,9 +68,9 @@ This is the combined list of every MCP and server idea so far (2026-11-08). It's
 - **Orders as objects:** intent, constraints, rules of engagement, priority, owner, status, timeout.
 - **Hierarchy:** commander → groups → units. Roles include swarm, air defence, flight lead, surface group, submarines, carrier ops and strike.
 - **Unit ownership (leases),** so two agents or scripts never fight over one craft.
-- **Precedence:** human > commander agent > unit agent > script > BDArmory default.
+- **Precedence:** human > commander agent > unit agent > script > BDArmory default. *(Design note, pass 2: unit agents are gone per §15; the bands are now human > commander (human or one agent) > delegate sub-agent > script > behaviour > BDArmory.)*
 - **Team tactics library:** CAP, intercept, pincer, AD umbrella, ASW screen, strike package, swarm saturation, sub ambush, carrier launch and recovery.
-- **Model per role:** a fast model (e.g. claude-haiku-5-5) for tactical units, a strong model for command. Events are pushed to agents, never polled.
+- **Model per role:** a fast model (e.g. claude-haiku-5-5) for tactical units, a strong model for command. Events are pushed to agents, never polled. *(Design note, pass 2: model per role moved to later with the agent layers per §15; the user's own AI client picks its model. Events still reach agents without polling, through long-poll tools.)*
 - **Time control for thinking:** automatic slow-motion or pause while agents decide.
 - **LLMs are one option, not the only one:** scripts, behaviour trees, the BDArmory AI and humans are all first-class actors.
 - **Mission command plus direct control (added 2026-11-08):** both, never one instead of the other.
@@ -161,7 +167,7 @@ This is the combined list of every MCP and server idea so far (2026-11-08). It's
   - direct (unit to unit, commander to commander)
 
   Every message records sender, recipient, channel and time, and is logged.
-- **Agents in a team talk to each other:** commander to group to unit-reporting, plus peer coordination.
+- **Agents in a team talk to each other:** commander to group to unit-reporting, plus peer coordination. *(Design note, pass 2: per §15 the unit and group reports are automatic, and the agents talking on the team channel are the commander, its advisors and the sub-agents its client spawns.)*
 - **Talking to the enemy:**
   - demand surrender, negotiate a ceasefire, make threats, bluff
   - **psychological operations and deception:** messages are not verified, so lies are possible, and receivers decide whether to believe them

@@ -4,7 +4,7 @@
 
 ## 1. What can be logged
 
-Any of: `ksp.query` selectors (any field of any module of any vessel), tactical snapshots (tracks per team, god or fog), SITREP fields, orders/leases/zones state, events (all namespaces), BDArmory scores and missiles in flight, `host.engines` performance, agent turns (from the orchestrator: tokens, cost, decision text, tool calls), scripts' stdout, map annotations, screenshots at low rate (P2, as `bin`). Sampling modes: `onChange` (with dead-band), fixed `rateHz` (0.1–50), `onEvent`.
+Any of: `ksp.query` selectors (any field of any module of any vessel), tactical snapshots (tracks per team, god or fog), SITREP fields, orders/leases/zones state, events (all namespaces), BDArmory scores and missiles in flight, `host.engines` performance, **[R2]** comms messages, automatic reports, stance changes and violations (`22-communications-diplomacy.md` §8), client notes appended with `rec.append` (for example a commander agent's intent lines), scripts' stdout, map annotations, screenshots at low rate (P2, as `bin`). Sampling modes: `onChange` (with dead-band), fixed `rateHz` (0.1–50), `onEvent`.
 
 ### 1.1 Log v0: direct CSV/JSONL, from M0 [R]
 
@@ -38,7 +38,8 @@ channels:
   events:   { source: events, names: ["*"] }
   orders:   { source: c2, mode: onChange }
   perf:     { source: host.engines, rateHz: 1 }
-  agents:   { source: agents, mode: onEvent }     # filled by the orchestrator through rec.append
+  comms:    { source: comms, mode: onEvent }      # [R2] messages, reports, notices, stance, violations; true senders kept
+  notes:    { source: notes, mode: onEvent }      # client notes through rec.append
 ```
 
 **Retention [R]:** nothing is deleted automatically (pass 1.0 defaulted to 60-day auto-delete, which loses data the user may want for comparisons). `skizzy rec prune --older-than 60d [--keep-marked]` and the in-game recorder window delete on request; the host emits `rec.disk_warning` and shows a banner when `Skizzy/recordings` + `Skizzy/logs` exceed 20 GB (configurable).
@@ -79,7 +80,7 @@ Per battle and per vessel/team: survival, kills by weapon, missiles fired / hits
 
 ## 6. Replay (P1)
 
-`skizzy rec replay-server <rec> --speed 4 --from-ut 1200` serves the recording through the same stream API; the map connects to it as if to a live host (`sim://replay`), scrubs by seeking the index, and shows orders/annotations/agent decisions alongside tracks for after-action review. The orchestrator's analyst agent reads `summary.md` + selected `rec.query` results to write the AAR (P2) stored in `memory/`.
+`skizzy rec replay-server <rec> --speed 4 --from-ut 1200` serves the recording through the same stream API; the map connects to it as if to a live host (`sim://replay`), scrubs by seeking the index, and shows orders/annotations/agent decisions alongside tracks for after-action review. **[R2]** The user's own AI client can read `summary.md` and selected `rec.query` results to write an AAR; pass 1's built-in analyst agent and its `memory/` store are P3 (`09-c2-multi-agent.md` §8.7).
 
 ## 7. Audit (P0)
 
