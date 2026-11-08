@@ -166,4 +166,18 @@ These were recorded by the user on 2026-11-08 and must hold in the real system:
     - **The carrier's Flight deck section** shows aircraft on deck, ready or rearming, plus **Launch ready aircraft**.
     - **On the plot:** a solid accent racetrack with a direction arrow, a dashed MARSHAL ring astern of the carrier, and dashed lines from inbound aircraft to the marshal point.
     - Spec in `09-c2-multi-agent.md` §2.1.2.
+15. **Patrols fight; guard vs passive; stay on task vs engage on contact; stealth** (user request, 2026-11-08; mockup v11).
+    - **A racetrack is a patrol.** With weapons Free (guard), aircraft leave the pattern to fight anything their own sensors detect within a 55 km leash, then resume. With Hold (passive) they stay on the pattern and do not fire.
+    - **Weapons control applies to aircraft as well as ships:** Free = guard, Tight = assigned targets and close threats, Hold = passive.
+    - **Per-unit setting "when a new hostile appears during an order":**
+      - **Stay on task** (default): go for the assigned target and ignore crossing hostiles.
+      - **Engage on contact:** attack anything the unit's own radar detects, then continue the order. Use this for the "send one to get the HVT, the rest fight here" case.
+    - **Stealth pair S-01/S-02:** invisible on the shared picture until a Blue unit's own radar sees it. Measured: Cobra 4 at 24.6 km, T+131 s.
+    - **RTB all moved to the top bar,** because it is side-wide.
+    - **Measured in v11:**
+      - patrol Free: 10 AAMs fired, diversions logged, resume logged
+      - patrol Hold: 0 fired, 24/24 on the pattern
+      - attack, stay on task: 0 diversions
+      - attack, engage on contact: diversions to R3/R5 contacts at 45 km
+    - **KSP mapping:** `24-ksp-parity.md` rows 5–9 and the new hook F6b.
 

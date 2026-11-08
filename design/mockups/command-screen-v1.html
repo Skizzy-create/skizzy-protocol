@@ -216,6 +216,7 @@ tr.sel{background:color-mix(in srgb,var(--accent) 12%,transparent)}
       <button class="btn ghost" id="reset">Restart</button>
     </div>
     <span class="pill war" title="Side stance">Blue ↔ Red · War</span>
+    <button class="btn" id="rtbAllTop" title="Send every Blue aircraft home to land on Kestrel. Click twice to confirm.">RTB all</button>
     <div class="grp" role="group" aria-label="Blue posture"><span class="lbl">Blue posture</span><div class="seg" id="posture"><button data-p="Defensive" aria-pressed="false">Defensive</button><button data-p="Proactive" aria-pressed="true">Proactive</button></div></div>
     <div class="grp"><label class="lbl" for="ffSel">Friendly fire</label><select id="ffSel" class="tsel"><option value="0">Off</option><option value="0.001" selected>1 in 1,000 missiles</option><option value="0.01">1 in 100 missiles</option></select></div>
     <span class="pill seat" id="seatPill">Blue seat · You</span>
@@ -347,7 +348,7 @@ function setup(){
   ship('ddg','Cleat',-11,2,{mag:{'SM-2':[24,24],ESSM:[8,8],CIWS:[1,1]},channels:3});
   ship('ssn','Tide',34,-30,{alt:-120,ctrl:'Agent',mission:'ASW screen (sub-agent)',mag:{Torpedo:[12,12]}});
   add({side:'blue',kind:'aew',name:'Watch 1',x:-25,y:28,alt:9000,hdg:0,spd:K.aew.spd,orbit:{x:-25,y:15,r:13},ctrl:'BDA',mission:'AEW orbit',fuel:.82});
-  const flight=(n,kind,call,cx,cy,r,alt,mission,aam)=>{for(let i=0;i<n;i++)add({side:'blue',kind,name:call+' '+(i+1),x:cx+Math.cos(i*2.4)*r*.6,y:cy+Math.sin(i*2.4)*r*.6,alt:alt+i*60,hdg:Math.PI/2,spd:K[kind].spd,orbit:{x:cx,y:cy,r},aam,aamMax:aam,ctrl:'Mission',mission,group:mission,fuel:.75-(i%4)*.03});};
+  const flight=(n,kind,call,cx,cy,r,alt,mission,aam)=>{for(let i=0;i<n;i++)add({side:'blue',kind,name:call+' '+(i+1),x:cx+Math.cos(i*2.4)*r*.6,y:cy+Math.sin(i*2.4)*r*.6,alt:alt+i*60,hdg:Math.PI/2,spd:K[kind].spd,orbit:{x:cx,y:cy,r},aam,aamMax:aam,ctrl:'Mission',mission,group:mission,doctrine:'Free',onContact:'task',fuel:.75-(i%4)*.03});};
   flight(4,'ftr','Viper',62,8,12,6800,'CAP North',6);
   flight(4,'ftr','Cobra',55,-40,12,6200,'CAP South',6);
   flight(8,'ftr','Hawk',22,6,8,5200,'Escort',4);
@@ -367,6 +368,7 @@ function setup(){
   for(let g=4;g<6;g++){const cy=g===4?95:-100,cx=215;for(let i=0;i<10;i++){const o=add({side:'red',kind:'ftr',name:'R'+(g+1)+'-'+String(i+1).padStart(2,'0'),x:cx+(rnd()-.5)*12,y:cy+(rnd()-.5)*12,
     alt:6000+rnd()*4000,hdg:0,spd:.27,idState:'unknown',group:g,state:'escort',asm:0,pair:i>>1,off:g===4?-.25:.25,ctrl:'BDA'});o.hdg=Math.atan2(-o.y,-o.x);}}
   for(let i=0;i<20;i++){const o=add({side:'red',kind:'uav',name:'D'+String(i+1).padStart(2,'0'),x:168+(i%5)*1.4+rnd(),y:112+Math.floor(i/5)*1.4+rnd(),alt:200+rnd()*300,spd:.05,idState:'unknown',group:9,ctrl:'Script'});o.hdg=Math.atan2(-o.y,-o.x-10);}
+  for(let i=0;i<2;i++){const o=add({side:'red',kind:'ftr',name:'S-0'+(i+1),x:72+i*1.5,y:-98-i,alt:9500,hdg:0,spd:.24,idState:'unknown',group:8,state:'escort',asm:0,pair:i,off:.5,ctrl:'BDA',stealth:true,seen:false});o.hdg=Math.atan2(-o.y,-o.x);}
   logMsg('contact','New air contacts: 6 groups, 60 tracks, bearing 062–120, 215–240 km. Identity unknown.',230,0);
   logMsg('contact','Slow low contacts: 20 tracks in a tight block, bearing 056, 205 km. Identity unknown.',170,112);
   logMsg('orders','Sea control ALPHA active. Doctrine: weapons free against missiles, tight against aircraft.',0,0);
@@ -387,6 +389,22 @@ function nearest(o,pred,maxD){let b=null,bd=maxD;for(const t of objs){if(!t.aliv
 const VIP_R=40;
 const freeT=x=>!(x.engagedBy&&byId.get(x.engagedBy)?.alive);
 const isMslThreat=x=>x.side==='red'&&(x.kind==='asm'||(x.kind==='uav'&&x.idState==='hostile'));
+const PATROL_LEASH=55;
+function sensorR(o){return o.kind==='ucav'?25:o.kind==='ftr'?45:0;}
+// a hostile this unit can see with its own sensors: aircraft first, then missiles and attack drones
+function contactTarget(o,excl){const R=sensorR(o);if(!R)return null;
+  // aircraft only while it still has missiles; with an empty rack only the gun is left, which works against missiles and drones
+  return (o.aam>0?nearest(o,x=>x.side==='red'&&(x.kind==='ftr'||x.kind==='bmr')&&x.idState==='hostile'&&x.id!==excl,R):null)||nearest(o,x=>isMslThreat(x)&&freeT(x)&&x.id!==excl,R*.6);}
+const grpLogT={};
+function ordLog(o,text){if(o.kind==='ucav'){const k=o.group;if(simT-(grpLogT[k]??-99)<20)return;grpLogT[k]=simT;logMsg('orders',`${k} (drones): ${text}.`,o.x,o.y);return;}logMsg('orders',`${o.name}: ${text}.`,o.x,o.y);}
+// divert to a contact and fight it; returns false (and clears the diversion) when there is nothing to fight
+function fightContact(o,dt,t,why){if(o.diverted!==t.id){const first=!o.diverted;o.diverted=t.id;if(first)ordLog(o,`${why} ${t.name}, ${dist(o,t).toFixed(0)} km`);}
+  steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.55,dt);engageAir(o,t,dt);return true;}
+function endDivert(o,text){if(o.diverted){o.diverted=null;ordLog(o,text);}}
+// engage-on-contact while executing an order; refD = only divert for contacts closer than this
+function onContact(o,dt,excl,refD){if(o.onContact!=='engage'||o.doctrine==='Hold'||K[o.kind].domain!=='air')return false;
+  const c=contactTarget(o,excl);if(!c||(refD!=null&&dist(o,c)>=refD)){endDivert(o,'back on task');return false;}
+  return fightContact(o,dt,c,'contact, engaging');}
 function vipList(){return objs.filter(v=>v.alive&&v.vip&&v.side==='blue');}
 function threatensVip(x,vips){if(x.side!=='red'||!x.alive)return false;if(x.kind==='asm')return !!byId.get(x.target)?.vip;
   if(x.kind==='bmr'||x.kind==='ftr'||x.kind==='uav')return x.idState==='hostile'&&vips.some(v=>dist(v,x)<VIP_R);return false;}
@@ -414,12 +432,13 @@ function launch(kind,from,target,weapon){
 }
 function shotName(from,weapon){from.shots=(from.shots||0)+1;const ab=from.name.replace(/[^A-Za-z]/g,'').slice(0,3).toUpperCase()+(from.name.replace(/\D/g,''));return `${ab}-${(weapon||'MSL').replace('-','')}-${String(from.shots).padStart(2,'0')}`;}
 function alertLaunch(){alertDone=true;const c=byId.get(1);if(!c||!c.alive)return;
-  for(let i=0;i<4;i++)add({side:'blue',kind:'ftr',name:'Lance '+(i+1),x:c.x+1+i*.4,y:c.y+(i-1.5)*.6,alt:4500+i*200,hdg:0,spd:.25,orbit:{x:45,y:i<2?18:-18,r:10},aam:6,aamMax:6,ctrl:'Mission',mission:'Alert intercept',group:'Alert',fuel:.95});
+  for(let i=0;i<4;i++)add({side:'blue',kind:'ftr',name:'Lance '+(i+1),x:c.x+1+i*.4,y:c.y+(i-1.5)*.6,alt:4500+i*200,hdg:0,spd:.25,orbit:{x:45,y:i<2?18:-18,r:10},aam:6,aamMax:6,ctrl:'Mission',doctrine:'Free',onContact:'task',mission:'Alert intercept',group:'Alert',fuel:.95});
   logMsg('orders','Kestrel launched four alert fighters (Lance 1–4) to hit the strike aircraft before they reach launch range.',c.x,c.y);}
 function killObj(o,how){o.alive=false;if(o.kind==='asm'||o.kind==='uav'||o.kind==='sam'||o.kind==='aam')return;const side=o.side;stats.lost[side][K[o.kind].cls]=(stats.lost[side][K[o.kind].cls]||0)+1;event('kill',o.x,o.y);logMsg('damage',`${o.name} (${K[o.kind].cls.toLowerCase()}) lost${how?': '+how:''}.`,o.x,o.y);}
 function report(ship,key,n){(rep[ship.id]||(rep[ship.id]={}))[key]=((rep[ship.id]||{})[key]||0)+n;}
 
 function think(o,dt){
+  if(o._ord!==o.order){o._ord=o.order;o.diverted=null;}
   if(o.order&&doOrder(o,dt))return;
   if(o.ctrl==='Manual'&&!o.order)return;
   switch(o.kind){
@@ -427,8 +446,8 @@ function think(o,dt){
   case 'ftr':case 'ucav':
     if(o.side==='blue'){
       o.fuel=Math.max(0,o.fuel-dt*.00008);
-      const t=airTarget(o);
-      if(t){steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.5,dt);engageAir(o,t,dt);}else orbit(o,dt);
+      const t=o.doctrine==='Free'||o.doctrine==null?airTarget(o):null;
+      if(t){steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.5,dt);engageAir(o,t,dt);}else{orbit(o,dt);if(o.doctrine==='Tight')selfDefend(o);}
     }else{
       if(o.state==='escort'){steerTo(o,Math.atan2(-o.y,-o.x)+o.off,.2,dt);
         const thr=objs.some(m=>m.alive&&m.kind==='aam'&&m.target===o.id)||nearest(o,x=>x.side==='blue'&&x.kind==='ftr',40);
@@ -454,7 +473,7 @@ function think(o,dt){
   case 'sam':case 'aam':{let t=byId.get(o.target);
     if(o.ff&&!o.ffDone&&simT-o.born>3){const f=nearest(o,x=>x.side===o.side&&x.id!==o.shooter&&!K[x.kind].missile,25);
       if(f){if(t&&t.engagedBy===o.id)t.engagedBy=null;o.target=f.id;o.ffDone=true;t=f;}}
-    if(!t||!t.alive){const n=nearest(o,x=>x.side!==o.side&&(o.kind==='sam'?(x.kind==='asm'||x.kind==='uav'||x.kind==='ftr'||x.kind==='bmr'):(x.kind==='ftr'||x.kind==='bmr'||x.kind==='asm'||x.kind==='uav'))&&!(x.engagedBy&&byId.get(x.engagedBy)?.alive),14);
+    if(!t||!t.alive){const n=nearest(o,x=>x.side!==o.side&&(o.kind==='sam'?(x.kind==='asm'||x.kind==='uav'||x.kind==='ftr'||x.kind==='bmr'):(x.kind==='ftr'||x.kind==='bmr'||x.kind==='asm'||x.kind==='uav'))&&(!x.stealth||x.seen)&&!(x.engagedBy&&byId.get(x.engagedBy)?.alive),14);
       if(!n){o.alive=false;break;}o.target=n.id;n.engagedBy=o.id;t=n;}
     steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),3,dt);
     if(simT-o.born>(o.kind==='sam'?80:60)){o.alive=false;break;}
@@ -483,6 +502,7 @@ function doOrder(o,dt){
     if(!air){
       if(d<.6){o.spd=.0015;if(!od.arrived){od.arrived=true;logMsg('orders',`${o.name} holding at the ordered position.`,o.x,o.y);}return true;}
       o.spd=o.kind==='ssn'?.009:.012;steerTo(o,Math.atan2(od.y-o.y,od.x-o.x),.03,dt);return true;}
+    if(onContact(o,dt))return true;
     if(d<5){if(!od.arrived){od.arrived=true;logMsg('orders',`${o.name} on station, orbiting the ordered point.`,o.x,o.y);}o.orbit={x:od.x,y:od.y,r:5};orbit(o,dt);}
     else steerTo(o,Math.atan2(od.y-o.y,od.x-o.x),.5,dt);
     if((o.kind==='ftr'||o.kind==='ucav')&&o.aam>0){const t=nearest(o,x=>x.side==='red'&&(x.kind==='ftr'||x.kind==='bmr')&&x.idState==='hostile',30)||nearest(o,x=>isMslThreat(x)&&freeT(x),25);
@@ -502,11 +522,15 @@ function doOrder(o,dt){
       if(rank===0&&simT>=(b.nextLand||0)){od.phase='approach';b.nextLand=simT+LAND_GAP;}}
     selfDefend(o);return true;}
   if(od.type==='track'){
+    if(o.doctrine==='Free'||o.doctrine==null){const c=od.c||(od.c=[(od.a[0]+od.b[0])/2,(od.a[1]+od.b[1])/2]);
+      const t=contactTarget(o);
+      if(t&&Math.hypot(t.x-c[0],t.y-c[1])<PATROL_LEASH&&Math.hypot(o.x-c[0],o.y-c[1])<PATROL_LEASH){o.alt+=(od.alt-o.alt)*.01;return fightContact(o,dt,t,'leaving the patrol to engage');}
+      endDivert(o,'resuming the patrol');}
     const P=od.pts;let bi=0,bd=1e9;for(let i=0;i<P.length;i++){const q=(P[i][0]-o.x)**2+(P[i][1]-o.y)**2;if(q<bd){bd=q;bi=i;}}
     const far=bd>9,tp=P[(bi+(far?0:3))%P.length];
     steerTo(o,Math.atan2(tp[1]-o.y,tp[0]-o.x),.5,dt);o.alt+=(od.alt-o.alt)*.02;
     if(!far&&!od.on){od.on=true;}
-    selfDefend(o);return true;}
+    if(o.doctrine!=='Hold')selfDefend(o);return true;}
   if(od.type==='defend'){
     const v=byId.get(od.unit);
     if(!v||!v.alive){logMsg('orders',`${o.name}: ${v?v.name:'the protected unit'} is lost. Returning to ${o.mission}.`,o.x,o.y);o.order=null;if(o.ctrl==='Order')releaseUnit(o);return false;}
@@ -521,7 +545,7 @@ function doOrder(o,dt){
   if(od.type==='attack'){
     const t=byId.get(od.target);
     if(!t||!t.alive){logMsg('orders',`${o.name}: target ${t?t.name:''} destroyed.${o.ctrl==='Order'?' Returning to '+o.mission+'.':''}`,o.x,o.y);o.order=null;if(o.ctrl==='Order')releaseUnit(o);return false;}
-    if(o.kind==='ftr'||o.kind==='ucav'){steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.55,dt);
+    if(o.kind==='ftr'||o.kind==='ucav'){if(onContact(o,dt,t.id,dist(o,t)))return true;steerTo(o,Math.atan2(t.y-o.y,t.x-o.x),.55,dt);
       if(o.aam>0&&dist(o,t)<(o.kind==='ucav'?20:42)&&simT>o.cool){launch('aam',o,t,'AAM');o.aam--;stats.exp.blue.AAM++;o.cool=simT+3;report(o,'AAM',1);}
       engageAir(o,t,dt,3);
       if(o.aam===0){logMsg('orders',`${o.name}: out of missiles, returning to ${o.mission}.`,o.x,o.y);o.order=null;if(o.ctrl==='Order')releaseUnit(o);}
@@ -539,6 +563,7 @@ function doRoute(o,dt){
   const p=od.pts[Math.min(od.idx,od.pts.length-1)],tx=p[0]+od.ox,ty=p[1]+od.oy,d=Math.hypot(tx-o.x,ty-o.y),thr=air?3:.8;
   if(d<thr&&!last){od.idx++;return true;}
   if(d<thr&&last){o.order={type:'move',x:tx,y:ty};return doOrder(o,dt);}
+  if(air&&onContact(o,dt))return true;
   if(!air)o.spd=o.kind==='ssn'?.009:.012;
   steerTo(o,Math.atan2(ty-o.y,tx-o.x),air?.5:.03,dt);selfDefend(o);return true;
 }
@@ -576,8 +601,9 @@ function issueRtb(units,label){
 let rtbAllT=0;
 function rtbAll(){const air=objs.filter(o=>o.alive&&o.side==='blue'&&K[o.kind].domain==='air'&&!K[o.kind].missile);
   const now=performance.now();
-  if(now-rtbAllT>3000){rtbAllT=now;toast(`Press Shift+R again (or click RTB all again) within 3 s to send all ${air.length} aircraft home to Kestrel.`);return;}
-  rtbAllT=0;issueRtb(air,`All aircraft (${air.length})`);}
+  const tb=$('#rtbAllTop');
+  if(now-rtbAllT>3000){rtbAllT=now;if(tb){tb.textContent='Confirm RTB all';tb.classList.add('acc');setTimeout(()=>{tb.textContent='RTB all';tb.classList.remove('acc');},3000);}toast(`Press Shift+R again (or click RTB all again) within 3 s to send all ${air.length} aircraft home to Kestrel.`);return;}
+  rtbAllT=0;if(tb){tb.textContent='RTB all';tb.classList.remove('acc');}issueRtb(air,`All aircraft (${air.length})`);}
 function land(o,b){o.alive=false;o.deck=b.id;o.landedT=simT;o.ready=false;o.order=null;o.ctrl=o.prevCtrl&&o.prevCtrl!=='Order'?o.prevCtrl:'Mission';
   const n=deckOf(b).length;logMsg('orders',`${o.name} landed on ${b.name}. ${n} aircraft on deck.`,b.x,b.y);}
 function deckTick(){for(const o of objs){if(o.deck==null)continue;const b=byId.get(o.deck);
@@ -713,7 +739,10 @@ function ciws(dt){
 const groupClassified={};
 function classify(){
   const sensors=objs.filter(o=>o.alive&&o.side==='blue'&&o.kind!=='ftr'&&o.kind!=='ssn');
-  for(const o of objs){if(!o.alive||o.side!=='red'||o.idState!=='unknown')continue;
+  for(const o of objs){if(!o.alive||!o.stealth||o.seen)continue;
+    const s=objs.find(b=>b.alive&&b.side==='blue'&&!K[b.kind].missile&&dist(b,o)<(b.kind==='aew'?40:b.kind==='ucav'?18:b.kind==='ftr'?25:30));
+    if(s){o.seen=true;o.idState='hostile';logMsg('contact',`Stealth contact: ${s.name}'s own radar detected ${o.name} at ${dist(s,o).toFixed(1)} km, bearing ${pad3(brgOf(byId.get(1),o))} from Kestrel. It was not on the shared picture.`,o.x,o.y);}}
+  for(const o of objs){if(!o.alive||o.side!=='red'||o.idState!=='unknown'||o.stealth)continue;
     if(sensors.some(s=>dist(s,o)<(s.kind==='aew'?175:150))){o.idState='hostile';
       if(!groupClassified[o.group]){groupClassified[o.group]=1;const n=objs.filter(x=>x.group===o.group).length;
         logMsg('contact',o.kind==='uav'?`Drone block classified hostile (${n} tracks), heading for Cleat.`:`Group R${o.group+1} classified hostile: ${n} aircraft, ${o.group>=4?'fighter sweep':'strike package with escorts'}.`,o.x,o.y);}}}
@@ -798,8 +827,8 @@ function baseSize(o,zf){
 let drawList=[];
 function buildList(){
   const out=[];
-  if(replayIdx==null){for(const o of objs)if(o.alive)out.push({o,x:o.x,y:o.y,h:o.hdg});}
-  else{const f=frames[replayIdx].buf;for(let i=0;i<f.length;i+=4){const o=byId.get(f[i]);if(o)out.push({o,x:f[i+1],y:f[i+2],h:f[i+3]});}}
+  if(replayIdx==null){for(const o of objs)if(o.alive&&(!o.stealth||o.seen))out.push({o,x:o.x,y:o.y,h:o.hdg});}
+  else{const f=frames[replayIdx].buf;for(let i=0;i<f.length;i+=4){const o=byId.get(f[i]);if(o&&(!o.stealth||o.seen))out.push({o,x:f[i+1],y:f[i+2],h:f[i+3]});}}
   return out;
 }
 function trailFor(it){
@@ -1082,6 +1111,7 @@ $('#live').onclick=goLive;
 /* friendly fire */
 $('#ffSel').addEventListener('change',e=>{opt.ff=+e.target.value;logMsg('orders',opt.ff?`Friendly-fire simulation: about one Blue missile in ${Math.round(1/opt.ff).toLocaleString()} loses its target and finds a friend.`:'Friendly-fire simulation off.',null,null);});
 /* posture */
+$('#rtbAllTop').addEventListener('click',()=>rtbAll());
 $('#posture').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;posture=b.dataset.p;
   $('#posture').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.p===posture));
   logMsg('orders',posture==='Proactive'?'Blue posture proactive: fighters hunt the strike aircraft, destroyers engage aircraft out to 90 km, the carrier launches alert fighters.':'Blue posture defensive: fighters hold their station, destroyers engage aircraft inside 60 km.',null,null);});
@@ -1125,7 +1155,8 @@ function renderUnit(){
   if(!ids.length){el.innerHTML=`<div class="unit"><p class="note">Click a track on the plot or in the list. Shift-click adds to the selection. [ and ] shrink or enlarge the selected symbols.</p></div>`;return;}
   const o=byId.get(primary&&sel.has(primary)?primary:ids[0]);const c=byId.get(1);const blue=o.side==='blue';
   const ctrlCls=(o.ctrl==='Manual'||o.ctrl==='Order')?'manual':o.ctrl==='Agent'?'agent':'';
-  const ctrlTxt=o.ctrl==='Order'?(!o.order?'Your order':o.order.type==='attack'?'Your order · attack':o.order.type==='rtb'?'Your order · RTB · '+({transit:'inbound',marshal:'in the marshal stack',approach:'landing'}[o.order.phase]||''):o.order.type==='track'?'Your order · racetrack':o.order.type==='defend'?(o.order.rtb?'Your order · RTB to station':'Your order · protect '+(byId.get(o.order.unit)?.name||'')):o.order.type==='route'?'Your order · route':'Your order · move'):o.ctrl==='Manual'?'Manual · you':o.ctrl==='Agent'?'Agent':o.ctrl==='Mission'?'Mission':o.ctrl==='Script'?'Script':'BDArmory AI';
+  let ctrlTxt=o.ctrl==='Order'?(!o.order?'Your order':o.order.type==='attack'?'Your order · attack':o.order.type==='rtb'?'Your order · RTB · '+({transit:'inbound',marshal:'in the marshal stack',approach:'landing'}[o.order.phase]||''):o.order.type==='track'?'Your order · racetrack':o.order.type==='defend'?(o.order.rtb?'Your order · RTB to station':'Your order · protect '+(byId.get(o.order.unit)?.name||'')):o.order.type==='route'?'Your order · route':'Your order · move'):o.ctrl==='Manual'?'Manual · you':o.ctrl==='Agent'?'Agent':o.ctrl==='Mission'?'Mission':o.ctrl==='Script'?'Script':'BDArmory AI';
+  if(o.diverted&&byId.get(o.diverted)?.alive)ctrlTxt+=' · engaging '+byId.get(o.diverted).name;
   let h=`<div class="unit"><div class="uh"><span id="symSlot"></span><div><h3>${esc(o.name)}</h3><p>${K[o.kind].cls} · ${blue?'Blue':'Red'}${o.alive?'':o.deck!=null?` · on deck${o.ready?' · ready':' · rearming'}`:' · <span class="win">lost</span>'}</p></div></div>`;
   if(ids.length>1)h+=`<p class="note">${ids.length} tracks selected. Size buttons apply to all of them.</p>`;
   if(ids.length>1&&ids.some(i=>byId.get(i).side==='blue'))h+=`<div class="sec"><span class="lbl">Make a group from the selection</span><div class="ctl"><input id="grpName" placeholder="Group name, e.g. Strike A" autocomplete="off"><button class="btn acc" data-act="mkgroup">Make group</button></div><span class="note">Tip: Alt+1…9 puts the selection on a number key. Press the number to select the group again.</span></div>`;
@@ -1140,11 +1171,13 @@ function renderUnit(){
   if(o.aam!=null)h+=`<div class="sec"><span class="lbl">Weapons &amp; fuel</span><div class="mag"><span>AAM</span><span class="bar"><i style="width:${100*o.aam/(o.aamMax||6)}%"></i></span><span class="r ${o.aam===0?'win':''}">${o.aam}/${o.aamMax||6}</span></div><div class="mag"><span>Fuel</span><span class="bar"><i style="width:${o.fuel*100}%"></i></span><span class="r">${Math.round(o.fuel*100)}%</span></div></div>`;
   if(o.fuel!=null&&o.aam==null)h+=`<div class="sec"><span class="lbl">Fuel</span><div class="mag"><span>Fuel</span><span class="bar"><i style="width:${o.fuel*100}%"></i></span><span class="r">${Math.round(o.fuel*100)}%</span></div></div>`;
   if(o.hp!=null)h+=`<div class="sec"><span class="lbl">Damage</span><div class="mag"><span>Hull</span><span class="bar dmg"><i style="width:${100-o.hp}%"></i></span><span class="r">${Math.round(100-o.hp)}%</span></div></div>`;
-  if(blue&&o.alive&&!K[o.kind].missile){h+=`<div class="sec"><span class="lbl">Orders for the selection</span><div class="ctl"><button class="btn acc" data-act="rtb">RTB &amp; land</button><button class="btn" data-act="track" aria-pressed="${pendingTrack}">Racetrack…</button><button class="btn ghost" data-act="rtball">RTB all aircraft</button></div><span class="note">R sends the selection home: aircraft stack at the marshal point astern of Kestrel and land one at a time; ships return to station. T, then drag on the plot, sets a racetrack holding pattern. Shift+R twice sends every aircraft home.</span></div>`;}
+  if(blue&&o.alive&&!K[o.kind].missile){h+=`<div class="sec"><span class="lbl">Orders for the selection</span><div class="ctl"><button class="btn acc" data-act="rtb">RTB &amp; land</button><button class="btn" data-act="track" aria-pressed="${pendingTrack}">Racetrack…</button></div><span class="note">R sends the selection home: aircraft stack at the marshal point astern of Kestrel and land one at a time; ships return to station. T, then drag on the plot, sets a racetrack patrol: with weapons Free (guard) aircraft leave the pattern to fight anything they detect, then come back. The top-bar RTB all button (or Shift+R twice) sends every aircraft home.</span></div>`;}
   if(blue&&o.kind==='cvn'){const dk=deckOf(o),rd=dk.filter(x=>x.ready).length;h+=`<div class="sec"><span class="lbl">Flight deck</span><span>${dk.length?`<b>${dk.length}</b> aircraft on deck, <b>${rd}</b> ready`:'Deck empty'}${dk.length>rd?` · ${dk.length-rd} rearming (90 s)`:''}</span>${dk.length?`<span class="note">${esc(dk.slice(0,12).map(x=>x.name).join(', '))}${dk.length>12?'…':''}</span>`:''}<div class="ctl"><button class="btn acc" data-act="launch" ${rd?'':'disabled'}>Launch ready aircraft</button></div></div>`;}
   if(blue&&o.doctrine){h+=`<div class="sec"><span class="lbl">Weapons control</span><div class="seg" data-doc>${['Free','Tight','Hold'].map(d=>`<button data-v="${d}" aria-pressed="${o.doctrine===d}">${d}</button>`).join('')}</div>
-     <span class="lbl" style="margin-top:6px">Radar</span><div class="seg" data-emcon>${['Active','Passive'].map(d=>`<button data-v="${d}" aria-pressed="${o.emcon===d}">${d}</button>`).join('')}</div>
-     <span class="note">Hold or passive radar stops SAM fire. Close-in guns keep defending the ship.</span></div>`;}
+     ${o.emcon?`<span class="lbl" style="margin-top:6px">Radar</span><div class="seg" data-emcon>${['Active','Passive'].map(d=>`<button data-v="${d}" aria-pressed="${o.emcon===d}">${d}</button>`).join('')}</div>
+     <span class="note">Hold or passive radar stops SAM fire. Close-in guns keep defending the ship.</span>`:`<span class="note">Free = guard mode: hunts and engages hostiles, and leaves a patrol to fight what it detects. Tight = assigned targets and close threats only. Hold = passive: stays on its pattern and does not fire.</span>
+     <span class="lbl" style="margin-top:6px">When a new hostile appears during an order</span><div class="seg" data-oc>${[['task','Stay on task'],['engage','Engage on contact']].map(([v,l])=>`<button data-v="${v}" aria-pressed="${(o.onContact||'task')===v}">${l}</button>`).join('')}</div>
+     <span class="note">Stay on task: go straight for the assigned target and ignore others crossing the path. Engage on contact: attack any hostile the unit's own radar detects on the way (even one the shared picture missed), then continue the order.</span>`}</div>`;}
   h+=`<div class="sec"><span class="lbl">Symbol size</span><div class="ctl"><button class="btn ghost" data-act="smaller">Smaller</button><button class="btn ghost" data-act="larger">Larger</button><button class="btn ghost" data-act="sizereset">Reset</button><span class="note">×${o.sizeMul.toFixed(2)}</span></div></div></div>`;
   el.innerHTML=h;$('#symSlot').replaceWith(symCanvas(o));
 }
@@ -1162,7 +1195,10 @@ $('#unit').addEventListener('click',e=>{const b=e.target.closest('button');if(!b
   else if(a==='fly'){toast(`In the real build this makes ${o.name} the active vessel in KSP so you can fly it yourself. The map keeps tracking it.`);}
   else if(a==='center')center(o);
   else if(a==='larger')sizeSel(1.25);else if(a==='smaller')sizeSel(.8);else if(a==='sizereset')sizeSel(0);
-  if(b.closest('[data-doc]')){o.doctrine=b.dataset.v;logMsg('orders',`${o.name}: weapons ${o.doctrine.toLowerCase()}.`,o.x,o.y);}
+  if(b.closest('[data-doc]')||b.closest('[data-oc]')){const doc=!!b.closest('[data-doc]'),us=ids.map(i=>byId.get(i)).filter(u=>u&&u.side==='blue'&&u.doctrine);
+    us.forEach(u=>{if(doc)u.doctrine=b.dataset.v;else u.onContact=b.dataset.v;});
+    const nm=us.length>4?us.length+' units':us.map(u=>u.name).join(', ');
+    logMsg('orders',doc?`${nm}: weapons ${b.dataset.v.toLowerCase()}${b.dataset.v==='Free'?' (guard)':b.dataset.v==='Hold'?' (passive)':''}.`:`${nm}: ${b.dataset.v==='engage'?'engage any hostile detected during orders':'stay on task during orders'}.`,o.x,o.y);}
   if(b.closest('[data-emcon]')){o.emcon=b.dataset.v;logMsg('orders',`${o.name}: radar ${o.emcon.toLowerCase()}.`,o.x,o.y);}
   renderUnit();});
 
