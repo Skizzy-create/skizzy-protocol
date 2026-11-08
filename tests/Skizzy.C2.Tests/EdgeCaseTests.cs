@@ -217,7 +217,7 @@ namespace Skizzy.C2.Tests
             double mean = sw.Elapsed.TotalMilliseconds / 300;
             // engine time only (the fake world is excluded); generous bounds for CI machines
             string phases = string.Join(" / ", E.PhaseMs.Select(x => (x / 300).ToString("0.000")));
-            // regression guard (Debug build, any CI machine); Release measures ~1.1 ms mean at this size
+            // regression guard (Debug build, any CI machine); Release measures ~0.8 ms mean at this size
             Assert.True(mean < 8, "mean tick " + mean.ToString("0.00") + " ms, worst " + worst.ToString("0.00") + " ms; refresh/picture/step/apply/total " + phases);
             Assert.Contains(W.Shots, s => W.Get(s.Shooter).S.Side == Blue);
         }
