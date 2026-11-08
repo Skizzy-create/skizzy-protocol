@@ -10,7 +10,7 @@ When a step fails, keep going if you can and send back the files listed in [sect
 
 1. Point the build at your game. Either set `$env:KSPDIR = "<KSP>"`, or copy `Directory.Build.props.user.example` to `Directory.Build.props.user` and edit it (that file is git-ignored).
 2. Build the package: `.\scripts\package.ps1`. Expected result: `artifacts\GameData\SkizzyProtocol\` containing `Plugins\` (Skizzy.Host.dll and Skizzy.Protocol.dll, the net48 build of the protocol library), `Bin\skizzy.exe`, the version file, LICENSE and NOTICE. The build fails on purpose if mscorlib, System or System.Core would resolve from anywhere other than `<KSP>\KSP_x64_Data\Managed`.
-3. Dry run: `.\scripts\install.ps1 -DryRun`. Expected: a list of "create dir" and "copy file" lines (8 actions on a clean install), all under `<KSP>\GameData\SkizzyProtocol\`, and nothing written. Check that nothing outside that folder appears.
+3. Dry run: `.\scripts\install.ps1 -DryRun`. Expected: a list of "create dir" and "copy file" lines (one per folder and file: Plugins with Skizzy.Host.dll, Skizzy.Protocol.dll and Skizzy.C2.dll, Bin with skizzy.exe, the version file, LICENSE, NOTICE), all under `<KSP>\GameData\SkizzyProtocol\`, and nothing written. Check that nothing outside that folder appears.
 4. Install: `.\scripts\install.ps1`. The script refuses to run while KSP is running unless you pass `-Force`. It never touches `PluginData\`.
 5. To remove everything later: `.\scripts\uninstall.ps1 -DryRun`, then `.\scripts\uninstall.ps1`. It keeps `PluginData\` (token, settings, audit) unless you add `-RemoveData`, and keeps the `<KSP>\Skizzy\` logs unless you add `-RemoveLogs`.
 
