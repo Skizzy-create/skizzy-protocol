@@ -135,3 +135,8 @@ These were recorded by the user on 2026-11-08 and must hold in the real system:
    - The plot must not tie simulation time to frame rate.
    - In the real map, KSP time is authoritative and the map only interpolates, so this is satisfied by design.
    - Keep draw calls per trail at two strokes.
+10. **Orders must never be silently dropped.** Reported by the user on 2026-11-08: the CAP South flight ignored orders.
+    - The likely cause in the mockup is ammunition. Under the Proactive posture the CAP South flight spent its missiles early, so every later attack order hit the "out of missiles → return to mission" check and was dropped in the same tick. To the operator that looks like disobedience.
+    - Rule 1 — **validate on issue.** When an order is given, check whether each unit can carry it out: weapons, fuel, damage, range, current lease holder. Show the result straight away ("Cobra 1–4: no missiles left, attack refused. Send them home?"). Never accept an order and then discard it.
+    - Rule 2 — **orders outrank posture and mission behaviour.** This matches the precedence bands: commander 800 beats behaviour 300 and BDA 0. Only self-defence may interrupt an order, and when it does it is logged.
+    - Rule 3 — **every order ends with a report.** Completed, refused, aborted, or overridden (by whom and why) goes in the message log and the unit panel.
