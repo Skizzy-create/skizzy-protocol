@@ -663,6 +663,7 @@ namespace Skizzy.Host.Core
         {
             if (!Kill.Engage(by, reason, Meta.Ut)) return false;
             Ops.CancelAll("kill_switch");
+            C2.OnKillSwitch();
             Prompts.CancelAll();
             Events.Emit("host.kill_switch", "system", "Kill switch engaged by " + by + (reason != null ? ": " + reason : ""),
                 JsonValue.Obj().Set("by", by).Set("reason", reason));

@@ -110,7 +110,7 @@ namespace Skizzy.Protocol.Catalog
             return new CapabilityDef
             {
                 Name = name,
-                Provider = name.StartsWith("ksp.") ? "ksp" : name.StartsWith("rec.") ? "rec" : name.StartsWith("host.") ? "host" : "core",
+                Provider = name.StartsWith("ksp.") ? "ksp" : name.StartsWith("rec.") ? "rec" : name.StartsWith("host.") ? "host" : name.StartsWith("c2.") ? "c2" : "core",
                 Title = name,
                 Description = desc,
                 Safety = safety,
@@ -420,6 +420,119 @@ namespace Skizzy.Protocol.Catalog
                     .Prop("offset", S.Int("byte offset").Min(0).Default(0))
                     .Prop("length", S.Int("bytes to read").Min(1).Max(1048576).Default(1048576))
                     .Closed());
+
+            foreach (var d in C2()) yield return d;
+        }
+
+        // ---------------- c2 (09 §2, §11.1; 24 Phase v1). Executed by Skizzy.C2 through the BDArmory binding. ----------------
+
+        private const string C2Mod = "BDArmory";
+        private const string C2Note = " Needs the BDArmory binding (EXECUTOR_UNAVAILABLE without it).";
+
+        private static SchemaB UnitRef(string desc)
+        {
+            return S.Str(desc + ": a handle \"v:<id>\", a vessel id, an exact unit name, or \"active\".").Handle("vessel").MinLen(1).MaxLen(256);
+        }
+
+        private static SchemaB GeoPt(string desc)
+        {
+            return S.Obj(desc)
+                .Prop("lat", S.Num("latitude").Min(-90).Max(90).Unit("deg"), true)
+                .Prop("lon", S.Num("longitude").Min(-180).Max(360).Unit("deg"), true)
+                .Closed();
+        }
+
+        private static SchemaB SideName(string desc)
+        {
+            return S.Str(desc + " Defaults to the session's side.").MinLen(1).MaxLen(64);
+        }
+
+        private static IEnumerable<CapabilityDef> C2()
+        {
+            yield return Def("c2.order.issue", Safety.Control, "c2", C2Mod, Affinity.Main, FlightScenes,
+                "Issues an order to units, a group or a whole side (09 \u00a72.1). Types: move_to (point, altitudeM), move_route (route), " +
+                "engage (target or targets), hold_pattern (patternA, patternB, widthKm, turnRight, altStackM), rtb (base, weapons), " +
+                "defend_unit (protect, radiusKm), escort (escortOf, slot, distanceKm), attack_nearest, all_attack (scope side). " +
+                "Returns the order handle o:<id>, a summary line and per-unit outcomes; a whole-order refusal is an error whose reason is " +
+                "the refusal code (not_own_side, hook_missing, winchester, ...). Progress arrives as order.* events." + C2Note,
+                S.Obj()
+                    .Prop("type", S.Enum("order type", "move_to", "move_route", "engage", "hold_pattern", "rtb", "defend_unit", "attack_nearest", "all_attack", "escort"), true)
+                    .Prop("side", SideName("Issuing side; units of other sides are refused."))
+                    .Prop("units", S.Arr(UnitRef("unit"), "recipients").MaxItems(256))
+                    .Prop("group", S.Str("recipient group").MaxLen(64))
+                    .Prop("scope", S.Enum("side: every unit of the side (rtb all, all_attack; needs the seat or a referee)", "units", "side").Default("units"))
+                    .Prop("domain", S.Enum("side-scope filter", "air", "surface", "subsurface", "land"))
+                    .Prop("label", S.Str("label for reports").MaxLen(120))
+                    .Prop("point", GeoPt("move_to destination"))
+                    .Prop("altitudeM", S.Num("aircraft altitude above terrain; omit to keep").Min(0).Max(30000).Unit("m"))
+                    .Prop("route", S.Arr(GeoPt("route point"), "move_route points").MinItems(1).MaxItems(64))
+                    .Prop("target", UnitRef("engage target"))
+                    .Prop("targets", S.Arr(UnitRef("target"), "explicit engage targets").MaxItems(64))
+                    .Prop("patternA", GeoPt("hold_pattern first end"))
+                    .Prop("patternB", GeoPt("hold_pattern second end"))
+                    .Prop("widthKm", S.Num("hold_pattern width").Min(0.5).Max(100).Unit("km"))
+                    .Prop("turnRight", S.Bool("hold_pattern turn direction").Default(true))
+                    .Prop("altStackM", S.Num("hold_pattern altitude step between units").Min(0).Max(5000).Unit("m"))
+                    .Prop("base", UnitRef("rtb base (carrier or airfield unit); omit for the unit's home"))
+                    .Prop("weapons", S.Enum("rtb weapons control on the way home", "free", "tight", "hold"))
+                    .Prop("protect", UnitRef("defend_unit protected unit"))
+                    .Prop("radiusKm", S.Num("defend_unit radius").Min(1).Max(200).Unit("km"))
+                    .Prop("escortOf", UnitRef("escort leader"))
+                    .Prop("slot", S.Enum("escort slot", "ahead", "abreast", "astern").Default("ahead"))
+                    .Prop("distanceKm", S.Num("escort distance").Min(0.5).Max(100).Unit("km"))
+                    .Prop("extendRange", S.Bool("attack_nearest: raise ships' SAM range to the weapon maximum (always on for all_attack)").Default(false))
+                    .Closed(), "c2");
+
+            yield return Def("c2.order.cancel", Safety.Control, "c2", C2Mod, Affinity.Main, FlightScenes,
+                "Cancels an order and all its unit orders; an engagement order gives units back their movement order." + C2Note,
+                S.Obj().Prop("order", S.Str("order handle o:<id> (or the bare id)").Pattern("^(o:)?[0-9]+$"), true).Closed(), "c2");
+
+            yield return Def("c2.doctrine.set", Safety.Control, "c2", C2Mod, Affinity.Main, FlightScenes,
+                "Sets doctrine at side, group or unit level (09 \u00a711.1), e.g. values {weaponsControl:\"tight\", onContact:\"engage\", " +
+                "advanceOnContact:false, pauseOnFirstLaunch:true}. lock makes keys binding for lower levels. Nothing changes on error; a key " +
+                "locked higher up fails with reason locked_by:side|group." + C2Note,
+                S.Obj()
+                    .Prop("level", S.Enum("doctrine level", "side", "group", "unit"), true)
+                    .Prop("target", S.Str("side name, group name, or unit reference; defaults to the session's side for level side").MinLen(1).MaxLen(256))
+                    .Prop("values", S.Obj("doctrine keys and values (strings, numbers, booleans)").Open(), true)
+                    .Prop("lock", S.Arr(S.Str().MaxLen(64), "keys to lock at this level").MaxItems(64))
+                    .Closed(), "c2");
+
+            yield return Def("c2.doctrine.unset", Safety.Control, "c2", C2Mod, Affinity.Main, FlightScenes,
+                "Removes doctrine keys (and their locks) at one level so the next level up applies again." + C2Note,
+                S.Obj()
+                    .Prop("level", S.Enum("doctrine level", "side", "group", "unit"), true)
+                    .Prop("target", S.Str("side name, group name, or unit reference; defaults to the session's side for level side").MinLen(1).MaxLen(256))
+                    .Prop("keys", S.Arr(S.Str().MaxLen(64), "keys to remove").MinItems(1).MaxItems(64), true)
+                    .Closed(), "c2");
+
+            yield return Def("c2.doctrine.effective", Safety.Read, "c2", C2Mod, Affinity.Main, FlightScenes,
+                "A unit's effective doctrine: every key with its value, the level it comes from (default, side:<s>, group:<g>, unit:v:<id>) and whether it is locked." + C2Note,
+                S.Obj().Prop("unit", UnitRef("unit"), true).Closed(), "c2");
+
+            yield return Def("c2.unit.status", Safety.Read, "c2", C2Mod, Affinity.Main, FlightScenes,
+                "What the C2 engine is doing with a unit: task, movement and engagement orders with status, hold, fire authority and filter, " +
+                "override target and stickiness, route, yield/leash, divert, self-defence, advance, VIP threat, weapons control, on-contact." + C2Note,
+                S.Obj().Prop("unit", UnitRef("unit"), true).Closed(), "c2");
+
+            yield return Def("c2.unit.release", Safety.Control, "c2", C2Mod, Affinity.Main, FlightScenes,
+                "Returns units to plain BDArmory guard behaviour: cancels their orders (with reports) and clears holds. Doctrine still applies." + C2Note,
+                S.Obj().Prop("units", S.Arr(UnitRef("unit"), "units to release").MinItems(1).MaxItems(256), true).Closed(), "c2");
+
+            yield return Def("c2.vip.set", Safety.Control, "c2", C2Mod, Affinity.Main, FlightScenes,
+                "Flags a unit as a VIP (high-value unit) or clears the flag. On a managed side, idle fighters orbit it, ships take station and threats to it get priority (24 rows 21-23)." + C2Note,
+                S.Obj()
+                    .Prop("unit", UnitRef("unit"), true)
+                    .Prop("vip", S.Bool("true to flag, false to clear").Default(true))
+                    .Closed(), "c2");
+
+            yield return Def("c2.side.managed", Safety.Control, "c2", C2Mod, Affinity.Main, FlightScenes,
+                "Puts a side under Skizzy control (advance on contact, VIP priority, missile engagement, ship SAM priority run without orders) or returns it to plain BDArmory. " +
+                "Orders work for any side either way. Omit managed to read the state." + C2Note,
+                S.Obj()
+                    .Prop("side", SideName("Side."))
+                    .Prop("managed", S.Bool("true to manage, false to release"))
+                    .Closed(), "c2");
         }
     }
 }

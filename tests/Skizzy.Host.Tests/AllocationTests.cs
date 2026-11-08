@@ -236,7 +236,8 @@ namespace Skizzy.Host.Tests
                 "FakeVessel.ReadField", "FakeModule.Accessor.Read",
             };
             string src = FindRepoDir("src");
-            var tag = new Regex(@"//\s*skizzy:hot\s+([A-Za-z0-9_.]+)");
+            // Same line only: a bare "// skizzy:hot" must not capture the first word of the next line.
+            var tag = new Regex(@"//[ \t]*skizzy:hot[ \t]+([A-Za-z0-9_.]+)");
             var found = new List<string>();
             foreach (var f in Directory.GetFiles(src, "*.cs", SearchOption.AllDirectories))
             {

@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:c2.order.issue@1",
+  "title": "c2.order.issue",
+  "description": "Issues an order to units, a group or a whole side (09 §2.1). Types: move_to (point, altitudeM), move_route (route), engage (target or targets), hold_pattern (patternA, patternB, widthKm, turnRight, altStackM), rtb (base, weapons), defend_unit (protect, radiusKm), escort (escortOf, slot, distanceKm), attack_nearest, all_attack (scope side). Returns the order handle o:<id>, a summary line and per-unit outcomes; a whole-order refusal is an error whose reason is the refusal code (not_own_side, hook_missing, winchester, ...). Progress arrives as order.* events. Needs the BDArmory binding (EXECUTOR_UNAVAILABLE without it).",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "c2_order_issue",
+  "input": {
+    "type": "object",
+    "properties": {
+      "type": {
+        "type": "string",
+        "enum": [
+          "move_to",
+          "move_route",
+          "engage",
+          "hold_pattern",
+          "rtb",
+          "defend_unit",
+          "attack_nearest",
+          "all_attack",
+          "escort"
+        ],
+        "description": "order type"
+      },
+      "side": {
+        "type": "string",
+        "description": "Issuing side; units of other sides are refused. Defaults to the session's side.",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "units": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "description": "unit: a handle \"v:<id>\", a vessel id, an exact unit name, or \"active\".",
+          "x-skz-handle": "vessel",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "description": "recipients",
+        "maxItems": 256
+      },
+      "group": {
+        "type": "string",
+        "description": "recipient group",
+        "maxLength": 64
+      },
+      "scope": {
+        "type": "string",
+        "enum": [
+          "units",
+          "side"
+        ],
+        "description": "side: every unit of the side (rtb all, all_attack; needs the seat or a referee)",
+        "default": "units"
+      },
+      "domain": {
+        "type": "string",
+        "enum": [
+          "air",
+          "surface",
+          "subsurface",
+          "land"
+        ],
+        "description": "side-scope filter"
+      },
+      "label": {
+        "type": "string",
+        "description": "label for reports",
+        "maxLength": 120
+      },
+      "point": {
+        "type": "object",
+        "description": "move_to destination",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "description": "latitude",
+            "minimum": -90,
+            "maximum": 90,
+            "x-skz-unit": "deg"
+          },
+          "lon": {
+            "type": "number",
+            "description": "longitude",
+            "minimum": -180,
+            "maximum": 360,
+            "x-skz-unit": "deg"
+          }
+        },
+        "required": [
+          "lat",
+          "lon"
+        ],
+        "additionalProperties": false
+      },
+      "altitudeM": {
+        "type": "number",
+        "description": "aircraft altitude above terrain; omit to keep",
+        "minimum": 0,
+        "maximum": 30000,
+        "x-skz-unit": "m"
+      },
+      "route": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "description": "route point",
+          "properties": {
+            "lat": {
+              "type": "number",
+              "description": "latitude",
+              "minimum": -90,
+              "maximum": 90,
+              "x-skz-unit": "deg"
+            },
+            "lon": {
+              "type": "number",
+              "description": "longitude",
+              "minimum": -180,
+              "maximum": 360,
+              "x-skz-unit": "deg"
+            }
+          },
+          "required": [
+            "lat",
+            "lon"
+          ],
+          "additionalProperties": false
+        },
+        "description": "move_route points",
+        "minItems": 1,
+        "maxItems": 64
+      },
+      "target": {
+        "type": "string",
+        "description": "engage target: a handle \"v:<id>\", a vessel id, an exact unit name, or \"active\".",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "targets": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "description": "target: a handle \"v:<id>\", a vessel id, an exact unit name, or \"active\".",
+          "x-skz-handle": "vessel",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "description": "explicit engage targets",
+        "maxItems": 64
+      },
+      "patternA": {
+        "type": "object",
+        "description": "hold_pattern first end",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "description": "latitude",
+            "minimum": -90,
+            "maximum": 90,
+            "x-skz-unit": "deg"
+          },
+          "lon": {
+            "type": "number",
+            "description": "longitude",
+            "minimum": -180,
+            "maximum": 360,
+            "x-skz-unit": "deg"
+          }
+        },
+        "required": [
+          "lat",
+          "lon"
+        ],
+        "additionalProperties": false
+      },
+      "patternB": {
+        "type": "object",
+        "description": "hold_pattern second end",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "description": "latitude",
+            "minimum": -90,
+            "maximum": 90,
+            "x-skz-unit": "deg"
+          },
+          "lon": {
+            "type": "number",
+            "description": "longitude",
+            "minimum": -180,
+            "maximum": 360,
+            "x-skz-unit": "deg"
+          }
+        },
+        "required": [
+          "lat",
+          "lon"
+        ],
+        "additionalProperties": false
+      },
+      "widthKm": {
+        "type": "number",
+        "description": "hold_pattern width",
+        "minimum": 0.5,
+        "maximum": 100,
+        "x-skz-unit": "km"
+      },
+      "turnRight": {
+        "type": "boolean",
+        "description": "hold_pattern turn direction",
+        "default": true
+      },
+      "altStackM": {
+        "type": "number",
+        "description": "hold_pattern altitude step between units",
+        "minimum": 0,
+        "maximum": 5000,
+        "x-skz-unit": "m"
+      },
+      "base": {
+        "type": "string",
+        "description": "rtb base (carrier or airfield unit); omit for the unit's home: a handle \"v:<id>\", a vessel id, an exact unit name, or \"active\".",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "weapons": {
+        "type": "string",
+        "enum": [
+          "free",
+          "tight",
+          "hold"
+        ],
+        "description": "rtb weapons control on the way home"
+      },
+      "protect": {
+        "type": "string",
+        "description": "defend_unit protected unit: a handle \"v:<id>\", a vessel id, an exact unit name, or \"active\".",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "radiusKm": {
+        "type": "number",
+        "description": "defend_unit radius",
+        "minimum": 1,
+        "maximum": 200,
+        "x-skz-unit": "km"
+      },
+      "escortOf": {
+        "type": "string",
+        "description": "escort leader: a handle \"v:<id>\", a vessel id, an exact unit name, or \"active\".",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "slot": {
+        "type": "string",
+        "enum": [
+          "ahead",
+          "abreast",
+          "astern"
+        ],
+        "description": "escort slot",
+        "default": "ahead"
+      },
+      "distanceKm": {
+        "type": "number",
+        "description": "escort distance",
+        "minimum": 0.5,
+        "maximum": 100,
+        "x-skz-unit": "km"
+      },
+      "extendRange": {
+        "type": "boolean",
+        "description": "attack_nearest: raise ships' SAM range to the weapon maximum (always on for all_attack)",
+        "default": false
+      }
+    },
+    "required": [
+      "type"
+    ],
+    "additionalProperties": false
+  }
+}

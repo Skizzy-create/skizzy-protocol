@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:c2.unit.release@1",
+  "title": "c2.unit.release",
+  "description": "Returns units to plain BDArmory guard behaviour: cancels their orders (with reports) and clears holds. Doctrine still applies. Needs the BDArmory binding (EXECUTOR_UNAVAILABLE without it).",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "c2_unit_release",
+  "input": {
+    "type": "object",
+    "properties": {
+      "units": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "description": "unit: a handle \"v:<id>\", a vessel id, an exact unit name, or \"active\".",
+          "x-skz-handle": "vessel",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "description": "units to release",
+        "minItems": 1,
+        "maxItems": 256
+      }
+    },
+    "required": [
+      "units"
+    ],
+    "additionalProperties": false
+  }
+}

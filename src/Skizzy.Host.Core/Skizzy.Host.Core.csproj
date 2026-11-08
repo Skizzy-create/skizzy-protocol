@@ -14,6 +14,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Skizzy.Protocol\Skizzy.Protocol.csproj" />
+    <ProjectReference Include="..\Skizzy.C2\Skizzy.C2.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Skizzy.Host.Tests" />

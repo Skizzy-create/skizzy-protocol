@@ -310,6 +310,8 @@ Not verified yet, because it needs a running KSP:
 - the in-game windows in `src/Skizzy.Host/Ui` (toolbar menu, first-run wizard, permission prompts, connections, capability console, recorder, camera and health windows, kill banner). They compile against KSP 1.12 but have not been opened in the game;
 - the "clean install to a working Claude Code connection in under 5 minutes" target, and Codex CLI against the real host.
 
+Ahead of M4, the C2 orders and doctrine engine (`src/Skizzy.C2`, with `Skizzy.C2.Fake` and 69 scenario tests) is merged and wired to the `c2.*` capabilities (`c2.order.issue|cancel`, `c2.doctrine.set|unset|effective`, `c2.unit.status|release`, `c2.vip.set`, `c2.side.managed`), a 5 Hz tick and `order.*`/`log.*` events. In game it needs the BDArmory binding, which is not in this repository yet; until it attaches, `c2.*` calls fail with `EXECUTOR_UNAVAILABLE` and the engine costs nothing.
+
 The manual in-game checklist is [`docs/M0-checklist.md`](docs/M0-checklist.md). Design documents are in `design/`; the scope of this milestone is in `design/17-milestones.md`.
 
 ## Licence

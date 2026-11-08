@@ -29,6 +29,16 @@ namespace Skizzy.Host.Ksp
         internal static SkizzyBootstrap Instance;
         internal static string StartFailure;
 
+        /// <summary>
+        /// The running host, or null before start / after shutdown. The BDArmory binding uses it in flight to attach the
+        /// C2 engine: <c>SkizzyBootstrap.CurrentHost.C2.Attach(world, control, "bdarmory")</c> (main thread), forwards
+        /// BDArmory hook events to the returned engine, and drops it on <c>C2.Detached</c>.
+        /// </summary>
+        public static HostCore CurrentHost
+        {
+            get { var b = Instance; return b != null ? b.Host : null; }
+        }
+
         internal HostCore Host;
         internal KspWorld World;
         internal KspCamera Camera;

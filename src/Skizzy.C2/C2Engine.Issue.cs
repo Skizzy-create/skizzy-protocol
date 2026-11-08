@@ -692,7 +692,7 @@ namespace Skizzy.C2
                     double width = !double.IsNaN(req.WidthKm) ? req.WidthKm : _doctrine.Defaults.RacetrackWidthKm;
                     return who + ": racetrack holding pattern, " + KmText(_geo.Distance(req.PatternA, b)) + " km legs, " +
                            width.ToString("0.#", CultureInfo.InvariantCulture) + " km wide, " +
-                           _geo.Bearing(req.PatternA, b).ToString("000", CultureInfo.InvariantCulture) + "°" +
+                           _geo.Bearing(req.PatternA, b).ToString("000", CultureInfo.InvariantCulture) + "\u00b0" +
                            (o.Units.Count > 1 ? ", stacked by altitude." : " at " + first.Alt.ToString("0", CultureInfo.InvariantCulture) + " m.");
                 }
                 case OrderType.Rtb:

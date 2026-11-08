@@ -228,6 +228,11 @@ namespace Skizzy.Host.Core.World
         string LogPath { get; }
         /// <summary>Main thread. Diagnostic lines for host.doctor and host.selfcheck (pass/warn/fail).</summary>
         void Doctor(List<string[]> lines);
+        /// <summary>
+        /// Main thread. Pauses the game for a pause-on-event (C2 FirstLaunch, 24 row 27). Returns false when this scene
+        /// cannot pause or the game is already paused.
+        /// </summary>
+        bool RequestPause(string reason);
     }
 
     /// <summary>Wakes the main-thread pump (UnitySynchronizationContext post, or the Sim runner).</summary>

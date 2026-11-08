@@ -2,11 +2,14 @@
   "solution": {
     "path": "Skizzy.slnx",
     "projects": [
+      "src\\Skizzy.C2\\Skizzy.C2.csproj",
+      "src\\Skizzy.C2.Fake\\Skizzy.C2.Fake.csproj",
       "src\\Skizzy.Cli\\Skizzy.Cli.csproj",
       "src\\Skizzy.Client\\Skizzy.Client.csproj",
       "src\\Skizzy.Host.Core\\Skizzy.Host.Core.csproj",
       "src\\Skizzy.Protocol\\Skizzy.Protocol.csproj",
       "src\\Skizzy.Sim\\Skizzy.Sim.csproj",
+      "tests\\Skizzy.C2.Tests\\Skizzy.C2.Tests.csproj",
       "tests\\Skizzy.Cli.Tests\\Skizzy.Cli.Tests.csproj",
       "tests\\Skizzy.Host.Tests\\Skizzy.Host.Tests.csproj",
       "tests\\Skizzy.Protocol.Tests\\Skizzy.Protocol.Tests.csproj",

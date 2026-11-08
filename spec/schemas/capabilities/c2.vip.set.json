@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:c2.vip.set@1",
+  "title": "c2.vip.set",
+  "description": "Flags a unit as a VIP (high-value unit) or clears the flag. On a managed side, idle fighters orbit it, ships take station and threats to it get priority (24 rows 21-23). Needs the BDArmory binding (EXECUTOR_UNAVAILABLE without it).",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "c2_vip_set",
+  "input": {
+    "type": "object",
+    "properties": {
+      "unit": {
+        "type": "string",
+        "description": "unit: a handle \"v:<id>\", a vessel id, an exact unit name, or \"active\".",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "vip": {
+        "type": "boolean",
+        "description": "true to flag, false to clear",
+        "default": true
+      }
+    },
+    "required": [
+      "unit"
+    ],
+    "additionalProperties": false
+  }
+}

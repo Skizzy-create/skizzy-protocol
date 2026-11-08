@@ -25,6 +25,7 @@ namespace Skizzy.Host.Core
             _h.SceneTransition = true;
             _h.RefreshMeta();
             _h.Ops.CancelAll("scene_change");
+            _h.C2.OnSceneChange();
             Emit("sim.scene", "system", "scene change " + from + " -> " + to + " requested", JsonValue.Obj().Set("from", from).Set("to", to).Set("phase", "requested"));
         }
 

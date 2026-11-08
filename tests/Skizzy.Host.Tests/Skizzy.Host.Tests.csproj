@@ -3,5 +3,6 @@
     <ProjectReference Include="..\..\src\Skizzy.Host.Core\Skizzy.Host.Core.csproj" />
     <ProjectReference Include="..\..\src\Skizzy.Sim\Skizzy.Sim.csproj" />
     <ProjectReference Include="..\..\src\Skizzy.Client\Skizzy.Client.csproj" />
+    <ProjectReference Include="..\..\src\Skizzy.C2.Fake\Skizzy.C2.Fake.csproj" />
   </ItemGroup>
 </Project>
