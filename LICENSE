@@ -1,0 +1,31 @@
+Skizzy Protocol
+Copyright (c) 2026 Skizzy-create. All rights reserved.
+
+PROPRIETARY AND CONFIDENTIAL
+
+This repository and everything in it (source code, binaries, protocol
+specifications, design documents, mockups, images, data and documentation,
+together the "Software") is the exclusive property of the copyright holder.
+
+No licence is granted. Without the prior written permission of the copyright
+holder, you may not, in whole or in part:
+
+  - copy, reproduce or replicate the Software;
+  - modify, adapt, translate or create derivative works of the Software;
+  - distribute, publish, sublicense, sell, rent, lend, host or otherwise make
+    the Software available to any third party;
+  - decompile, disassemble or reverse engineer the Software, except where
+    applicable law expressly permits it despite this restriction;
+  - remove or alter this notice or any other proprietary notice.
+
+Access to the Software does not transfer any right, title or interest in it.
+Any use not expressly authorised in writing is prohibited and terminates any
+permission you may have been given.
+
+Third-party components used by the Software (for example NuGet packages such
+as SkiaSharp) remain under their own licences, which are listed with each
+component. Nothing in this notice changes those licences.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
