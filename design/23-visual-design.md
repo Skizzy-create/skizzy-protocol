@@ -180,4 +180,33 @@ These were recorded by the user on 2026-11-08 and must hold in the real system:
       - attack, stay on task: 0 diversions
       - attack, engage on contact: diversions to R3/R5 contacts at 45 km
     - **KSP mapping:** `24-ksp-parity.md` rows 5–9 and the new hook F6b.
+16. **Self-defence first, and identification by own radar** (mockup v12).
+    - A fighter engages a hostile fighter inside 25 km before carrying on with its order. The interruption is logged, as rule 2 of point 10 requires.
+    - A track counts as identified only when an own unit's radar holds it inside that unit's class range: fighter 45 km, drone 25, AEW 175, ships 150. Stealth contacts follow the same rule (point 15).
+    - Opposing air-defence squadrons armed with AAMs hold CAPs and fight, using the same patrol mechanism as Blue.
+    - Aircraft loadouts are per craft (the mockup now flies maximum air-to-air loads). In KSP they come from the craft file.
+    - **KSP mapping:** `24-ksp-parity.md` rows 21, 23, 24, 30.
+17. **Attack nearest and All attack** (mockup v13).
+    - **Attack nearest** ("hunt") for the selection: each unit takes the nearest unclaimed closing hostile aircraft, or an unengaged missile. Claims spread units across targets. Winchester fighters go home instead.
+    - **All attack** in the top bar, double-click to confirm: every unit hunts, and ships extend SAM range to the weapon's maximum.
+    - Carriers in an attack order launch their armed deck reserve toward the nearest closing craft or unengaged missiles.
+    - **First Blue launch alert,** separate from the opposing side's first-launch alert.
+    - **KSP mapping:** rows 25–27 and 31; spec in `09-c2-multi-agent.md` §2.1.3.
+18. **Advance on contact** (mockup v14; top-bar toggle, default on).
+    - From the first identified hostile, airborne fighters and drones fly toward the nearest identified hostile and re-pick every 2 s, so courses bend as more of the picture fills in.
+    - Excluded: AEW, units on Hold, units with an explicit operator order, winchester units. An operator order always wins.
+    - **KSP mapping:** row 28, doctrine `advanceOnContact`.
+19. **Escorts screen ahead of the strike** (mockup v14).
+    - Opposing strike escorts carry AAMs and fly ahead of the bombers, so interceptors meet the escorts first and the bombers reach anti-ship launch range.
+    - The same applies to Blue packages: `escort {unit, slot: ahead}`.
+    - **KSP mapping:** row 22 (escort slots fed as F6 routes or BDA wing formation slots, guard mode on the escorts).
+20. **Sub-launched SAMs with data link** (mockup v14; the user wants this in KSP).
+    - A submarine fires at an identified hostile aircraft only while a friendly unit holds the target close enough to guide the missile: fighter within 45 km, drone 25, destroyer 60.
+    - In flight the link hands over to any other unit that holds the target.
+    - If no unit can take the link, the missile coasts toward the last known position and self-destructs after 10 s. A link regained within 10 s lets it continue.
+    - The log records link lost, link regained and self-destruct.
+    - **KSP mapping:** rows 33–34 and the proposed hooks OD2 (link provider) and OD3 (link-loss self-destruct) in `07-bdarmory-integration.md` §5.2. Stock BDA already pools allied radar data for data-link missiles through the launcher, which gets part of the way.
+21. **Scale is a scenario property** (mockup v14).
+    - The mockup's force sizes (v12–v14) describe its test scenario (`24-ksp-parity.md` §1.1), not a product requirement.
+    - What KSP needs: spawn a scenario of any size from force templates (OD1 plus craft files), per-craft magazine loads from the craft file, submarine units, and deck reserve launch. That is phase v2 in `24-ksp-parity.md` §1.1.
 
