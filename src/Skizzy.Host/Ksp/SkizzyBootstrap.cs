@@ -18,8 +18,14 @@ namespace Skizzy.Host.Ksp
     /// Update/FixedUpdate/OnGUI, so Unity never calls it per frame; it only hosts coroutines for captures.
     /// </summary>
     [KSPAddon(KSPAddon.Startup.Instantly, true)]
-    public sealed class SkizzyBootstrap : MonoBehaviour
+    public sealed partial class SkizzyBootstrap : MonoBehaviour
     {
+        // In-game UI seam (src/Skizzy.Host/Ui implements these; unimplemented partial methods compile away).
+        partial void UiAttach();
+        partial void UiFrame();
+        partial void UiSceneReady(GameScenes scene);
+        partial void UiShutdown();
+
         internal static SkizzyBootstrap Instance;
         internal static string StartFailure;
 
@@ -73,7 +79,7 @@ namespace Skizzy.Host.Ksp
             if (flip == "true") Camera.FlipOverride = true;
             else if (flip == "false") Camera.FlipOverride = false;
 
-            Events = new KspEvents(Host, World, Log) { SceneChanging = () => Camera.OnSceneChanging() };
+            Events = new KspEvents(Host, World, Log) { SceneChanging = () => Camera.OnSceneChanging(), SceneReady = s => UiSceneReady(s) };
             Events.AddScene();
             Host.SelfCheckExtras = SelfCheck;
             Host.CountUnityObjects = Camera.CountObjects;
@@ -95,6 +101,7 @@ namespace Skizzy.Host.Ksp
             Pump.Boot = this;
             Waker.Pump = Pump;
             Pump.enabled = true; // one frame, then it sleeps unless something is connected or running
+            UiAttach();
 
             if (settings.IdleProbe)
             {
@@ -134,13 +141,30 @@ namespace Skizzy.Host.Ksp
 
         private static void WriteDefaultSettings(string file, HostSettings s)
         {
+            try { WriteSettings(file, s, null); }
+            catch (Exception) { }
+        }
+
+        private static void WriteSettings(string file, HostSettings s, bool? flip)
+        {
+            var n = s.ToNode();
+            n.AddValue("captureFlip", flip.HasValue ? (flip.Value ? "true" : "false") : "auto");
+            File.WriteAllText(file, "// Skizzy host settings (design 02, section 6). Edit while KSP is closed.\n" + n.Serialize());
+        }
+
+        /// <summary>Main thread: persists the current settings (first-run wizard, in-game windows). Returns null or an error.</summary>
+        internal string SaveSettings()
+        {
             try
             {
-                var n = s.ToNode();
-                n.AddValue("captureFlip", "auto");
-                File.WriteAllText(file, "// Skizzy host settings (02 §6). Edit while KSP is closed.\n" + n.Serialize());
+                WriteSettings(Host.Paths.SettingsFile, Host.Settings, Camera.FlipOverride);
+                return null;
             }
-            catch (Exception) { }
+            catch (Exception e)
+            {
+                Log.Warn("could not save settings.cfg: " + e.Message);
+                return e.Message;
+            }
         }
 
         private void ParseKillKey(string spec)
@@ -187,6 +211,7 @@ namespace Skizzy.Host.Ksp
         internal void OnFrame()
         {
             Log.FlushUnity();
+            UiFrame();
             if (Input.GetKeyDown(_killKey) && Held(_killCtrl, KeyCode.LeftControl, KeyCode.RightControl) &&
                 Held(_killAlt, KeyCode.LeftAlt, KeyCode.RightAlt) && Held(_killShift, KeyCode.LeftShift, KeyCode.RightShift))
                 ToggleKill();
@@ -213,7 +238,7 @@ namespace Skizzy.Host.Ksp
         private void SelfCheck(CallContext c, List<string[]> lines)
         {
             lines.Add(new[] { "pass", "plugin footprint", "OnFlyByWire callbacks 0, Harmony patches 0, engine ticks 0, PartModule/VesselModule/ScenarioModule 0 (M0 registers none)" });
-            int expected = 2 + (Events.DynamicOn ? 16 : 0);
+            int expected = 2 + (Events.LauncherOn ? 2 : 0) + (Events.DynamicOn ? 16 : 0);
             var parts = new List<string>();
             foreach (var kv in Events.Counts) parts.Add(kv.Key + (kv.Value != 1 ? " x" + kv.Value : ""));
             parts.Sort(StringComparer.Ordinal);
@@ -267,8 +292,10 @@ namespace Skizzy.Host.Ksp
             _stopped = true;
             try
             {
+                UiShutdown();
                 Events.RemoveDynamic();
                 Events.RemoveScene();
+                Events.RemoveLauncher();
                 if (_probe != null) _probe.Stop();
                 Host.Stop();
                 Camera.Trim(true);

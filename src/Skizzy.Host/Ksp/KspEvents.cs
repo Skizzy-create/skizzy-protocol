@@ -30,6 +30,9 @@ namespace Skizzy.Host.Ksp
 
         /// <summary>Raised on the main thread after the world has been told about a scene change (bootstrap hooks).</summary>
         internal Action SceneChanging;
+        /// <summary>Raised on the main thread when a scene's GUI is ready, after the world and host know (UI hook).</summary>
+        internal Action<GameScenes> SceneReady;
+        private EventVoid.OnEvent _launcherReady, _launcherDestroyed;
 
         public KspEvents(HostCore h, KspWorld w, IHostLog log)
         {
@@ -169,7 +172,28 @@ namespace Skizzy.Host.Ksp
                 _lastScene = scene;
                 _h.WorldEvents.SceneLoaded(KspWorld.SceneName(scene));
                 if (_dynamicOn) _lastActive = _w.ActiveVessel as KspVessel;
+                SceneReady?.Invoke(scene);
             });
+        }
+
+        internal bool LauncherOn => _launcherReady != null;
+
+        /// <summary>Toolbar button lifetime events for the in-game UI (counted like every other handler).</summary>
+        internal void AddLauncher(EventVoid.OnEvent ready, EventVoid.OnEvent destroyed)
+        {
+            if (_launcherReady != null || ready == null || destroyed == null) return;
+            _launcherReady = ready;
+            _launcherDestroyed = destroyed;
+            GameEvents.onGUIApplicationLauncherReady.Add(ready); Count("onGUIApplicationLauncherReady", 1);
+            GameEvents.onGUIApplicationLauncherDestroyed.Add(destroyed); Count("onGUIApplicationLauncherDestroyed", 1);
+        }
+
+        internal void RemoveLauncher()
+        {
+            if (_launcherReady == null) return;
+            GameEvents.onGUIApplicationLauncherReady.Remove(_launcherReady); Count("onGUIApplicationLauncherReady", -1);
+            GameEvents.onGUIApplicationLauncherDestroyed.Remove(_launcherDestroyed); Count("onGUIApplicationLauncherDestroyed", -1);
+            _launcherReady = _launcherDestroyed = null;
         }
 
         internal GameScenes LastScene => _lastScene;
