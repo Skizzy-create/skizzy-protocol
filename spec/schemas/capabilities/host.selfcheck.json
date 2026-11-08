@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:host.selfcheck@1",
+  "title": "host.selfcheck",
+  "description": "Runs the host self-checks and returns pass/warn/fail lines: idle mode (UnitySynchronizationContext wake or polling), registered GameEvents per event, OnFlyByWire callbacks and Harmony patches by Skizzy (must be 0), dispatcher timing, heap slope, M0 spike results, assembly references, and optionally Unity texture/RenderTexture/Material/GameObject counts (textures:true; allocates once).",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "host_selfcheck",
+  "input": {
+    "type": "object",
+    "properties": {
+      "textures": {
+        "type": "boolean",
+        "description": "also count Unity textures and objects (slower, allocates once)",
+        "default": false
+      }
+    },
+    "additionalProperties": false
+  }
+}

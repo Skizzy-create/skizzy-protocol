@@ -47,6 +47,8 @@ namespace Skizzy.Host.Core.Caps
         public long Bytes;
         public int LastBytes;
         public JsonValue Source;
+        /// <summary>Set once the subscribe result is queued on the connection: no stream.data may overtake it.</summary>
+        public volatile bool Started;
     }
 
     /// <summary>
@@ -166,7 +168,12 @@ namespace Skizzy.Host.Core.Caps
                             .Set("seq", 0).Set("kind", "full").Set("columns", JsonValue.ArrOf(sub.Plan.Columns)).Set("rows", rows);
                         if (sub.Plan.UnknownModuleFields.Count > 0)
                             res.Set("warnings", JsonValue.ArrOf(new List<string>(sub.Plan.UnknownModuleFields).ToArray()));
-                        ThreadPool.QueueUserWorkItem(_ => _host.SendResult(s, id, res));
+                        // Serialise off the main thread; sampling starts only once the result is queued on the connection.
+                        ThreadPool.QueueUserWorkItem(_ =>
+                        {
+                            _host.SendResult(s, id, res);
+                            sub.Started = true;
+                        });
                     }
                     catch (SkizzyError e) { _host.SendError(s.Conn, id, e); }
                 }
@@ -208,7 +215,7 @@ namespace Skizzy.Host.Core.Caps
             for (int i = 0; i < subs.Length; i++)
             {
                 var sub = subs[i];
-                if (meta.Ut < sub.NextUt) continue;
+                if (!sub.Started || meta.Ut < sub.NextUt) continue;
                 double period = 1.0 / sub.RateHz;
                 sub.NextUt = sub.NextUt + period < meta.Ut ? meta.Ut + period : sub.NextUt + period;
                 var c = sub.Session.Conn;

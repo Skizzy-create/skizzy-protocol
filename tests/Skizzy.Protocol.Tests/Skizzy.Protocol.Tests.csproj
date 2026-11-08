@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\..\src\Skizzy.Protocol\Skizzy.Protocol.csproj" />
+    <ProjectReference Include="..\..\tools\Skizzy.SpecExport\Skizzy.SpecExport.csproj" />
   </ItemGroup>
 </Project>

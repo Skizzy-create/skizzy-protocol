@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:ksp.vessel.get@1",
+  "title": "ksp.vessel.get",
+  "description": "Reads one vessel. depth 0: summary (name, situation, speed, altitude, heading, throttle, parts, crew, controllable, BDArmory weapon manager / AI present); depth 1: + parts (handle, name, title, modules); depth 2: + module handles. Alias ksp.read. Use vessel:\"active\" for the vessel the player flies.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT",
+    "SPACECENTER",
+    "TRACKSTATION"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "ksp_read",
+  "input": {
+    "type": "object",
+    "properties": {
+      "vessel": {
+        "type": "string",
+        "description": "Vessel: a handle like \"v:3281937421\", an exact vessel name, or \"active\" for the vessel the player flies.",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256,
+        "default": "active"
+      },
+      "depth": {
+        "type": "integer",
+        "description": "0 summary, 1 parts, 2 parts and modules",
+        "minimum": 0,
+        "maximum": 2,
+        "default": 0
+      },
+      "maxParts": {
+        "type": "integer",
+        "description": "cap on listed parts",
+        "minimum": 1,
+        "maximum": 2000,
+        "default": 200
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "json",
+          "compact"
+        ],
+        "description": "\"compact\" = a few readable text lines (best for LLMs), \"json\" = structured",
+        "default": "json"
+      }
+    },
+    "additionalProperties": false
+  }
+}

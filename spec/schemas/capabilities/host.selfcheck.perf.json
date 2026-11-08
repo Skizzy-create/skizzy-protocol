@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:host.selfcheck.perf@1",
+  "title": "host.selfcheck.perf",
+  "description": "Runs a performance gate (02 §8.3) and reports measured numbers against the budget. gate=idle: per-frame host cost with this client connected and idle (budget < 0.1 ms) plus the last idle-probe result; gate=screenshot: N captures at 1024 px measuring main-thread ms (budget <= 3 ms async readback, <= 30 ms fallback) and Texture2D/RenderTexture counts before/after; gate=log: a synthetic log of `vessels` targets x 3 fields at 10 Hz measuring sampler ms per FixedUpdate (budget <= 0.2 ms). Long-running: returns an op.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "host_selfcheck_perf",
+  "input": {
+    "type": "object",
+    "properties": {
+      "gate": {
+        "type": "string",
+        "enum": [
+          "idle",
+          "screenshot",
+          "log",
+          "all"
+        ],
+        "description": "which gate",
+        "default": "all"
+      },
+      "durationS": {
+        "type": "number",
+        "description": "measurement window in seconds (idle, log)",
+        "minimum": 2,
+        "maximum": 900,
+        "default": 20
+      },
+      "captures": {
+        "type": "integer",
+        "description": "number of captures for the screenshot gate (100 for the leak check)",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 20
+      },
+      "vessels": {
+        "type": "integer",
+        "description": "log gate: number of vessel targets to sample (loaded vessels are repeated to reach it)",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 100
+      }
+    },
+    "additionalProperties": false
+  }
+}

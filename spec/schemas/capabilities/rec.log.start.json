@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:rec.log.start@1",
+  "title": "rec.log.start",
+  "description": "Starts logging fields to CSV or JSONL (12 §1.1) at a fixed rate or on change, from a ksp.query-style selector. Writes Skizzy/logs/<date>/<name>.<csv|jsonl> under the KSP folder with columns ut, frame, wallUtc, vessel, vesselName (+ part, module for perModule) and the fields. Returns {log, path, columns}. Stop with rec.log.stop.",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "rec_log_start",
+  "input": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "log name, used as the file name",
+        "pattern": "^[A-Za-z0-9_.-]{1,64}$"
+      },
+      "select": {
+        "type": "object",
+        "description": "Selector (04 §2): vessels, optional parts and modules.",
+        "properties": {
+          "vessels": {
+            "type": "object",
+            "description": "Which vessels. All conditions must match; omit to select every loaded vessel.",
+            "properties": {
+              "active": {
+                "type": "boolean",
+                "description": "only the active vessel"
+              },
+              "loaded": {
+                "type": "boolean",
+                "description": "only loaded vessels (true) or only unloaded ones (false)"
+              },
+              "handles": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "x-skz-handle": "vessel"
+                },
+                "description": "explicit vessel handles or names",
+                "maxItems": 1024
+              },
+              "nameLike": {
+                "type": "string",
+                "description": "glob on the vessel name, e.g. \"DDG*\"",
+                "maxLength": 256
+              },
+              "type": {
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "KSP vessel types, e.g. Ship, Plane, Probe"
+              },
+              "includeDebris": {
+                "type": "boolean",
+                "description": "include debris (excluded by default)",
+                "default": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "parts": {
+            "type": "object",
+            "description": "Which parts (only when modules or part fields are wanted).",
+            "properties": {
+              "nameLike": {
+                "type": "string",
+                "description": "glob on the part name (config name)",
+                "maxLength": 256
+              },
+              "titleLike": {
+                "type": "string",
+                "description": "glob on the part title",
+                "maxLength": 256
+              }
+            },
+            "additionalProperties": false
+          },
+          "modules": {
+            "type": "object",
+            "description": "Which part modules. Fields are then read from each module (Tier 0 KSPFields).",
+            "properties": {
+              "type": {
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "items": {
+                  "type": "string"
+                },
+                "description": "module class names, e.g. ModuleHullBreach, MissileFire"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "fields": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "description": "Fields to read. Vessel fields (altitude, srfSpeed, ctrlState.mainThrottle, ... see ksp.query description) or module KSPField names when modules are selected; prefix with \"vessel.\" to read a vessel field per module row.",
+        "minItems": 1,
+        "maxItems": 64
+      },
+      "rateHz": {
+        "type": "number",
+        "description": "samples per second of game time",
+        "minimum": 0.1,
+        "maximum": 50,
+        "default": 5
+      },
+      "onChange": {
+        "type": "object",
+        "description": "write a row only when a value changes by more than deadband (rateHz then caps the check rate)",
+        "properties": {
+          "deadband": {
+            "type": "number",
+            "description": "absolute change threshold for numbers",
+            "minimum": 0,
+            "default": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "csv",
+          "jsonl"
+        ],
+        "description": "file format",
+        "default": "csv"
+      },
+      "aggregate": {
+        "type": "string",
+        "enum": [
+          "perVessel",
+          "perPart",
+          "perModule"
+        ],
+        "description": "row granularity",
+        "default": "perVessel"
+      },
+      "reduce": {
+        "type": "string",
+        "enum": [
+          "first",
+          "sum",
+          "min",
+          "max",
+          "avg"
+        ],
+        "description": "perVessel reduction of several modules",
+        "default": "first"
+      },
+      "maxMB": {
+        "type": "number",
+        "description": "stop when the file reaches this size",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 200,
+        "x-skz-unit": "MB"
+      }
+    },
+    "required": [
+      "name",
+      "fields"
+    ],
+    "additionalProperties": false
+  }
+}

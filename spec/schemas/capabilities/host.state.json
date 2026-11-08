@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:host.state@1",
+  "title": "host.state",
+  "description": "Current game state: scene, paused, time scale, warp, active vessel handle and name, UT.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "any",
+  "x-skz-mcpTool": "host_state",
+  "input": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}

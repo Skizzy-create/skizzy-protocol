@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:ksp.mods.list@1",
+  "title": "ksp.mods.list",
+  "description": "Lists loaded mod assemblies (name, version, GameData folder, file) and GameData top-level folders.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "ksp_mods_list",
+  "input": {
+    "type": "object",
+    "properties": {
+      "nameLike": {
+        "type": "string",
+        "description": "glob on assembly or folder name",
+        "maxLength": 128
+      },
+      "limit": {
+        "type": "integer",
+        "description": "maximum rows to return",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 100
+      },
+      "cursor": {
+        "type": "string",
+        "description": "opaque cursor from a previous result's \"cursor\" to get the next page",
+        "maxLength": 64
+      }
+    },
+    "additionalProperties": false
+  }
+}

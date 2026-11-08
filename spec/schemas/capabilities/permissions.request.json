@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:permissions.request@1",
+  "title": "permissions.request",
+  "description": "Asks the human in game to grant a capability for this session. Your reason is shown labelled as AI-supplied text. Returns {status: granted|denied|timeout, scope}. Nothing over the wire can change permissions without the human.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "any",
+  "x-skz-mcpTool": "permissions_request",
+  "input": {
+    "type": "object",
+    "properties": {
+      "capability": {
+        "type": "string",
+        "description": "capability name",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "reason": {
+        "type": "string",
+        "description": "why you need it",
+        "maxLength": 300
+      }
+    },
+    "required": [
+      "capability"
+    ],
+    "additionalProperties": false
+  }
+}

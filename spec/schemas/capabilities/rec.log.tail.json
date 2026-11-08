@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:rec.log.tail@1",
+  "title": "rec.log.tail",
+  "description": "Returns the last n rows of a log (running or stopped) as compact text or JSON.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "any",
+  "x-skz-mcpTool": "rec_log_tail",
+  "input": {
+    "type": "object",
+    "properties": {
+      "log": {
+        "type": "string",
+        "description": "log id \"log:N\" or name",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "n": {
+        "type": "integer",
+        "description": "rows",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 20
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "json",
+          "compact"
+        ],
+        "description": "\"compact\" = a few readable text lines (best for LLMs), \"json\" = structured",
+        "default": "compact"
+      }
+    },
+    "required": [
+      "log"
+    ],
+    "additionalProperties": false
+  }
+}

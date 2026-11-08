@@ -1,0 +1,1670 @@
+{
+  "protocol": "skizzy-protocol",
+  "version": "1.0",
+  "capabilities": [
+    {
+      "name": "events.poll",
+      "version": 1,
+      "provider": "core",
+      "title": "events.poll",
+      "description": "Reads events from the host's ring buffer (8192 events) after `cursor`. Namespaces: vessel.*, sim.*, host.*, rec.*. Returns {events, nextCursor, resyncRequired}. Use nextCursor in the next call.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "core",
+      "mod": "Skizzy",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "integer",
+            "description": "return events with cursor > this; omit for the most recent `limit` events",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "description": "max events",
+            "minimum": 1,
+            "maximum": 256,
+            "default": 50
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "event name globs, e.g. [\"vessel.*\", \"sim.paused\"]",
+            "maxItems": 32
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "compact"
+            ],
+            "description": "\"compact\" = a few readable text lines (best for LLMs), \"json\" = structured",
+            "default": "json"
+          }
+        },
+        "additionalProperties": false
+      },
+      "x-skz-listShaped": true
+    },
+    {
+      "name": "events.wait",
+      "version": 1,
+      "provider": "core",
+      "title": "events.wait",
+      "description": "Long-poll: waits up to timeoutS for events after `cursor` that match `names`, then returns them (or an empty list on timeout). MCP has no server push, so agents call this to be woken by game events instead of polling.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "core",
+      "mod": "Skizzy",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "integer",
+            "description": "wait for events with cursor > this; omit to wait for new events from now",
+            "minimum": 0
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": "event name globs",
+            "maxItems": 32
+          },
+          "timeoutS": {
+            "type": "number",
+            "description": "seconds to wait",
+            "minimum": 0,
+            "maximum": 120,
+            "default": 20
+          },
+          "maxEvents": {
+            "type": "integer",
+            "description": "max events returned",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "compact"
+            ],
+            "description": "\"compact\" = a few readable text lines (best for LLMs), \"json\" = structured",
+            "default": "compact"
+          }
+        },
+        "additionalProperties": false
+      },
+      "x-skz-listShaped": true
+    },
+    {
+      "name": "host.debug.confirm_test",
+      "version": 1,
+      "provider": "host",
+      "title": "host.debug.confirm_test",
+      "description": "Does nothing, but is classified destructive so the user's 'ask' prompt can be tested end to end. Returns {confirmed:true} if approved.",
+      "safety": "destructive",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "host.debug",
+      "mod": "Skizzy",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "description": "shown in the prompt",
+            "maxLength": 200
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "host.debug.spike",
+      "version": 1,
+      "provider": "host",
+      "title": "host.debug.spike",
+      "description": "Runs one of the M0 spikes in the real game and returns measured results: jpg_thread (ImageConversion.EncodeArrayToJPG off the main thread), async_readback (AsyncGPUReadback support and cost on this graphics API), sync_context (UnitySynchronizationContext idle wake latency), nostdlib (assembly references and runtime), or all.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "host.debug",
+      "mod": "Skizzy",
+      "affinity": "main",
+      "longRunning": true,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "jpg_thread",
+              "async_readback",
+              "sync_context",
+              "nostdlib",
+              "all"
+            ],
+            "description": "which spike",
+            "default": "all"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "host.doctor",
+      "version": 1,
+      "provider": "host",
+      "title": "host.doctor",
+      "description": "The in-game half of `skizzy doctor`: versions, KSP build, KSPCommunityFixes MemoryLeaks setting, CommNet in the current game, other autopilots (AtmosphereAutopilot, MechJeb, kOS), KJR, PhysicsRangeExtender, Harmony and KSPBurst notes, with green/yellow/red lines.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "host",
+      "mod": "Skizzy",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "host.kill_switch",
+      "version": 1,
+      "provider": "host",
+      "title": "host.kill_switch",
+      "description": "Kill switch. action=engage: denies every non-read call from every client, cancels operations and pending confirmations, and shows a banner in game (M1 adds releasing all flight holds). action=release: only from the in-game banner or a human actor. action=status: returns the state. Always allowed to engage.",
+      "safety": "control",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "host",
+      "mod": "Skizzy",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "engage",
+              "release",
+              "status"
+            ],
+            "description": "engage, release or status",
+            "default": "status"
+          },
+          "reason": {
+            "type": "string",
+            "description": "shown in the banner and audit",
+            "maxLength": 200
+          }
+        },
+        "additionalProperties": false
+      },
+      "x-skz-killSwitchExempt": true
+    },
+    {
+      "name": "host.selfcheck",
+      "version": 1,
+      "provider": "host",
+      "title": "host.selfcheck",
+      "description": "Runs the host self-checks and returns pass/warn/fail lines: idle mode (UnitySynchronizationContext wake or polling), registered GameEvents per event, OnFlyByWire callbacks and Harmony patches by Skizzy (must be 0), dispatcher timing, heap slope, M0 spike results, assembly references, and optionally Unity texture/RenderTexture/Material/GameObject counts (textures:true; allocates once).",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "host",
+      "mod": "Skizzy",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "textures": {
+            "type": "boolean",
+            "description": "also count Unity textures and objects (slower, allocates once)",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "host.selfcheck.perf",
+      "version": 1,
+      "provider": "host",
+      "title": "host.selfcheck.perf",
+      "description": "Runs a performance gate (02 §8.3) and reports measured numbers against the budget. gate=idle: per-frame host cost with this client connected and idle (budget < 0.1 ms) plus the last idle-probe result; gate=screenshot: N captures at 1024 px measuring main-thread ms (budget <= 3 ms async readback, <= 30 ms fallback) and Texture2D/RenderTexture counts before/after; gate=log: a synthetic log of `vessels` targets x 3 fields at 10 Hz measuring sampler ms per FixedUpdate (budget <= 0.2 ms). Long-running: returns an op.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "host",
+      "mod": "Skizzy",
+      "affinity": "main",
+      "longRunning": true,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "gate": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "screenshot",
+              "log",
+              "all"
+            ],
+            "description": "which gate",
+            "default": "all"
+          },
+          "durationS": {
+            "type": "number",
+            "description": "measurement window in seconds (idle, log)",
+            "minimum": 2,
+            "maximum": 900,
+            "default": 20
+          },
+          "captures": {
+            "type": "integer",
+            "description": "number of captures for the screenshot gate (100 for the leak check)",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 20
+          },
+          "vessels": {
+            "type": "integer",
+            "description": "log gate: number of vessel targets to sample (loaded vessels are repeated to reach it)",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "host.sessions",
+      "version": 1,
+      "provider": "host",
+      "title": "host.sessions",
+      "description": "Connected sessions: actor (id, kind, role, side, precedence), client (name, kind, MCP client), age, calls, bytes in/out.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "host",
+      "mod": "Skizzy",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "host.state",
+      "version": 1,
+      "provider": "host",
+      "title": "host.state",
+      "description": "Current game state: scene, paused, time scale, warp, active vessel handle and name, UT.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "host",
+      "mod": "Skizzy",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "host.stats",
+      "version": 1,
+      "provider": "host",
+      "title": "host.stats",
+      "description": "Host performance and health: dispatcher budget and main-thread time (p50/p99), queue depth, sessions, frame time while active, GC collections, idle mode, screenshot and log sampler timings, auto-disabled capabilities, kill switch state.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "host",
+      "mod": "Skizzy",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ksp.camera.look_at",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.camera.look_at",
+      "description": "Frames an engagement: the camera sits behind `from` so that `to` is visible beyond it, updated every frame until another camera call.",
+      "safety": "control",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "ksp.camera",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "near vessel",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "to": {
+            "type": "string",
+            "description": "far vessel to keep in view",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "distance": {
+            "type": "number",
+            "description": "camera distance behind `from`, metres",
+            "minimum": 5,
+            "maximum": 20000,
+            "default": 60,
+            "x-skz-unit": "m"
+          },
+          "elevationDeg": {
+            "type": "number",
+            "description": "camera elevation",
+            "minimum": -30,
+            "maximum": 60,
+            "default": 10,
+            "x-skz-unit": "deg"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ksp.camera.orbit",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.camera.orbit",
+      "description": "Sets heading, pitch and distance of the camera around its target (clamped to KSP's limits).",
+      "safety": "control",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "ksp.camera",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "description": "Camera orbit around the target.",
+        "properties": {
+          "heading": {
+            "type": "number",
+            "description": "degrees, 0 = camera north of target looking south, 180 = astern for a north-bound vessel",
+            "minimum": -360,
+            "maximum": 360,
+            "x-skz-unit": "deg"
+          },
+          "pitch": {
+            "type": "number",
+            "description": "degrees above the horizon",
+            "minimum": -89,
+            "maximum": 89,
+            "x-skz-unit": "deg"
+          },
+          "distance": {
+            "type": "number",
+            "description": "metres from the target",
+            "minimum": 3,
+            "maximum": 150000,
+            "x-skz-unit": "m"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ksp.camera.save",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.camera.save",
+      "description": "Same capture as ksp.camera.screenshot, written to Skizzy/screenshots/<date>/<name>.<ext> under the KSP folder. Returns the path.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "ksp.camera",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "file name stem (letters, digits, - _ .); default is a timestamp",
+            "pattern": "^[A-Za-z0-9 _.-]{1,64}$"
+          },
+          "width": {
+            "type": "integer",
+            "description": "image width in pixels",
+            "minimum": 256,
+            "maximum": 1920,
+            "default": 1920
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "jpeg",
+              "png"
+            ],
+            "description": "image format",
+            "default": "png"
+          },
+          "quality": {
+            "type": "integer",
+            "description": "JPEG quality",
+            "minimum": 10,
+            "maximum": 95,
+            "default": 90
+          },
+          "hideUi": {
+            "type": "boolean",
+            "description": "hide the KSP UI for one frame",
+            "default": false
+          },
+          "target": {
+            "type": "string",
+            "description": "optional vessel to point the camera at first",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "follow",
+              "orbit",
+              "chase",
+              "free",
+              "auto",
+              "orbital",
+              "locked"
+            ],
+            "description": "optional camera mode"
+          },
+          "returnImage": {
+            "type": "boolean",
+            "description": "also return the image",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ksp.camera.screenshot",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.camera.screenshot",
+      "description": "Takes a screenshot of what the player sees and returns it as an image. Optionally targets a vessel and sets a camera mode and orbit first, in one call (e.g. chase view of DDG-1). Limited to 1 capture per 2 s per session. ~1024 px is enough for an LLM.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "ksp.camera",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "description": "image width in pixels",
+            "minimum": 256,
+            "maximum": 1920,
+            "default": 1024
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "jpeg",
+              "png"
+            ],
+            "description": "image format",
+            "default": "jpeg"
+          },
+          "quality": {
+            "type": "integer",
+            "description": "JPEG quality",
+            "minimum": 10,
+            "maximum": 95,
+            "default": 75
+          },
+          "hideUi": {
+            "type": "boolean",
+            "description": "hide the KSP UI for one frame",
+            "default": false
+          },
+          "target": {
+            "type": "string",
+            "description": "optional vessel to point the camera at first (does not change the active vessel)",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "follow",
+              "orbit",
+              "chase",
+              "free",
+              "auto",
+              "orbital",
+              "locked"
+            ],
+            "description": "optional camera mode to set first"
+          },
+          "orbit": {
+            "type": "object",
+            "description": "Camera orbit around the target.",
+            "properties": {
+              "heading": {
+                "type": "number",
+                "description": "degrees, 0 = camera north of target looking south, 180 = astern for a north-bound vessel",
+                "minimum": -360,
+                "maximum": 360,
+                "x-skz-unit": "deg"
+              },
+              "pitch": {
+                "type": "number",
+                "description": "degrees above the horizon",
+                "minimum": -89,
+                "maximum": 89,
+                "x-skz-unit": "deg"
+              },
+              "distance": {
+                "type": "number",
+                "description": "metres from the target",
+                "minimum": 3,
+                "maximum": 150000,
+                "x-skz-unit": "m"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ksp.camera.set_mode",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.camera.set_mode",
+      "description": "Sets the flight camera mode (13 §1.2): follow (auto mode on the target), orbit (heading/pitch/distance), chase (behind the velocity vector), free (stays in place), look_at (keeps `to` behind the target in view), locked. Never changes the active vessel.",
+      "safety": "control",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "ksp.camera",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "follow",
+              "orbit",
+              "chase",
+              "free",
+              "look_at",
+              "auto",
+              "orbital",
+              "locked"
+            ],
+            "description": "camera mode"
+          },
+          "target": {
+            "type": "string",
+            "description": "vessel to target first (default: current camera target)",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "to": {
+            "type": "string",
+            "description": "look_at: the vessel to keep in view beyond the target",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "orbit": {
+            "type": "object",
+            "description": "Camera orbit around the target.",
+            "properties": {
+              "heading": {
+                "type": "number",
+                "description": "degrees, 0 = camera north of target looking south, 180 = astern for a north-bound vessel",
+                "minimum": -360,
+                "maximum": 360,
+                "x-skz-unit": "deg"
+              },
+              "pitch": {
+                "type": "number",
+                "description": "degrees above the horizon",
+                "minimum": -89,
+                "maximum": 89,
+                "x-skz-unit": "deg"
+              },
+              "distance": {
+                "type": "number",
+                "description": "metres from the target",
+                "minimum": 3,
+                "maximum": 150000,
+                "x-skz-unit": "m"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ksp.camera.state",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.camera.state",
+      "description": "Current camera mode, target, heading, pitch, distance and whether look_at is active.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "ksp.camera",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ksp.camera.target",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.camera.target",
+      "description": "Points the camera at a vessel without changing the active vessel (leases and the human's controls are unaffected).",
+      "safety": "control",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "ksp.camera",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "vessel": {
+            "type": "string",
+            "description": "Vessel: a handle like \"v:3281937421\", an exact vessel name, or \"active\" for the vessel the player flies.",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "vessel"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ksp.log.tail",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.log.tail",
+      "description": "Returns the last lines of KSP.log (read from disk; the host never hooks Unity's log). Filter by level or substring.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "ksp.read",
+      "mod": "Squad",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "lines": {
+            "type": "integer",
+            "description": "lines to return",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "all",
+              "warning",
+              "error"
+            ],
+            "description": "minimum level",
+            "default": "all"
+          },
+          "contains": {
+            "type": "string",
+            "description": "only lines containing this text (case-insensitive)",
+            "maxLength": 200
+          }
+        },
+        "additionalProperties": false
+      },
+      "x-skz-listShaped": true
+    },
+    {
+      "name": "ksp.mods.list",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.mods.list",
+      "description": "Lists loaded mod assemblies (name, version, GameData folder, file) and GameData top-level folders.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "ksp.read",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nameLike": {
+            "type": "string",
+            "description": "glob on assembly or folder name",
+            "maxLength": 128
+          },
+          "limit": {
+            "type": "integer",
+            "description": "maximum rows to return",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100
+          },
+          "cursor": {
+            "type": "string",
+            "description": "opaque cursor from a previous result's \"cursor\" to get the next page",
+            "maxLength": 64
+          }
+        },
+        "additionalProperties": false
+      },
+      "x-skz-listShaped": true
+    },
+    {
+      "name": "ksp.module.describe",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.module.describe",
+      "description": "Describes a part module type (Tier 0): its KSPFields with JSON Schema types, ranges and units from the UI controls, whether each is shown in the part action window, plus events and actions. Give `type` (class name) or a `module` handle.",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT",
+        "EDITOR",
+        "SPACECENTER"
+      ],
+      "area": "ksp.read",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "module class name, e.g. MissileFire",
+            "maxLength": 128
+          },
+          "module": {
+            "type": "string",
+            "description": "module handle m:<partPid>:<index>:<Class>",
+            "x-skz-handle": "module",
+            "maxLength": 160
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ksp.module.get",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.module.get",
+      "description": "Reads field values of one part module by handle (m:<partPid>:<index>:<Class>, from ksp.vessel.get depth 2 or ksp.query).",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "ksp.read",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "module": {
+            "type": "string",
+            "description": "module handle",
+            "x-skz-handle": "module",
+            "minLength": 3,
+            "maxLength": 160
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "description": "field names; omit for all",
+            "maxItems": 128
+          }
+        },
+        "required": [
+          "module"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ksp.query",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.query",
+      "description": "Bulk read with one selector instead of many calls (04 §2): vessels (active, loaded, handles, nameLike, type), optional parts and modules (type), and the fields to read. Vessel fields: name, handle, type, situation, body, lat, lon, altitude, heightFromTerrain, srfSpeed, obtSpeed, verticalSpeed, horizontalSrfSpeed, heading, pitch, roll, course, mach, geeForce, dynamicPressurekPa, staticPressurekPa, atmDensity, externalTemperature, mass, missionTime, partCount, crewCount, currentStage, loaded, packed, landed, splashed, isActive, controllable, ctrlState.mainThrottle, ctrlState.pitch, ctrlState.yaw, ctrlState.roll, ctrlState.wheelThrottle, ctrlState.wheelSteer, actionGroups.sas, actionGroups.rcs, actionGroups.gear, actionGroups.brakes, actionGroups.lights. Module fields are the module's KSPField names (see ksp.module.describe). aggregate: perVessel (one row per vessel; module fields reduced with `reduce`), perModule or perPart.",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "ksp.read",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "select": {
+            "type": "object",
+            "description": "Selector (04 §2): vessels, optional parts and modules.",
+            "properties": {
+              "vessels": {
+                "type": "object",
+                "description": "Which vessels. All conditions must match; omit to select every loaded vessel.",
+                "properties": {
+                  "active": {
+                    "type": "boolean",
+                    "description": "only the active vessel"
+                  },
+                  "loaded": {
+                    "type": "boolean",
+                    "description": "only loaded vessels (true) or only unloaded ones (false)"
+                  },
+                  "handles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "x-skz-handle": "vessel"
+                    },
+                    "description": "explicit vessel handles or names",
+                    "maxItems": 1024
+                  },
+                  "nameLike": {
+                    "type": "string",
+                    "description": "glob on the vessel name, e.g. \"DDG*\"",
+                    "maxLength": 256
+                  },
+                  "type": {
+                    "type": [
+                      "string",
+                      "array"
+                    ],
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "KSP vessel types, e.g. Ship, Plane, Probe"
+                  },
+                  "includeDebris": {
+                    "type": "boolean",
+                    "description": "include debris (excluded by default)",
+                    "default": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "parts": {
+                "type": "object",
+                "description": "Which parts (only when modules or part fields are wanted).",
+                "properties": {
+                  "nameLike": {
+                    "type": "string",
+                    "description": "glob on the part name (config name)",
+                    "maxLength": 256
+                  },
+                  "titleLike": {
+                    "type": "string",
+                    "description": "glob on the part title",
+                    "maxLength": 256
+                  }
+                },
+                "additionalProperties": false
+              },
+              "modules": {
+                "type": "object",
+                "description": "Which part modules. Fields are then read from each module (Tier 0 KSPFields).",
+                "properties": {
+                  "type": {
+                    "type": [
+                      "string",
+                      "array"
+                    ],
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "module class names, e.g. ModuleHullBreach, MissileFire"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "description": "Fields to read. Vessel fields (altitude, srfSpeed, ctrlState.mainThrottle, ... see ksp.query description) or module KSPField names when modules are selected; prefix with \"vessel.\" to read a vessel field per module row.",
+            "minItems": 1,
+            "maxItems": 64
+          },
+          "aggregate": {
+            "type": "string",
+            "enum": [
+              "perVessel",
+              "perPart",
+              "perModule"
+            ],
+            "description": "row granularity",
+            "default": "perVessel"
+          },
+          "reduce": {
+            "type": "string",
+            "enum": [
+              "first",
+              "sum",
+              "min",
+              "max",
+              "avg"
+            ],
+            "description": "how perVessel combines several modules' numeric values",
+            "default": "first"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "maximum rows to return",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 50
+          },
+          "cursor": {
+            "type": "string",
+            "description": "opaque cursor from a previous result's \"cursor\" to get the next page",
+            "maxLength": 64
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "compact"
+            ],
+            "description": "\"compact\" = a few readable text lines (best for LLMs), \"json\" = structured",
+            "default": "json"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "additionalProperties": false
+      },
+      "x-skz-listShaped": true
+    },
+    {
+      "name": "ksp.vessel.get",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.vessel.get",
+      "description": "Reads one vessel. depth 0: summary (name, situation, speed, altitude, heading, throttle, parts, crew, controllable, BDArmory weapon manager / AI present); depth 1: + parts (handle, name, title, modules); depth 2: + module handles. Alias ksp.read. Use vessel:\"active\" for the vessel the player flies.",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT",
+        "SPACECENTER",
+        "TRACKSTATION"
+      ],
+      "area": "ksp.read",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "vessel": {
+            "type": "string",
+            "description": "Vessel: a handle like \"v:3281937421\", an exact vessel name, or \"active\" for the vessel the player flies.",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256,
+            "default": "active"
+          },
+          "depth": {
+            "type": "integer",
+            "description": "0 summary, 1 parts, 2 parts and modules",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 0
+          },
+          "maxParts": {
+            "type": "integer",
+            "description": "cap on listed parts",
+            "minimum": 1,
+            "maximum": 2000,
+            "default": 200
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "compact"
+            ],
+            "description": "\"compact\" = a few readable text lines (best for LLMs), \"json\" = structured",
+            "default": "json"
+          }
+        },
+        "additionalProperties": false
+      },
+      "aliases": [
+        "ksp.read"
+      ]
+    },
+    {
+      "name": "ksp.vessels.list",
+      "version": 1,
+      "provider": "ksp",
+      "title": "ksp.vessels.list",
+      "description": "Lists vessels with handle, name, type, situation, body, lat/lon/altitude, state (live, packed, unloaded), parts, crew, surface speed and whether it is the active vessel. Debris is excluded unless includeDebris. Paged: use `cursor`.",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT",
+        "SPACECENTER",
+        "TRACKSTATION"
+      ],
+      "area": "ksp.read",
+      "mod": "Squad",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "loaded": {
+            "type": "boolean",
+            "description": "only loaded (true) or only unloaded (false) vessels"
+          },
+          "nameLike": {
+            "type": "string",
+            "description": "glob on the name, e.g. \"DDG*\"",
+            "maxLength": 256
+          },
+          "type": {
+            "type": [
+              "string",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "vessel types, e.g. Ship, Plane"
+          },
+          "includeDebris": {
+            "type": "boolean",
+            "description": "include debris",
+            "default": false
+          },
+          "limit": {
+            "type": "integer",
+            "description": "maximum rows to return",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 50
+          },
+          "cursor": {
+            "type": "string",
+            "description": "opaque cursor from a previous result's \"cursor\" to get the next page",
+            "maxLength": 64
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "compact"
+            ],
+            "description": "\"compact\" = a few readable text lines (best for LLMs), \"json\" = structured",
+            "default": "json"
+          }
+        },
+        "additionalProperties": false
+      },
+      "x-skz-listShaped": true
+    },
+    {
+      "name": "permissions.get",
+      "version": 1,
+      "provider": "core",
+      "title": "permissions.get",
+      "description": "The effective permission decision for this session: for one capability (allow/ask/deny with the matched rule), or a summary of levels.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "core",
+      "mod": "Skizzy",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "description": "capability name",
+            "maxLength": 128
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "permissions.request",
+      "version": 1,
+      "provider": "core",
+      "title": "permissions.request",
+      "description": "Asks the human in game to grant a capability for this session. Your reason is shown labelled as AI-supplied text. Returns {status: granted|denied|timeout, scope}. Nothing over the wire can change permissions without the human.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "core",
+      "mod": "Skizzy",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "string",
+            "description": "capability name",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "reason": {
+            "type": "string",
+            "description": "why you need it",
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "capability"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "rec.get_file",
+      "version": 1,
+      "provider": "rec",
+      "title": "rec.get_file",
+      "description": "Reads a chunk (up to 1 MB) of a file under Skizzy/logs or Skizzy/screenshots, base64 encoded. Loop with offset until eof.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "rec",
+      "mod": "Skizzy",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "path relative to the KSP folder, e.g. Skizzy/logs/2026-11-08/climb.csv",
+            "minLength": 1,
+            "maxLength": 400
+          },
+          "offset": {
+            "type": "integer",
+            "description": "byte offset",
+            "minimum": 0,
+            "default": 0
+          },
+          "length": {
+            "type": "integer",
+            "description": "bytes to read",
+            "minimum": 1,
+            "maximum": 1048576,
+            "default": 1048576
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "rec.log.list",
+      "version": 1,
+      "provider": "rec",
+      "title": "rec.log.list",
+      "description": "Lists running and recently stopped logs with path, rate, rows, bytes and state.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "rec",
+      "mod": "Skizzy",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "x-skz-listShaped": true
+    },
+    {
+      "name": "rec.log.start",
+      "version": 1,
+      "provider": "rec",
+      "title": "rec.log.start",
+      "description": "Starts logging fields to CSV or JSONL (12 §1.1) at a fixed rate or on change, from a ksp.query-style selector. Writes Skizzy/logs/<date>/<name>.<csv|jsonl> under the KSP folder with columns ut, frame, wallUtc, vessel, vesselName (+ part, module for perModule) and the fields. Returns {log, path, columns}. Stop with rec.log.stop.",
+      "safety": "control",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "rec",
+      "mod": "Skizzy",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "log name, used as the file name",
+            "pattern": "^[A-Za-z0-9_.-]{1,64}$"
+          },
+          "select": {
+            "type": "object",
+            "description": "Selector (04 §2): vessels, optional parts and modules.",
+            "properties": {
+              "vessels": {
+                "type": "object",
+                "description": "Which vessels. All conditions must match; omit to select every loaded vessel.",
+                "properties": {
+                  "active": {
+                    "type": "boolean",
+                    "description": "only the active vessel"
+                  },
+                  "loaded": {
+                    "type": "boolean",
+                    "description": "only loaded vessels (true) or only unloaded ones (false)"
+                  },
+                  "handles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "x-skz-handle": "vessel"
+                    },
+                    "description": "explicit vessel handles or names",
+                    "maxItems": 1024
+                  },
+                  "nameLike": {
+                    "type": "string",
+                    "description": "glob on the vessel name, e.g. \"DDG*\"",
+                    "maxLength": 256
+                  },
+                  "type": {
+                    "type": [
+                      "string",
+                      "array"
+                    ],
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "KSP vessel types, e.g. Ship, Plane, Probe"
+                  },
+                  "includeDebris": {
+                    "type": "boolean",
+                    "description": "include debris (excluded by default)",
+                    "default": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "parts": {
+                "type": "object",
+                "description": "Which parts (only when modules or part fields are wanted).",
+                "properties": {
+                  "nameLike": {
+                    "type": "string",
+                    "description": "glob on the part name (config name)",
+                    "maxLength": 256
+                  },
+                  "titleLike": {
+                    "type": "string",
+                    "description": "glob on the part title",
+                    "maxLength": 256
+                  }
+                },
+                "additionalProperties": false
+              },
+              "modules": {
+                "type": "object",
+                "description": "Which part modules. Fields are then read from each module (Tier 0 KSPFields).",
+                "properties": {
+                  "type": {
+                    "type": [
+                      "string",
+                      "array"
+                    ],
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "module class names, e.g. ModuleHullBreach, MissileFire"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "description": "Fields to read. Vessel fields (altitude, srfSpeed, ctrlState.mainThrottle, ... see ksp.query description) or module KSPField names when modules are selected; prefix with \"vessel.\" to read a vessel field per module row.",
+            "minItems": 1,
+            "maxItems": 64
+          },
+          "rateHz": {
+            "type": "number",
+            "description": "samples per second of game time",
+            "minimum": 0.1,
+            "maximum": 50,
+            "default": 5
+          },
+          "onChange": {
+            "type": "object",
+            "description": "write a row only when a value changes by more than deadband (rateHz then caps the check rate)",
+            "properties": {
+              "deadband": {
+                "type": "number",
+                "description": "absolute change threshold for numbers",
+                "minimum": 0,
+                "default": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "csv",
+              "jsonl"
+            ],
+            "description": "file format",
+            "default": "csv"
+          },
+          "aggregate": {
+            "type": "string",
+            "enum": [
+              "perVessel",
+              "perPart",
+              "perModule"
+            ],
+            "description": "row granularity",
+            "default": "perVessel"
+          },
+          "reduce": {
+            "type": "string",
+            "enum": [
+              "first",
+              "sum",
+              "min",
+              "max",
+              "avg"
+            ],
+            "description": "perVessel reduction of several modules",
+            "default": "first"
+          },
+          "maxMB": {
+            "type": "number",
+            "description": "stop when the file reaches this size",
+            "minimum": 1,
+            "maximum": 10000,
+            "default": 200,
+            "x-skz-unit": "MB"
+          }
+        },
+        "required": [
+          "name",
+          "fields"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "rec.log.stop",
+      "version": 1,
+      "provider": "rec",
+      "title": "rec.log.stop",
+      "description": "Stops a log started with rec.log.start and closes its file. Returns the path, row count and bytes.",
+      "safety": "control",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "rec",
+      "mod": "Skizzy",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "log": {
+            "type": "string",
+            "description": "log id \"log:N\" or the log name",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "log"
+        ],
+        "additionalProperties": false
+      },
+      "x-skz-killSwitchExempt": true
+    },
+    {
+      "name": "rec.log.tail",
+      "version": 1,
+      "provider": "rec",
+      "title": "rec.log.tail",
+      "description": "Returns the last n rows of a log (running or stopped) as compact text or JSON.",
+      "safety": "read",
+      "scenes": [
+        "ANY"
+      ],
+      "area": "rec",
+      "mod": "Skizzy",
+      "affinity": "any",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "log": {
+            "type": "string",
+            "description": "log id \"log:N\" or name",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "n": {
+            "type": "integer",
+            "description": "rows",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 20
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "compact"
+            ],
+            "description": "\"compact\" = a few readable text lines (best for LLMs), \"json\" = structured",
+            "default": "compact"
+          }
+        },
+        "required": [
+          "log"
+        ],
+        "additionalProperties": false
+      },
+      "x-skz-listShaped": true
+    }
+  ]
+}

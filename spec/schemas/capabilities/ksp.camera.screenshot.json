@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:ksp.camera.screenshot@1",
+  "title": "ksp.camera.screenshot",
+  "description": "Takes a screenshot of what the player sees and returns it as an image. Optionally targets a vessel and sets a camera mode and orbit first, in one call (e.g. chase view of DDG-1). Limited to 1 capture per 2 s per session. ~1024 px is enough for an LLM.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "ksp_camera_screenshot",
+  "input": {
+    "type": "object",
+    "properties": {
+      "width": {
+        "type": "integer",
+        "description": "image width in pixels",
+        "minimum": 256,
+        "maximum": 1920,
+        "default": 1024
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "png"
+        ],
+        "description": "image format",
+        "default": "jpeg"
+      },
+      "quality": {
+        "type": "integer",
+        "description": "JPEG quality",
+        "minimum": 10,
+        "maximum": 95,
+        "default": 75
+      },
+      "hideUi": {
+        "type": "boolean",
+        "description": "hide the KSP UI for one frame",
+        "default": false
+      },
+      "target": {
+        "type": "string",
+        "description": "optional vessel to point the camera at first (does not change the active vessel)",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "follow",
+          "orbit",
+          "chase",
+          "free",
+          "auto",
+          "orbital",
+          "locked"
+        ],
+        "description": "optional camera mode to set first"
+      },
+      "orbit": {
+        "type": "object",
+        "description": "Camera orbit around the target.",
+        "properties": {
+          "heading": {
+            "type": "number",
+            "description": "degrees, 0 = camera north of target looking south, 180 = astern for a north-bound vessel",
+            "minimum": -360,
+            "maximum": 360,
+            "x-skz-unit": "deg"
+          },
+          "pitch": {
+            "type": "number",
+            "description": "degrees above the horizon",
+            "minimum": -89,
+            "maximum": 89,
+            "x-skz-unit": "deg"
+          },
+          "distance": {
+            "type": "number",
+            "description": "metres from the target",
+            "minimum": 3,
+            "maximum": 150000,
+            "x-skz-unit": "m"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  }
+}

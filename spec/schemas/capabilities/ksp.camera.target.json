@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:ksp.camera.target@1",
+  "title": "ksp.camera.target",
+  "description": "Points the camera at a vessel without changing the active vessel (leases and the human's controls are unaffected).",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "ksp_camera_target",
+  "input": {
+    "type": "object",
+    "properties": {
+      "vessel": {
+        "type": "string",
+        "description": "Vessel: a handle like \"v:3281937421\", an exact vessel name, or \"active\" for the vessel the player flies.",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      }
+    },
+    "required": [
+      "vessel"
+    ],
+    "additionalProperties": false
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:ksp.camera.look_at@1",
+  "title": "ksp.camera.look_at",
+  "description": "Frames an engagement: the camera sits behind `from` so that `to` is visible beyond it, updated every frame until another camera call.",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "ksp_camera_look_at",
+  "input": {
+    "type": "object",
+    "properties": {
+      "from": {
+        "type": "string",
+        "description": "near vessel",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "to": {
+        "type": "string",
+        "description": "far vessel to keep in view",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "distance": {
+        "type": "number",
+        "description": "camera distance behind `from`, metres",
+        "minimum": 5,
+        "maximum": 20000,
+        "default": 60,
+        "x-skz-unit": "m"
+      },
+      "elevationDeg": {
+        "type": "number",
+        "description": "camera elevation",
+        "minimum": -30,
+        "maximum": 60,
+        "default": 10,
+        "x-skz-unit": "deg"
+      }
+    },
+    "required": [
+      "from",
+      "to"
+    ],
+    "additionalProperties": false
+  }
+}

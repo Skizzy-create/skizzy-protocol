@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:host.kill_switch@1",
+  "title": "host.kill_switch",
+  "description": "Kill switch. action=engage: denies every non-read call from every client, cancels operations and pending confirmations, and shows a banner in game (M1 adds releasing all flight holds). action=release: only from the in-game banner or a human actor. action=status: returns the state. Always allowed to engage.",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "any",
+  "x-skz-mcpTool": "host_kill_switch",
+  "input": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "engage",
+          "release",
+          "status"
+        ],
+        "description": "engage, release or status",
+        "default": "status"
+      },
+      "reason": {
+        "type": "string",
+        "description": "shown in the banner and audit",
+        "maxLength": 200
+      }
+    },
+    "additionalProperties": false
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:ksp.module.describe@1",
+  "title": "ksp.module.describe",
+  "description": "Describes a part module type (Tier 0): its KSPFields with JSON Schema types, ranges and units from the UI controls, whether each is shown in the part action window, plus events and actions. Give `type` (class name) or a `module` handle.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT",
+    "EDITOR",
+    "SPACECENTER"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "ksp_module_describe",
+  "input": {
+    "type": "object",
+    "properties": {
+      "type": {
+        "type": "string",
+        "description": "module class name, e.g. MissileFire",
+        "maxLength": 128
+      },
+      "module": {
+        "type": "string",
+        "description": "module handle m:<partPid>:<index>:<Class>",
+        "x-skz-handle": "module",
+        "maxLength": 160
+      }
+    },
+    "additionalProperties": false
+  }
+}

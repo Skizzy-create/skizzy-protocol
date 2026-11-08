@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:rec.log.list@1",
+  "title": "rec.log.list",
+  "description": "Lists running and recently stopped logs with path, rate, rows, bytes and state.",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "ANY"
+  ],
+  "x-skz-affinity": "any",
+  "x-skz-mcpTool": "rec_log_list",
+  "input": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}
