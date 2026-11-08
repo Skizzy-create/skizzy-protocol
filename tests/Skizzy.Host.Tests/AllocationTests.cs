@@ -245,9 +245,12 @@ namespace Skizzy.Host.Tests
                 var ms = tag.Matches(text);
                 if (ms.Count == 0) continue;
                 Assert.True(text.IndexOf("using System.Linq", StringComparison.Ordinal) < 0, f + " has skizzy:hot paths and must not use LINQ (02 §2.3)");
-                foreach (Match m in ms) found.Add(m.Groups[1].Value);
+                // src/Skizzy.Host/Ksp is the Unity layer: it cannot run under .NET 10, so its hot paths are measured in game
+                // (host.stats timings, host.selfcheck.perf, idle probe) instead of by an allocation assert here.
+                bool unityLayer = f.Contains(Path.DirectorySeparatorChar + "Skizzy.Host" + Path.DirectorySeparatorChar + "Ksp" + Path.DirectorySeparatorChar);
+                foreach (Match m in ms) if (!unityLayer) found.Add(m.Groups[1].Value);
             }
-            var missing = found.Where(n => !covered.Contains(n) && !n.StartsWith("Ksp", StringComparison.Ordinal)).ToList();
+            var missing = found.Where(n => !covered.Contains(n)).ToList();
             Assert.True(missing.Count == 0, "hot tags without an allocation test: " + string.Join(", ", missing));
             Assert.True(found.Count >= covered.Count - 2);
         }

@@ -14,7 +14,7 @@
     <NoWarn>$(NoWarn);CS1591;NU1603</NoWarn>
     <Company>skizzy-protocol</Company>
     <Product>skizzy-protocol</Product>
-    <Copyright>MIT licence</Copyright>
+    <Copyright>Copyright 2026 Skizzy-create. Apache-2.0.</Copyright>
     <SkizzyVersion>0.1.0</SkizzyVersion>
     <Version>$(SkizzyVersion)</Version>
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
