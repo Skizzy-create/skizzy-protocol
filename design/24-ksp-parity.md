@@ -59,6 +59,28 @@ Phases group rows by what the KSP side needs, not by date. The milestone column 
   The mockup's v14 test scenario (3 carrier groups, 30 destroyers, 6 submarines, about 200 Blue units) is the reference load for v2 acceptance, not a requirement.
 - **Phase v3: new hooks.** Rows 11, 33, 34. Sub-launched SAM with data-link handover (OD2), link-loss coast and self-destruct (OD3), optional deep launch (OD4), and the carrier-landing `recover` adapter. Each needs new code in Overdrive or a new adapter; the hooks are proposed in `07-bdarmory-integration.md` §5.2.
 
+## 1.2 Releases
+
+**Rule (user, 2026-11-08).** Every release is a usable version. Phases map to major versions, and work inside a phase ships as minor and patch releases (semantic versioning).
+
+- **Major (`vN.0.0`)**: a phase's core is usable in the game. v1.0.0 = Phase v1 core, v2.0.0 = Phase v2 core, v3.0.0 = Phase v3 core.
+- **Minor (`vN.M.0`)**: one or more parity rows added inside the phase, each passing its in-game acceptance item.
+- **Patch (`vN.M.P`)**: fixes only, with no behaviour change beyond the fix.
+- **Pre-1.0 (`v0.x`)**: the M0 foundation (connect, read, camera, log) is released as v0.x so it can be tested in the game before orders exist.
+
+Proposed cut (to confirm once M0 lands):
+
+| Release | Contents | Usable for |
+|---|---|---|
+| v0.1.0 | M0: host, `skizzy` CLI and MCP bridge, reads, streams, camera, log v0, install scripts | Connect Claude Code to KSP, read vessels, take screenshots |
+| v1.0.0 | KSP plugin binding the Overdrive hooks plus the C2 orders engine: rows 3–10, 12–14, 17, 21–28 via MCP, plus an in-game toolbar (RTB selected / RTB all, fire authority) | Command a BDA battle from Claude Code or the toolbar |
+| v1.1.0 | Tactical map app (rows 1–2) | Watch and command from the map screen |
+| v1.2.0+ | Remaining v1 rows (15 friendly-fire attribution, 16 posture, 19 replay; 18 comms when M6 lands) | — |
+| v2.0.0 | Phase v2 core (scenario spawn from templates, magazine reads, submarines) | Large scenarios |
+| v3.0.0 | Phase v3 core (OD2/OD3 data link and self-destruct, `recover`) | Linked missiles, carrier recovery |
+
+Each release ships through `skizzy-ckan` with the matching BDArmory Overdrive version pinned. Every release needs a passing test-agent report (§3) and the user's approval before it is pushed.
+
 ## 2. Rules for builders
 
 - When a mockup behaviour has no KSP mechanism yet, add a row with "gap" and the proposed hook *before* building it in the mockup. Example: F6b came from the patrol request.
