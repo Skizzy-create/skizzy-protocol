@@ -81,8 +81,14 @@ public sealed class PlotRenderer : IDisposable
     /// </summary>
     public bool UseSprites { get; set; } = true;
 
-    /// <summary>Number of cached symbol sprites (diagnostics).</summary>
+    /// <summary>Number of cached symbol sprites, across every device scale (diagnostics).</summary>
     public int SpriteCount => _sprites.Count;
+
+    /// <summary>Pixel memory held by cached sprites, bytes (diagnostics). Bounded per device scale.</summary>
+    public long SpriteBytes => _sprites.Bytes;
+
+    /// <summary>Device scales with cached sprites (diagnostics): one per DPI the renderer has drawn at recently.</summary>
+    public int SpriteScales => _sprites.Scales;
 
     public Theme Theme => _theme;
 
@@ -108,6 +114,15 @@ public sealed class PlotRenderer : IDisposable
         canvas.ClipRect(_clip);
         _fill.Color = _theme.Sea;
         canvas.DrawRect(0, 0, vp.Width, vp.Height, _fill);
+        if (vp.Width <= 0 || vp.Height <= 0 || !(vp.Scale > 0) || !float.IsFinite(vp.Scale) ||
+            !float.IsFinite(vp.CenterX) || !float.IsFinite(vp.CenterY))
+        {
+            // a minimised window or a broken view: nothing to place (and the grid loop would never end at scale 0)
+            state.ItemCount = 0; state.SymbolBoxCount = 0; state.LabelBoxCount = 0;
+            canvas.Restore();
+            state.EndFrame();
+            return;
+        }
 
         if (opt.Zones) DrawZoneFills(canvas, scene, vp);
         if (opt.Grid) DrawGrid(canvas, vp);
@@ -147,12 +162,27 @@ public sealed class PlotRenderer : IDisposable
 
     // ---------------------------------------------------------------- background
 
+    private static ReadOnlySpan<int> NiceSteps => [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+
+    /// <summary>
+    /// The mockup's step choice (first of 1, 2, 5 … <paramref name="mockupLast"/> km that is at least
+    /// <paramref name="minPx"/> long, else <paramref name="mockupLast"/>), unchanged over the mockup's zoom range
+    /// (0.35–220 px/km). Only when even that fallback would be shorter than <paramref name="floorPx"/> (a whole-body
+    /// view, doc 11 §4.1) do the longer steps take over.
+    /// </summary>
+    internal static int NiceStep(float scale, float minPx, int mockupLast, float floorPx)
+    {
+        foreach (var v in NiceSteps) { if (v > mockupLast) break; if (v * scale >= minPx) return v; }
+        if (mockupLast * scale >= floorPx) return mockupLast;
+        foreach (var v in NiceSteps) if (v > mockupLast && v * scale >= minPx) return v;
+        return NiceSteps[^1];
+    }
+
     private void DrawGrid(SKCanvas c, in Viewport vp)
     {
-        ReadOnlySpan<int> steps = [1, 2, 5, 10, 20, 50, 100, 200];
-        int st = 200;
-        foreach (var v in steps) if (v * vp.Scale >= 80) { st = v; break; }
+        int st = NiceStep(vp.Scale, 80, 200, 40);
         float x0 = vp.ToWorldX(0), x1 = vp.ToWorldX(vp.Width), y0 = vp.ToWorldY(vp.Height), y1 = vp.ToWorldY(0);
+        if ((x1 - x0) / st > 400 || (y1 - y0) / st > 400) return; // beyond any real zoom: skip rather than draw thousands of lines
         _gridLo.Reset(); _gridHi.Reset();
         _ink.Color = _theme.TextFaint;
         float labelY = vp.Height - 48;
@@ -289,17 +319,23 @@ public sealed class PlotRenderer : IDisposable
         Array.Sort(st.SortKeys, st.Order, 0, n);
     }
 
+    /// <summary>
+    /// Range rings (design/23 §4.12). Walks every visible own ship, not only the on-screen ones: a selected ship just
+    /// off the edge keeps its 150 km radar ring and weapon rings where they cross the screen. Rings that miss the
+    /// screen cost nothing (the dasher rejects them).
+    /// </summary>
     private void DrawRings(SKCanvas c, PlotScene scene, in Viewport vp, RenderState st)
     {
         var tracks = scene.Tracks;
         _ringPrimary.Reset(); _ringSecondary.Reset(); _ringRadar.Reset();
         _stroke.StrokeWidth = _hair;
-        for (int i = 0; i < st.ItemCount; i++)
+        for (int i = 0; i < tracks.Count; i++)
         {
-            ref var it = ref st.Items[i];
-            var t = tracks[it.TrackIndex];
-            if (t.Rings is not { Length: > 0 } rings || t.Affiliation != Affiliation.Friend || t.Domain != TrackDomain.Surface) continue;
-            bool on = it.Selected;
+            var t = tracks[i];
+            if (t.Rings is not { Length: > 0 } rings || !t.Visible || t.Affiliation != Affiliation.Friend || t.Domain != TrackDomain.Surface) continue;
+            float sx = vp.ToScreenX(t.X), sy = vp.ToScreenY(t.Y);
+            if (!float.IsFinite(sx) || !float.IsFinite(sy)) continue;
+            bool on = t.Selected;
             int weapons = 0;
             foreach (var r in rings) if (!r.IsRadar) weapons++;
             int w = 0;
@@ -310,9 +346,9 @@ public sealed class PlotRenderer : IDisposable
                 {
                     // only the selected ship shows its radar ring and label
                     if (!on) continue;
-                    Dasher.Circle(_ringRadar, it.Sx, it.Sy, R, 1, 5, _clip);
+                    Dasher.Circle(_ringRadar, sx, sy, R, 1, 5, _clip);
                     _ink.Color = Theme.A(_theme.Friend, .7f);
-                    DrawText(c, r.Label, SlotSmall, it.Sx + 4, it.Sy - R - 4, _ink);
+                    DrawText(c, r.Label, SlotSmall, sx + 4, sy - R - 4, _ink);
                     continue;
                 }
                 // the outer weapon ring of a ship with several reads a little brighter (mockup: SM-2 .16/.5, ESSM .12/.4)
@@ -320,13 +356,14 @@ public sealed class PlotRenderer : IDisposable
                 w++;
                 if (on)
                 {
+                    if (!CircleCrossesClip(sx, sy, R)) continue;
                     _stroke.Color = Theme.A(_theme.Friend, primary ? .5f : .4f);
-                    c.DrawCircle(it.Sx, it.Sy, R, _stroke);
+                    c.DrawCircle(sx, sy, R, _stroke);
                     _ink.Color = Theme.A(_theme.Friend, .7f);
-                    if (primary) DrawText(c, r.Label, SlotSmall, it.Sx + R * .71f + 4, it.Sy - R * .71f, _ink);
-                    else DrawText(c, r.Label, SlotSmall, it.Sx + R * .71f + 4, it.Sy + R * .71f + 10, _ink);
+                    if (primary) DrawText(c, r.Label, SlotSmall, sx + R * .71f + 4, sy - R * .71f, _ink);
+                    else DrawText(c, r.Label, SlotSmall, sx + R * .71f + 4, sy + R * .71f + 10, _ink);
                 }
-                else Dasher.Circle(primary ? _ringPrimary : _ringSecondary, it.Sx, it.Sy, R, 2, 4, _clip);
+                else Dasher.Circle(primary ? _ringPrimary : _ringSecondary, sx, sy, R, 2, 4, _clip);
             }
         }
         _stroke.StrokeWidth = _hair;
@@ -384,6 +421,15 @@ public sealed class PlotRenderer : IDisposable
             if (!_trailOld[a].IsEmpty) { _stroke.Color = Theme.A(col, .12f); c.DrawPath(_trailOld[a], _stroke); }
             if (!_trailNew[a].IsEmpty) { _stroke.Color = Theme.A(col, .4f); c.DrawPath(_trailNew[a], _stroke); }
         }
+    }
+
+    /// <summary>True when a circle's outline passes through the (slightly grown) visible rectangle.</summary>
+    private bool CircleCrossesClip(float cx, float cy, float r)
+    {
+        float nx = Math.Clamp(cx, _clip.Left, _clip.Right) - cx, ny = Math.Clamp(cy, _clip.Top, _clip.Bottom) - cy;
+        float fx = MathF.Max(MathF.Abs(_clip.Left - cx), MathF.Abs(_clip.Right - cx));
+        float fy = MathF.Max(MathF.Abs(_clip.Top - cy), MathF.Abs(_clip.Bottom - cy));
+        return MathF.Sqrt(nx * nx + ny * ny) <= r + 2 && MathF.Sqrt(fx * fx + fy * fy) >= r - 2;
     }
 
     private static bool Near(float ax, float ay, float bx, float by)
@@ -815,9 +861,7 @@ public sealed class PlotRenderer : IDisposable
 
     private void DrawScale(SKCanvas c, in Viewport vp)
     {
-        ReadOnlySpan<int> steps = [1, 2, 5, 10, 20, 50, 100];
-        int km = 100;
-        foreach (var v in steps) if (v * vp.Scale >= 90) { km = v; break; }
+        int km = NiceStep(vp.Scale, 90, 100, 30);
         float px = km * vp.Scale, x = 14, y = vp.Height - 66;
         _stroke.Color = _theme.TextDim;
         _stroke.StrokeWidth = _hair;

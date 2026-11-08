@@ -96,9 +96,11 @@ internal static class LabelPlacer
     {
         bool missile = t.IsMissile;
         int key = AltKey(t, missile);
-        if (v.Label is not null && ReferenceEquals(v.LabelName, t.Name) && v.LabelAltKey == key && v.LabelIsMissile == missile)
+        // Compare names by value: a protocol adapter typically hands over a new but equal string every update, and a
+        // reference test would re-shape (and allocate) every label every frame.
+        if (v.Label is not null && v.LabelAltKey == key && v.LabelIsMissile == missile && string.Equals(v.LabelName, t.Name, StringComparison.Ordinal))
             return v.Label;
-        string alt = missile ? "" : AltText(t);
+        string alt = AltTextFromKey(key);
         string text = alt.Length == 0 ? t.Name : t.Name + "  " + alt;
         v.SetLabel(TextCache.Shape(text, font));
         v.LabelName = t.Name;
@@ -107,19 +109,30 @@ internal static class LabelPlacer
         return v.Label!;
     }
 
+    // Altitude key bands. The text is built from the key, so the cached label always matches what the key says.
+    private const int KeyNone = int.MinValue + 1, KeyKm = 1_000_000, KeyDepth = 2_000_000;
+
+    /// <summary>
+    /// The displayed altitude as one integer: metres under 1 km, tenths of a km above (as the mockup's
+    /// <c>toFixed(1)</c>), depth in metres for subsurface tracks, nothing for surface tracks and missiles.
+    /// Rounding is half away from zero, like JavaScript's for these positive values.
+    /// </summary>
     private static int AltKey(PlotTrack t, bool missile)
     {
-        if (missile) return int.MaxValue;
-        if (t.Domain == TrackDomain.Subsurface) return 2_000_000 + (int)MathF.Round(MathF.Abs(t.AltitudeM));
-        if (t.Domain == TrackDomain.Surface) return int.MinValue + 1;
-        return t.AltitudeM < 1000 ? (int)MathF.Round(t.AltitudeM) : 1_000_000 + (int)MathF.Round(t.AltitudeM / 100f);
+        if (missile || t.Domain == TrackDomain.Surface || !float.IsFinite(t.AltitudeM)) return KeyNone;
+        float alt = t.AltitudeM;
+        if (t.Domain == TrackDomain.Subsurface) return KeyDepth + (int)Math.Min(999_999f, MathF.Round(MathF.Abs(alt), MidpointRounding.AwayFromZero));
+        if (alt < 1000) return (int)Math.Max(-999_999f, MathF.Round(alt, MidpointRounding.AwayFromZero));
+        return KeyKm + (int)Math.Min(999_999f, MathF.Round(alt / 100f, MidpointRounding.AwayFromZero));
     }
 
-    internal static string AltText(PlotTrack t)
+    private static string AltTextFromKey(int key)
     {
-        if (t.Domain == TrackDomain.Subsurface) return "−" + MathF.Round(MathF.Abs(t.AltitudeM)).ToString(CultureInfo.InvariantCulture) + " m";
-        if (t.Domain == TrackDomain.Surface) return "";
-        if (t.AltitudeM < 1000) return MathF.Round(t.AltitudeM).ToString(CultureInfo.InvariantCulture) + " m";
-        return (t.AltitudeM / 1000f).ToString("0.0", CultureInfo.InvariantCulture) + "k";
+        if (key == KeyNone) return "";
+        if (key >= KeyDepth) return "−" + (key - KeyDepth).ToString(CultureInfo.InvariantCulture) + " m";
+        if (key >= KeyKm) return ((key - KeyKm) / 10.0).ToString("0.0", CultureInfo.InvariantCulture) + "k";
+        return key.ToString(CultureInfo.InvariantCulture) + " m";
     }
+
+    internal static string AltText(PlotTrack t) => AltTextFromKey(AltKey(t, t.IsMissile));
 }

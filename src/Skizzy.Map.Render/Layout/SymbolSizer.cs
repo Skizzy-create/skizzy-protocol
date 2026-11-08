@@ -86,7 +86,8 @@ internal static class SymbolSizer
             st.IndexById[t.Id] = i;
             if (!t.Visible) continue;
             float sx = vp.ToScreenX(t.X), sy = vp.ToScreenY(t.Y);
-            if (sx <= minX || sx >= maxX || sy <= minY || sy >= maxY) continue;
+            // written so a NaN position (bad data on the wire) is culled: it would otherwise index the grid at int.MinValue
+            if (!(sx > minX && sx < maxX && sy > minY && sy < maxY)) continue;
             ref var it = ref items[count++];
             it.TrackIndex = i;
             it.Id = t.Id;
@@ -174,13 +175,14 @@ internal static class SymbolSizer
             }
             s *= t.SizeMultiplier * (it.Selected ? SelectedFactor : 1f);
             s = MathF.Min(s, MaxSizePx);
+            if (!float.IsFinite(s)) s = MinSizePx; // NaN RCS or size override: still drawn, as a dot
 
             if (!st.Visuals.TryGetValue(t.Id, out var v))
             {
                 v = new TrackVisual();
                 st.Visuals[t.Id] = v;
             }
-            bool fresh = v.Size < 0 || v.LastFrame < frame - 1;
+            bool fresh = !(v.Size >= 0) || v.LastFrame < frame - 1;
             if (fresh || MathF.Abs(v.Size - s) > SnapDeltaPx) v.Size = s;
             else v.Size += (s - v.Size) * alpha;
             s = v.Size;
