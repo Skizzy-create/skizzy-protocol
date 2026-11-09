@@ -29,7 +29,10 @@ namespace Skizzy.C2
         Hold = 2,
     }
 
-    /// <summary>Mirrors <c>BDArmory.Control.OverrideLostReason</c> (F1); same numeric values.</summary>
+    /// <summary>
+    /// Mirrors <c>BDArmory.Control.OverrideLostReason</c> (F1); same numeric values. BDArmory only ever appends values;
+    /// the binding maps a value it does not know to <see cref="NotEngageable"/>.
+    /// </summary>
     public enum OverrideLostReason
     {
         None = 0,
@@ -39,6 +42,8 @@ namespace Skizzy.C2
         TargetDestroyed,
         NotEngageable,
         Filtered,
+        /// <summary>At a scan the target was no longer an enemy of the unit's team (a team change on either side).</summary>
+        NotHostile,
     }
 
     /// <summary>
@@ -187,8 +192,19 @@ namespace Skizzy.C2
         /// <summary>Stock weapon manager <c>guardMode</c>.</summary>
         void SetGuardMode(uint unit, bool on);
 
-        /// <summary>Weapon manager missile targeting (<c>targetMissiles</c>/interceptor setting) for row 12.</summary>
+        /// <summary>
+        /// Row 12: the unit's missile-engagement setting (BDA's weapon manager "Engage Missiles" toggle: the weapon
+        /// manager flag and every weapon's <c>engageMissile</c>). The binding captures the previous values before the
+        /// first change.
+        /// </summary>
         void SetEngageMissiles(uint unit, bool on);
+
+        /// <summary>
+        /// Row 12: puts the missile-engagement setting back to the values captured before the first
+        /// <see cref="SetEngageMissiles"/> (the engine calls this when it stops driving the setting, for example when the
+        /// unit is released or its side is no longer managed).
+        /// </summary>
+        void RestoreEngageMissiles(uint unit);
 
         /// <summary>
         /// Row 25: <c>true</c> raises <c>EngageableWeapon.engageRangeMax</c> of the unit's missile launchers to the

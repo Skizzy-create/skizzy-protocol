@@ -75,6 +75,7 @@ namespace Skizzy.C2
         private readonly List<GeoPoint> _ptScratch = new List<GeoPoint>();
         private readonly Dictionary<uint, int> _marshalSeq = new Dictionary<uint, int>();
 
+        private HookSet _hooks = HookSet.All;
         private int _nextOrderId = 1;
         private int _routeSerial;
         private double _now;
@@ -273,6 +274,12 @@ namespace Skizzy.C2
         /// <summary>Orders still executing (or with executing unit orders).</summary>
         public IList<Order> ActiveOrders => _active;
 
+        /// <summary>
+        /// Sees every report as it is emitted, without draining it (the in-game UIs, through <see cref="C2Runtime"/>, while
+        /// the host drains and publishes). Called synchronously inside engine calls: it must only record the report.
+        /// </summary>
+        public Action<C2Event> ReportObserver;
+
         /// <summary>Moves pending reports into <paramref name="into"/>.</summary>
         public void DrainEvents(List<C2Event> into)
         {
@@ -285,6 +292,58 @@ namespace Skizzy.C2
             SidePicture p;
             return side != null && _sides.TryGetValue(side, out p) ? p : null;
         }
+
+        /// <summary>
+        /// Adds a line per known unit (missiles only with <paramref name="missiles"/>), optionally of one side, in the
+        /// order the binding first reported them. Main thread; no per-unit allocation.
+        /// </summary>
+        public void ListUnits(List<UnitBrief> into, string side = null, bool missiles = false)
+        {
+            for (int i = 0; i < _unitList.Count; i++)
+            {
+                var r = _unitList[i];
+                if (r.S.IsMissile && !missiles) continue;
+                if (side != null && r.S.Side != side) continue;
+                ResolveDoctrine(r, false);
+                into.Add(new UnitBrief
+                {
+                    Id = r.Id,
+                    Name = r.Name,
+                    Side = r.S.Side,
+                    Class = r.S.Class,
+                    Group = r.S.Group,
+                    C2Group = r.Group,
+                    Alive = r.Alive,
+                    Present = r.Present,
+                    AiActive = r.S.AiActive,
+                    HasWeaponManager = r.S.HasWeaponManager,
+                    Landed = r.S.Landed,
+                    IsBase = r.S.IsBase,
+                    MissilesReady = r.S.MissilesReady,
+                    MissilesMax = r.S.MissilesMax,
+                    Task = TaskName(r),
+                    Order = OrderIdOf(r),
+                    WeaponsControl = r.Doc.WeaponsControl,
+                    FireAuthority = r.Have.Fire,
+                });
+            }
+        }
+
+        /// <summary>Adds every side (BDA team) the engine has seen, in first-seen order.</summary>
+        public void ListSides(List<string> into)
+        {
+            for (int i = 0; i < _sideList.Count; i++)
+                if (!string.IsNullOrEmpty(_sideList[i].Side)) into.Add(_sideList[i].Side);
+        }
+
+        /// <summary>The side-level doctrine in force (defaults overlaid with the side layer). A fresh copy.</summary>
+        public DoctrineValues SideDoctrine(string side)
+        {
+            return _doctrine.Resolve(side, null, 0);
+        }
+
+        /// <summary>Which Overdrive hooks the binding reports (the engine refuses orders that need missing ones).</summary>
+        public HookSet Hooks => _world.Hooks;
 
         public UnitView GetUnitView(uint unit)
         {
@@ -349,6 +408,7 @@ namespace Skizzy.C2
         public void Tick()
         {
             _now = _world.Now;
+            _hooks = _world.Hooks;
             if (!_ticked)
             {
                 _geo = new Geo(_world.BodyRadius);
@@ -417,9 +477,33 @@ namespace Skizzy.C2
                 r.Present = true;
                 if (s.Alive) r.LastSeenUt = _now;
                 else if (!r.Dead) MarkDead(r);
-                if (oldSide != s.Side) r.DocVersion = -1;
+                if (oldSide != s.Side)
+                {
+                    r.DocVersion = -1;
+                    if (oldSide != null && !r.Dead) SideChanged(r, oldSide);
+                }
                 if (s.Side != null) Side(s.Side);
             }
+        }
+
+        /// <summary>
+        /// A unit changed BDA team: its orders, hold and behaviours belong to the old side, so they end (reported), and
+        /// the old side's VIP flag goes. The new side commands it from scratch.
+        /// </summary>
+        private void SideChanged(UnitRec r, string oldSide)
+        {
+            string text = r.Name + ": changed team from " + oldSide + " to " + (r.S.Side ?? "none") + "; its orders ended.";
+            if (r.Engage != null) EndUnitOrder(r, r.Engage, OrderStatus.Cancelled, Reasons.TeamChanged, text, false);
+            if (r.Move != null) EndUnitOrder(r, r.Move, OrderStatus.Cancelled, Reasons.TeamChanged, text, false);
+            r.Hold = null;
+            r.Divert = 0;
+            r.SelfDef = 0;
+            r.Advance = 0;
+            r.VipThreat = 0;
+            r.Claim = 0;
+            SidePicture old;
+            if (_sides.TryGetValue(oldSide, out old)) old.Vips.Remove(r.Id);
+            Emit(C2EventKind.Info, "orders", oldSide, 0, r.Id, Reasons.TeamChanged, text);
         }
 
         private void ProcessHookEvents()
@@ -471,6 +555,8 @@ namespace Skizzy.C2
                                 r.BackoffUntil = _now + TargetLostS;
                                 break;
                             case OverrideLostReason.Filtered:
+                            case OverrideLostReason.NotHostile:
+                                // NotHostile: a team change on either side; the picture stops counting it as hostile
                                 r.BackoffTarget = lost;
                                 r.BackoffUntil = _now + NotEngageableBackoffS;
                                 break;
@@ -612,38 +698,50 @@ namespace Skizzy.C2
                 if (r.Alive && r.P != null && (r.Managed || r.Move != null || r.Engage != null || r.Hold != null)) r.P.Active = true;
             }
             int sides = _sideList.Count;
-            // own-sensor contacts per unit (F5), identification (row 24), holders (row 7): counted on the target record
+            int slices = ContactSlices < 1 ? 1 : ContactSlices;
+            // own-sensor contacts per unit (F5), identification (row 24), holders (row 7): time-sliced, counted on the
+            // target record incrementally (a unit's holds are removed and re-added only when its slice is due)
             for (int i = 0; i < _unitList.Count; i++)
             {
                 var r = _unitList[i];
-                r.Contacts.Clear();
-                if (!r.Alive || r.S.IsMissile || r.P == null) continue;
+                if (!r.Alive || r.S.IsMissile || r.P == null || !r.P.Active)
+                {
+                    if (r.ContribSide >= 0) Uncount(r);
+                    r.Contacts.Clear();
+                    r.ContactsDue = 0;
+                    continue;
+                }
                 var p = r.P;
-                if (!p.Active) continue;
-                _world.GetOwnContacts(r.Id, r.Contacts);
                 int si = p.Index;
+                if (r.ContribSide >= 0 && r.ContribSide != si) { Uncount(r); r.ContactsDue = 0; } // changed side
+                if (r.ContactsDue > _tickNo) continue;
+                int phase = (int)(r.Id % (uint)slices);
+                r.ContactsDue = _tickNo + 1 + ((phase - (_tickNo + 1) % slices) % slices + slices) % slices;
+                Uncount(r);
+                r.Contacts.Clear();
+                _world.GetOwnContacts(r.Id, r.Contacts);
                 double classRange = r.Doc.ClassificationRangeM(r.S.Class);
                 bool surveillance = UnitClasses.IsSurveillance(r.S.Class);
+                r.ContribSide = si;
+                r.ContribSurv = surveillance;
                 for (int c = 0; c < r.Contacts.Count; c++)
                 {
                     var t = Rec(r.Contacts[c]);
                     if (t == null || !t.Alive || t.P == null || !HostileSides(p, t.P)) continue;
-                    if (t.HeldTick == null || t.HeldTick.Length < sides)
+                    if (t.CountedBy == r.Id && t.CountedTick == _tickNo) continue; // reported twice (radar and IRST)
+                    t.CountedBy = r.Id;
+                    t.CountedTick = _tickNo;
+                    if (t.HeldN == null || t.HeldN.Length < sides)
                     {
-                        t.HeldTick = new int[sides];
-                        t.HeldN = new int[sides];
-                        t.HeldBy = new uint[sides];
-                        t.HeldSurv = new bool[sides];
-                    }
-                    if (t.HeldTick[si] != _tickNo)
-                    {
-                        t.HeldTick[si] = _tickNo;
-                        t.HeldN[si] = 0;
-                        t.HeldBy[si] = r.Id;
-                        t.HeldSurv[si] = false;
+                        int n = sides < 2 ? 2 : sides;
+                        Array.Resize(ref t.HeldN, n);
+                        Array.Resize(ref t.HeldSum, n);
+                        Array.Resize(ref t.HeldSurvN, n);
                     }
                     t.HeldN[si]++;
-                    if (surveillance) t.HeldSurv[si] = true;
+                    t.HeldSum[si] += r.Id;
+                    if (surveillance) t.HeldSurvN[si]++;
+                    r.Contrib.Add(t);
                     if (!t.S.IsMissile && classRange > 0 && !p.Identified.Contains(t.Id) && Dist(r, t) <= classRange)
                     {
                         p.Identified.Add(t.Id);
@@ -661,12 +759,12 @@ namespace Skizzy.C2
                 {
                     var t = _unitList[i];
                     if (!t.Alive || t.P == null || !HostileSides(p, t.P)) continue;
-                    bool held = t.HeldTick != null && t.HeldTick.Length > si && t.HeldTick[si] == _tickNo;
+                    bool held = t.HeldN != null && t.HeldN.Length > si && t.HeldN[si] > 0;
                     if (held)
                     {
                         p.Holders[t.Id] = t.HeldN[si];
-                        if (t.HeldN[si] == 1) p.SoleHolder[t.Id] = t.HeldBy[si];
-                        if (t.HeldSurv[si]) p.SurveillanceHeld.Add(t.Id);
+                        if (t.HeldN[si] == 1) p.SoleHolder[t.Id] = (uint)t.HeldSum[si];
+                        if (t.HeldSurvN[si] > 0) p.SurveillanceHeld.Add(t.Id);
                     }
                     else if (!_world.SideDetects(p.Side, t.Id)) continue;
                     p.InView.Add(t.Id);
@@ -686,6 +784,31 @@ namespace Skizzy.C2
                         "Own-sensor contact: " + h.Name + "'s own radar holds " + t.Name + " at " + Km(h, t) + " km. No other unit holds it.");
                 }
             }
+        }
+
+        /// <summary>
+        /// Own-sensor contacts are re-read for each unit every this many ticks, staggered by unit id (5 = every 1 s at
+        /// 5 Hz, the rate of BDArmory's own guard scan). 1 = every tick. The interim picture's main cost (M2 replaces it).
+        /// </summary>
+        public int ContactSlices = 5;
+
+        /// <summary>Removes what <paramref name="r"/> holds from its targets' holder counts.</summary>
+        private void Uncount(UnitRec r)
+        {
+            int si = r.ContribSide;
+            if (si >= 0)
+            {
+                for (int i = 0; i < r.Contrib.Count; i++)
+                {
+                    var t = r.Contrib[i];
+                    if (t.HeldN == null || t.HeldN.Length <= si) continue;
+                    t.HeldN[si]--;
+                    t.HeldSum[si] -= r.Id;
+                    if (r.ContribSurv) t.HeldSurvN[si]--;
+                }
+            }
+            r.Contrib.Clear();
+            r.ContribSide = -1;
         }
 
         private bool SideHasOrders(SidePicture p)
@@ -943,6 +1066,12 @@ namespace Skizzy.C2
         {
             var e = new C2Event { Ut = _now, Kind = kind, Category = category, Side = side, Order = order, Unit = unit, Code = code, Text = text };
             _events.Add(e);
+            var obs = ReportObserver;
+            if (obs != null)
+            {
+                try { obs(e); }
+                catch (Exception) { /* an observer must never break the engine */ }
+            }
             return e;
         }
 

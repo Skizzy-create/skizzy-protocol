@@ -108,8 +108,10 @@ namespace Skizzy.C2
         public bool HasSecondary;
         public readonly List<uint> Secondary = new List<uint>();
 
+        /// <summary>Nothing of the engine's is left on the unit (the missile-engagement setting included: it is restored, row 12).</summary>
         public bool IsStock =>
-            Fire == FireAuthorityMode.Free && !Filter && Override == 0 && Route == RouteKind.None && !Yield && Leash == 0 && !RangeMax && !HasSecondary;
+            Fire == FireAuthorityMode.Free && !Filter && Override == 0 && Route == RouteKind.None && !Yield && Leash == 0 && !RangeMax && !HasSecondary &&
+            !EngageMissilesKnown;
     }
 
     /// <summary>Everything the engine keeps about one unit.</summary>
@@ -170,11 +172,23 @@ namespace Skizzy.C2
         /// <summary>The unit's side picture (null without a side) and its position on the body sphere, refreshed each tick.</summary>
         public SidePicture P;
         public double X, Y, Z;
-        // per side index: own-sensor holders of this unit in the current tick (stamped, no per-contact dictionary work)
-        public int[] HeldTick;
+        // Own-sensor picture, time-sliced (C2Engine.ContactSlices): this unit's contacts are re-read every few ticks and
+        // what it holds is counted on the targets incrementally, so a tick only does the units whose slice is due.
+        /// <summary>Tick of the next own-contact refresh (0 = at the next tick).</summary>
+        public int ContactsDue;
+        /// <summary>Side index this unit's holds are counted under (-1 = none counted).</summary>
+        public int ContribSide = -1;
+        public bool ContribSurv;
+        /// <summary>The hostile contacts counted on their targets at the last refresh (records are never removed).</summary>
+        public readonly List<UnitRec> Contrib = new List<UnitRec>();
+        // on the target, per side index: units holding it on their own sensors, the sum of their ids (the holder when
+        // there is one) and how many are surveillance platforms
         public int[] HeldN;
-        public uint[] HeldBy;
-        public bool[] HeldSurv;
+        public ulong[] HeldSum;
+        public int[] HeldSurvN;
+        // duplicate guard while one holder refreshes (radar and IRST can both report a vessel)
+        public uint CountedBy;
+        public int CountedTick;
         // row 12 toggle, re-evaluated at the scan rate
         public bool MissilesOn;
         public bool MissilesKnown;

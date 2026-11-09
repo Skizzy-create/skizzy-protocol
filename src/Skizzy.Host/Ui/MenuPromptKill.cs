@@ -30,6 +30,8 @@ namespace Skizzy.Host.Ui
             Item(Ui.Picker, "Log... picker");
             Item(Ui.CameraWin, "Camera");
             Item(Ui.Health, "Health");
+            var c2 = Skizzy.C2.Toolbar.C2MenuEntry.Toggle; // the C2 window (Skizzy.C2.dll) registers itself in flight
+            if (c2 != null) UiKit.Choice(Skizzy.C2.Toolbar.C2MenuEntry.Open, Skizzy.C2.Toolbar.C2MenuEntry.Label, c2);
             Item(Ui.Wizard, "First-run wizard");
             GUILayout.Space(6);
             if (Ui.KillEngaged) UiKit.Btn("Release kill switch", Ui.ReleaseKill);

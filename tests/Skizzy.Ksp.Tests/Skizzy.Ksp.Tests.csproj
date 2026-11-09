@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Off-game tests for the in-game projects: the BDArmory binding logic (src/Skizzy.BDArmory/Core) and the C2 toolbar
+    model (src/Skizzy.C2.Ksp/Model). Their Unity-free sources are linked, not copied; KSP and BDArmory sit behind
+    the IBdaGame seam (FakeGame here).
+  -->
+  <PropertyGroup>
+    <RootNamespace>Skizzy.Ksp.Tests</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Skizzy.BDArmory\Core\**\*.cs" LinkBase="Bda" />
+    <Compile Include="..\..\src\Skizzy.C2.Ksp\Model\**\*.cs" LinkBase="Toolbar" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- MIT; reads refs/BDArmory.dll (when present) without loading it, to probe the real Overdrive build. -->
+    <PackageReference Include="System.Reflection.MetadataLoadContext" Version="9.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Skizzy.C2\Skizzy.C2.csproj" />
+    <ProjectReference Include="..\..\src\Skizzy.C2.Fake\Skizzy.C2.Fake.csproj" />
+  </ItemGroup>
+</Project>

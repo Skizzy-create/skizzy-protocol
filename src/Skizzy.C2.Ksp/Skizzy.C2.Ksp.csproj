@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- In-game build of src/Skizzy.C2 (same sources). net48, NoStdLib, KSP's Managed folder only (02 §1 build guard). -->
+  <!--
+    In-game build of src/Skizzy.C2 (same sources) plus the in-game C2 window (C2 command).
+    net48, NoStdLib, KSP's Managed folder only (02 §1 build guard).
+    Model/ is Unity-free (also linked into tests/Skizzy.Ksp.Tests); Ui/ is the IMGUI window and its flight addon.
+  -->
   <Import Project="..\..\build\KSP.props" />
+  <Import Project="..\..\build\KSP.Unity.props" />
   <PropertyGroup>
     <RootNamespace>Skizzy.C2</RootNamespace>
     <AssemblyName>Skizzy.C2</AssemblyName>
@@ -8,5 +13,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\Skizzy.C2\**\*.cs" Exclude="..\Skizzy.C2\obj\**;..\Skizzy.C2\bin\**" LinkBase="Shared" />
+    <Compile Include="Model\**\*.cs" />
+    <Compile Include="Ui\**\*.cs" />
   </ItemGroup>
 </Project>

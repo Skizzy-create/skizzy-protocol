@@ -215,9 +215,10 @@ namespace Skizzy.C2.Tests
             }
             E.DrainEvents(H.Events);
             double mean = sw.Elapsed.TotalMilliseconds / 300;
-            // engine time only (the fake world is excluded); generous bounds for CI machines
+            // includes the fake world's sensor queries (small); generous bounds for CI machines
             string phases = string.Join(" / ", E.PhaseMs.Select(x => (x / 300).ToString("0.000")));
-            // regression guard (Debug build, any CI machine); Release measures ~0.8 ms mean at this size
+            // regression guard (Debug build, any CI machine); Release measures ~0.25 ms mean at this size with the
+            // time-sliced own-contacts picture (ContactSlices 5), ~0.5 ms with ContactSlices 1
             Assert.True(mean < 8, "mean tick " + mean.ToString("0.00") + " ms, worst " + worst.ToString("0.00") + " ms; refresh/picture/step/apply/total " + phases);
             Assert.Contains(W.Shots, s => W.Get(s.Shooter).S.Side == Blue);
         }

@@ -96,8 +96,23 @@ namespace Skizzy.C2
             w.RangeMax = UnitClasses.IsShip(r.S.Class) && r.S.HasWeaponManager &&
                          ((r.Engage != null && r.Engage.RangeMax) || (p.Managed && r.Doc.Posture == Posture.Proactive));
 
+            // 7. hooks this BDArmory lacks: never want what cannot be applied (a stock BDA degrades to HOOK_MISSING
+            // refusals at issue and plain guard behaviour here, never to calls the binding cannot make)
+            if (_hooks != HookSet.All) MaskMissingHooks(w);
+
             // claims follow the assignment (WTA: one override per shooter)
             if (r.S.Side != null) SetClaim(r, w.Override);
+        }
+
+        private void MaskMissingHooks(Desired w)
+        {
+            var h = _hooks;
+            if ((h & HookSet.F1) == 0) { w.Override = 0; w.Sticky = false; w.Duration = 0; }
+            if ((h & HookSet.F2) == 0) { w.HasSecondary = false; w.Secondary.Clear(); }
+            if ((h & HookSet.F3) == 0) w.Fire = FireAuthorityMode.Free;
+            if ((h & HookSet.F4) == 0) { w.UseFilter = false; w.Allow.Clear(); }
+            if ((h & HookSet.F6) == 0 && w.Route == RouteKind.Waypoints) { w.Route = RouteKind.None; w.RouteId = 0; }
+            if ((h & HookSet.F6b) == 0) { w.Yield = false; w.Leash = 0; w.HasAnchor = false; }
         }
 
         private static bool IsShipMode(UnitOrder uo) { return uo.Type == OrderType.AttackNearest && uo.ShipToHome; }
@@ -861,7 +876,7 @@ namespace Skizzy.C2
         {
             var d = r.Doc;
             bool eligible = UnitClasses.IsAirCombat(r.S.Class) && _wc != WeaponsControl.Hold && (r.S.MissilesReady > 0 || r.S.HasGuns) &&
-                            (hasOrder || p.Managed) && d.SelfDefenceFighterKm > 0;
+                            (hasOrder || p.Managed) && d.SelfDefenceFighterKm > 0 && (_hooks & HookSet.F1) != 0;
             if (!eligible)
             {
                 r.SelfDef = 0;
@@ -907,7 +922,7 @@ namespace Skizzy.C2
             bool task = (r.Engage != null && r.Engage.Type == OrderType.Engage) ||
                         (r.Engage == null && r.Move != null && (r.Move.Type == OrderType.MoveTo || r.Move.Type == OrderType.MoveRoute));
             bool eligible = task && d.OnContact == OnContact.Engage && _wc != WeaponsControl.Hold && UnitClasses.IsAircraft(r.S.Class) &&
-                            r.S.HasWeaponManager && (r.S.MissilesReady > 0 || r.S.HasGuns);
+                            r.S.HasWeaponManager && (r.S.MissilesReady > 0 || r.S.HasGuns) && (_hooks & HookSet.F1) != 0;
             if (!eligible)
             {
                 r.Divert = 0;
@@ -955,7 +970,7 @@ namespace Skizzy.C2
             var d = r.Doc;
             bool idle = r.Move == null && r.Engage == null && (r.Hold == null || r.Hold.Kind == HoldKind.Point);
             bool eligible = p.Managed && p.Vips.Count > 0 && idle && UnitClasses.IsAirCombat(r.S.Class) && _wc != WeaponsControl.Hold &&
-                            r.S.HasWeaponManager && !IsWinchester(r);
+                            r.S.HasWeaponManager && !IsWinchester(r) && (_hooks & HookSet.F1) != 0;
             if (!eligible)
             {
                 r.VipThreat = 0;
@@ -1005,7 +1020,7 @@ namespace Skizzy.C2
         {
             var d = r.Doc;
             bool proactive = d.Posture == Posture.Proactive;
-            bool eligible = p.Managed && d.AdvanceOnContact && UnitClasses.IsAirCombat(r.S.Class) && !r.S.Landed && r.S.AiActive &&
+            bool eligible = p.Managed && d.AdvanceOnContact && UnitClasses.IsAirCombat(r.S.Class) && !r.S.Landed && r.S.AiActive && (_hooks & HookSet.F6) != 0 &&
                             _wc != WeaponsControl.Hold && r.Move == null && r.Engage == null && r.Hold == null && r.VipThreat == 0 &&
                             !IsWinchester(r) && (proactive ? p.Hostiles.Count > 0 : p.AnyIdentified);
             if (!eligible)
@@ -1053,7 +1068,7 @@ namespace Skizzy.C2
         {
             if (!UnitClasses.IsShip(r.S.Class)) return;
             r.VipThreat = 0;
-            if (!r.S.HasWeaponManager || !(p.Managed || hasOrder) || p.Vips.Count == 0 || _wc == WeaponsControl.Hold) return;
+            if (!r.S.HasWeaponManager || !(p.Managed || hasOrder) || p.Vips.Count == 0 || _wc == WeaponsControl.Hold || (_hooks & HookSet.F2) == 0) return;
             var w = r.Want;
             _ids2.Clear();
             for (int pass = 0; pass < 2; pass++)
