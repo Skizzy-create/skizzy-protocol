@@ -156,6 +156,94 @@ namespace Skizzy.C2.Tests
             Assert.Same(rt, rt.Console);
         }
 
+        /// <summary>The host's C2 slot as C2Host behaves: its own engine, ticks only once engaged, drains and publishes on its ticks.</summary>
+        private sealed class FakeHost : IC2EngineHost
+        {
+            public C2Engine Engine;
+            public bool Engaged;
+            public int HostTicks, Detaches;
+            public readonly List<C2Event> Published = new List<C2Event>();
+            public string Name => "host";
+            public bool Ticking => Engine != null && Engaged;
+            public C2Engine Attach(IC2World w, IBdaControl c) { Engine = new C2Engine(w, c); return Engine; }
+            public void Tick()
+            {
+                if (Engine == null) return;
+                Engine.Tick();
+                HostTicks++;
+                Engine.DrainEvents(Published);
+            }
+            public void Slot() { if (Ticking) Tick(); } // the 5 Hz FixedUpdate slot
+            public void Detach(string reason) { if (Engine == null) return; Engine.DrainEvents(Published); Engine = null; Detaches++; }
+        }
+
+        [Fact]
+        public void An_engine_attached_through_the_host_is_shared_and_the_host_publishes_every_report()
+        {
+            var rt = new C2Runtime();
+            var b = new FakeBinding();
+            var host = new FakeHost();
+            var f = b.World.Add("Cobra 1", Blue, UnitClass.Fighter, 0, 0);
+            var engine = host.Attach(b.World, b.Control);
+            rt.Adopt(b, engine, host);
+            Assert.Same(engine, rt.Engine);
+            Assert.Same(engine, b.Sink);
+            Assert.Equal(C2Runtime.ToolbarOwner, rt.Owner); // host slot idle
+            Assert.Contains("ticked by the toolbar", rt.Status);
+            Assert.False(rt.Commanded);
+
+            // toolbar ticks go through the host, which drains and publishes
+            Assert.True(rt.Tick(C2Runtime.ToolbarOwner));
+            Assert.Equal(1, host.HostTicks);
+            var seen = new List<C2Event>();
+            rt.Reported += e => seen.Add(e);
+            var res = rt.Issue(OrderRequest.MoveTo(Blue, b.World.At(30, 0), f.Id));
+            Assert.True(res.Accepted, res.Summary);
+            Assert.True(rt.Commanded);
+            Assert.Contains(seen, e => e.Kind == C2EventKind.OrderAccepted); // the toolbar saw it ...
+            Assert.DoesNotContain(host.Published, e => e.Kind == C2EventKind.OrderAccepted);
+            rt.Tick(C2Runtime.ToolbarOwner);
+            Assert.Contains(host.Published, e => e.Kind == C2EventKind.OrderAccepted); // ... and the host published it
+
+            // an AI client commands through c2.*: the host's slot takes over, the toolbar stops ticking
+            host.Engaged = true;
+            Assert.Equal("host", rt.Owner);
+            Assert.Contains("run by the host", rt.Status);
+            int ticks = host.HostTicks;
+            Assert.False(rt.Tick(C2Runtime.ToolbarOwner));
+            Assert.Equal(ticks, host.HostTicks);
+            host.Slot();
+            Assert.Equal(ticks + 1, host.HostTicks);
+            Assert.True(b.World.Calls.Count > 0);
+        }
+
+        [Fact]
+        public void Detach_with_a_host_engine_drops_it_at_the_host_and_restores_the_binding()
+        {
+            var rt = new C2Runtime();
+            var b = new FakeBinding();
+            var host = new FakeHost();
+            rt.Adopt(b, host.Attach(b.World, b.Control), host);
+            C2Engine changed = rt.Engine;
+            rt.EngineChanged += e => changed = e;
+            rt.Detach(b);
+            Assert.Null(changed);
+            Assert.Null(host.Engine);
+            Assert.Equal(1, host.Detaches);
+            Assert.Equal(1, b.ReleaseAllCalls);
+            Assert.Null(b.Sink);
+            rt.Detach(b); // the host's Detached event calling back: harmless
+            Assert.Equal(1, b.ReleaseAllCalls);
+            Assert.False(rt.Ready);
+
+            // the next flight scene: no host this time, the runtime's own engine
+            var b2 = new FakeBinding();
+            rt.Attach(b2);
+            Assert.Null(rt.Host);
+            Assert.Equal(C2Runtime.ToolbarOwner, rt.Owner);
+            Assert.True(rt.Tick(C2Runtime.ToolbarOwner));
+        }
+
         private sealed class ThrowingWorld : IC2World
         {
             public double Now => 1;

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace Skizzy.C2
 {
     /// <summary>
-    /// A game binding the runtime builds the engine on: <c>Skizzy.BDArmory</c>'s <c>BdaBinding</c> in KSP, fakes in tests.
+    /// A game binding the engine runs on: <c>Skizzy.BDArmory</c>'s <c>BdaBinding</c> in KSP, fakes in tests.
     /// </summary>
     public interface IC2Binding
     {
@@ -19,6 +19,25 @@ namespace Skizzy.C2
 
         /// <summary>One line for status displays (BDArmory version, hooks found).</summary>
         string Description { get; }
+    }
+
+    /// <summary>
+    /// An engine owner outside the runtime: the host's C2 slot (<c>Skizzy.Host.Core.C2Host</c>, 5 Hz from FixedUpdate,
+    /// reports published as order.*/log.* events). The BDArmory binding adapts it; tests fake it.
+    /// </summary>
+    public interface IC2EngineHost
+    {
+        /// <summary>Short name for status lines and <see cref="IC2Console.Owner"/> ("host").</summary>
+        string Name { get; }
+
+        /// <summary>The host's own 5 Hz slot is ticking the engine now (<c>C2Host.WantsTicks</c>: a c2.* call commanded something).</summary>
+        bool Ticking { get; }
+
+        /// <summary>One tick through the host: engine tick, then the host drains and publishes the reports (<c>C2Host.Tick()</c>).</summary>
+        void Tick();
+
+        /// <summary>The binding is going away: the host drops the engine (<c>C2Host.Detach</c>), if it still holds this one.</summary>
+        void Detach(string reason);
     }
 
     /// <summary>
@@ -37,7 +56,7 @@ namespace Skizzy.C2
 
         HookSet Hooks { get; }
 
-        /// <summary>Who calls Tick: <see cref="C2Runtime.ToolbarOwner"/> or the owner that claimed it (the host).</summary>
+        /// <summary>Who ticks the engine now: the host's name while its 5 Hz slot runs, else <see cref="C2Runtime.ToolbarOwner"/> (or a claimant).</summary>
         string Owner { get; }
 
         /// <summary>Incremented whenever reports arrive or the engine changes (cheap UI refresh test).</summary>
@@ -74,18 +93,22 @@ namespace Skizzy.C2
     }
 
     /// <summary>
-    /// The one C2 engine in the game and who drives it: the v1.0.0 handover point between the in-game C2 toolbar and
-    /// the host (M0). Unity-free, main thread only.
+    /// The one C2 engine in the game and who drives it: the v1.0.0 handover point between the in-game C2 toolbar, the
+    /// host (M0) and the BDArmory binding. Unity-free, main thread only.
     /// <list type="bullet">
-    /// <item>The game binding calls <see cref="Attach"/> when a flight scene with BDArmory starts and <see cref="Detach"/>
-    /// when it ends. Attach builds a new <see cref="C2Engine"/> on the binding; Detach drops it and the binding restores
-    /// every hook setting it changed. Orders do not survive a scene change.</item>
-    /// <item>Exactly one owner calls <see cref="Tick"/> at 5 Hz. By default that is the C2 toolbar
-    /// (<see cref="ToolbarOwner"/>), so the toolbar works with no host and no AI client. The host takes over with
-    /// <see cref="Claim"/> (the toolbar stops ticking on the next frame) and gives it back with <see cref="Unclaim"/>.</item>
-    /// <item>Every report the engine emits is drained here, kept in a short ring for UIs and raised on
-    /// <see cref="Reported"/>; the owner publishes them (order.* events) from that event and never calls
-    /// <see cref="C2Engine.DrainEvents"/> itself.</item>
+    /// <item><b>With the host running</b> (the normal install), the binding attaches the engine through the host
+    /// (<c>SkizzyBootstrap.CurrentHost.C2.Attach(world, control, "bdarmory")</c>, M0's wiring) and hands it here with
+    /// <see cref="Adopt"/>. The host owns it: c2.* capabilities, the 5 Hz C2 slot once a c2.* call commanded something,
+    /// order.*/log.* publication, kill switch, scene change. While the host's slot is idle (no AI client has commanded
+    /// anything yet) toolbar orders still run: the toolbar ticks the engine at 5 Hz <i>through the host</i>
+    /// (<see cref="IC2EngineHost.Tick"/>), so the host still publishes every report. When the host drops the engine
+    /// (scene change, replaced) the binding calls <see cref="Detach"/>.</item>
+    /// <item><b>Without the host</b> (not installed, or it failed to start), the binding calls <see cref="Attach"/> and the
+    /// runtime builds its own engine; the toolbar ticks it at 5 Hz. Another owner can take ticking with <see cref="Claim"/>.</item>
+    /// <item>Reports reach UIs through <see cref="C2Engine.ReportObserver"/> without draining (the host drains); they are
+    /// kept in a short ring and raised on <see cref="Reported"/> after the call or tick that produced them.</item>
+    /// <item>Ticking costs nothing until something is commanded: the toolbar ticks only while its window is open or
+    /// after a console call changed something (<see cref="Commanded"/>), like the host's own rule.</item>
     /// </list>
     /// </summary>
     public sealed class C2Runtime : IC2Console
@@ -101,9 +124,13 @@ namespace Skizzy.C2
 
         private IC2Binding _binding;
         private C2Engine _engine;
+        private IC2EngineHost _host;
         private IC2Console _console;
         private string _owner = ToolbarOwner;
         private readonly List<C2Event> _drain = new List<C2Event>();
+        private readonly List<C2Event> _pending = new List<C2Event>();
+        private readonly List<C2Event> _deliver = new List<C2Event>();
+        private readonly Action<C2Event> _observe;
         private readonly C2Event[] _ring = new C2Event[ReportRing];
         private int _ringNext, _ringCount;
         private int _serial;
@@ -111,24 +138,27 @@ namespace Skizzy.C2
         private string _fault;
 
         /// <summary>A fresh runtime (tests; the game uses <see cref="Current"/>).</summary>
-        public C2Runtime() { }
+        public C2Runtime() { _observe = e => _pending.Add(e); }
 
-        /// <summary>Raised after an engine is built (argument) or dropped (null). The host re-wires its c2.* handlers here.</summary>
+        /// <summary>Raised after an engine is attached or adopted (argument) or dropped (null).</summary>
         public event Action<C2Engine> EngineChanged;
 
-        /// <summary>Raised for every report, in order, right after the tick or call that produced it.</summary>
+        /// <summary>Raised for every report, in order, after the call or tick that produced it.</summary>
         public event Action<C2Event> Reported;
 
         /// <summary>Where the runtime logs its own faults (the KSP side sets it to Debug.LogError).</summary>
         public Action<string> LogError;
 
-        /// <summary>Applied to every engine the runtime builds (the host sets profiling, tunables, groups).</summary>
+        /// <summary>Applied to every engine the runtime builds itself (not to an adopted one: the host configures that).</summary>
         public Action<C2Engine> ConfigureEngine;
 
         public IC2Binding Binding => _binding;
 
-        /// <summary>The engine instance (null without a binding). The owner may call its API directly, but ticks through <see cref="Tick"/>.</summary>
+        /// <summary>The engine instance (null without a binding).</summary>
         public C2Engine Engine => _engine;
+
+        /// <summary>The host that owns the engine (null: the runtime's own engine).</summary>
+        public IC2EngineHost Host => _host;
 
         /// <summary>What UIs talk to: the host's interposed console, or the runtime itself.</summary>
         public IC2Console Console => _console ?? this;
@@ -139,42 +169,77 @@ namespace Skizzy.C2
         /// <summary>Set when the engine threw <see cref="FaultLimit"/> ticks in a row; ticking stops until the next attach.</summary>
         public string Fault => _fault;
 
+        /// <summary>A console call changed something since the engine was attached: the toolbar keeps ticking.</summary>
+        public bool Commanded { get; private set; }
+
         // ------------------------------------------------------------------ binding side
 
         /// <summary>
-        /// A binding is ready (flight scene start): builds a new engine on it and connects the binding's hook events.
-        /// A previous binding is detached first.
+        /// No host: builds the runtime's own engine on <paramref name="binding"/> and connects the binding's hook
+        /// events to it. A previous binding is detached first.
         /// </summary>
         public C2Engine Attach(IC2Binding binding)
         {
             if (binding == null) throw new ArgumentNullException(nameof(binding));
-            if (_binding != null) Detach(_binding);
             var engine = new C2Engine(binding.World, binding.Control);
             try { ConfigureEngine?.Invoke(engine); }
             catch (Exception e) { Log("C2 runtime: ConfigureEngine threw: " + e.Message); }
-            _binding = binding;
-            _engine = engine;
-            _faults = 0;
-            _fault = null;
-            binding.Connect(engine);
-            _serial++;
-            RaiseEngineChanged(engine);
+            Install(binding, engine, null);
             return engine;
         }
 
         /// <summary>
-        /// The binding is going away (scene end): stops event forwarding, drains the last reports, drops the engine and
-        /// has the binding restore every hook setting it changed. A binding that is not attached is ignored.
+        /// The host built <paramref name="engine"/> on <paramref name="binding"/> (<c>C2Host.Attach</c>): the runtime
+        /// connects the binding's hook events to it and gives UIs access; <paramref name="host"/> keeps owning it.
+        /// </summary>
+        public void Adopt(IC2Binding binding, C2Engine engine, IC2EngineHost host)
+        {
+            if (binding == null) throw new ArgumentNullException(nameof(binding));
+            if (engine == null) throw new ArgumentNullException(nameof(engine));
+            if (host == null) throw new ArgumentNullException(nameof(host));
+            Install(binding, engine, host);
+        }
+
+        private void Install(IC2Binding binding, C2Engine engine, IC2EngineHost host)
+        {
+            if (_binding != null) Detach(_binding);
+            _binding = binding;
+            _engine = engine;
+            _host = host;
+            _faults = 0;
+            _fault = null;
+            Commanded = false;
+            _pending.Clear();
+            engine.ReportObserver = _observe;
+            binding.Connect(engine);
+            _serial++;
+            RaiseEngineChanged(engine);
+        }
+
+        /// <summary>
+        /// The binding is going away (scene end), or the host dropped the engine: stops event forwarding, has the host
+        /// drop the engine (if it still holds it), delivers the last reports and has the binding restore every setting
+        /// it changed. A binding that is not attached is ignored, so a second call is harmless.
         /// </summary>
         public void Detach(IC2Binding binding)
         {
             if (binding == null || !ReferenceEquals(binding, _binding)) return;
             var engine = _engine;
-            try { binding.Connect(null); }
-            catch (Exception e) { Log("C2 runtime: binding.Connect(null) threw: " + e.Message); }
-            if (engine != null) Flush(engine);
+            var host = _host;
             _engine = null;
             _binding = null;
+            _host = null;
+            Commanded = false;
+            try { binding.Connect(null); }
+            catch (Exception e) { Log("C2 runtime: binding.Connect(null) threw: " + e.Message); }
+            if (host != null)
+            {
+                try { host.Detach("binding_detached"); }
+                catch (Exception e) { Log("C2 runtime: host detach threw: " + e.Message); }
+            }
+            else if (engine != null) DrainOwn(engine);
+            if (engine != null) engine.ReportObserver = null;
+            Deliver();
             try { binding.ReleaseAll(); }
             catch (Exception e) { Log("C2 runtime: binding.ReleaseAll threw: " + e.Message); }
             _serial++;
@@ -183,11 +248,12 @@ namespace Skizzy.C2
 
         // ------------------------------------------------------------------ ownership
 
-        public string Owner => _owner;
+        /// <summary>Who ticks now: the host's name while its slot runs, else the toolbar or the claimant.</summary>
+        public string Owner => _host != null ? (_host.Ticking ? _host.Name : ToolbarOwner) : _owner;
 
         /// <summary>
-        /// <paramref name="owner"/> (the host) takes over ticking. The previous owner's <see cref="Tick"/> calls become
-        /// no-ops. Returns false for a null or empty owner.
+        /// Runtime's own engine only: <paramref name="owner"/> takes over ticking. The previous owner's
+        /// <see cref="Tick"/> calls become no-ops. Returns false for a null or empty owner.
         /// </summary>
         public bool Claim(string owner)
         {
@@ -206,32 +272,38 @@ namespace Skizzy.C2
         }
 
         /// <summary>
-        /// One C2 tick, if <paramref name="caller"/> is the owner and an engine exists: <see cref="C2Engine.Tick"/>, then
-        /// the reports. Returns whether the engine ticked. An engine exception is logged and reported; after
-        /// <see cref="FaultLimit"/> in a row ticking stops (see <see cref="Fault"/>).
+        /// One C2 tick if <paramref name="caller"/> owns ticking now (see <see cref="Owner"/>): through the host when it
+        /// owns the engine, else on the runtime's own engine. Delivers pending reports either way. Returns whether a
+        /// tick ran. An exception is logged; after <see cref="FaultLimit"/> in a row ticking stops (see <see cref="Fault"/>).
         /// </summary>
         public bool Tick(string caller)
         {
             var engine = _engine;
-            if (engine == null || caller != _owner || _fault != null) return false;
-            try
+            bool ran = false;
+            if (engine != null && _fault == null && caller == Owner && (_host == null || !_host.Ticking))
             {
-                engine.Tick();
-                _faults = 0;
-            }
-            catch (Exception e)
-            {
-                _faults++;
-                Log("C2 engine tick threw (" + _faults + " in a row): " + e);
-                if (_faults >= FaultLimit)
+                ran = true;
+                try
                 {
-                    _fault = e.GetType().Name + ": " + e.Message;
-                    Log("C2 engine stopped after " + FaultLimit + " failed ticks: " + _fault);
+                    if (_host != null) _host.Tick(); // the host ticks, drains and publishes
+                    else engine.Tick();
+                    _faults = 0;
                 }
-                _serial++;
+                catch (Exception e)
+                {
+                    _faults++;
+                    Log("C2 engine tick threw (" + _faults + " in a row): " + e);
+                    if (_faults >= FaultLimit)
+                    {
+                        _fault = e.GetType().Name + ": " + e.Message;
+                        Log("C2 engine stopped after " + FaultLimit + " failed ticks: " + _fault);
+                    }
+                    _serial++;
+                }
+                if (_host == null) DrainOwn(engine);
             }
-            Flush(engine);
-            return true;
+            Deliver();
+            return ran;
         }
 
         // ------------------------------------------------------------------ IC2Console
@@ -244,8 +316,10 @@ namespace Skizzy.C2
             {
                 if (_engine == null) return "No C2 engine: needs a flight scene with BDArmory and the Skizzy BDArmory binding.";
                 if (_fault != null) return "C2 engine stopped: " + _fault;
-                return (_owner == ToolbarOwner ? "C2 engine run by the toolbar" : "C2 engine run by " + _owner) +
-                       (_binding != null && _binding.Description != null ? "; " + _binding.Description : "");
+                string who;
+                if (_host != null) who = _host.Ticking ? "C2 engine run by the " + _host.Name : "C2 engine of the " + _host.Name + ", ticked by the toolbar";
+                else who = _owner == ToolbarOwner ? "C2 engine run by the toolbar" : "C2 engine run by " + _owner;
+                return who + (_binding != null && _binding.Description != null ? "; " + _binding.Description : "");
             }
         }
 
@@ -271,7 +345,8 @@ namespace Skizzy.C2
                 return res;
             }
             var r = engine.Issue(request);
-            Flush(engine);
+            if (r.Accepted) Commanded = true;
+            After(engine);
             return r;
         }
 
@@ -280,7 +355,8 @@ namespace Skizzy.C2
             var engine = _engine;
             if (engine == null) return false;
             bool ok = engine.Cancel(orderId, by);
-            Flush(engine);
+            if (ok) Commanded = true;
+            After(engine);
             return ok;
         }
 
@@ -289,7 +365,8 @@ namespace Skizzy.C2
             var engine = _engine;
             if (engine == null) return false;
             bool ok = engine.Release(unit, by);
-            Flush(engine);
+            if (ok) Commanded = true;
+            After(engine);
             return ok;
         }
 
@@ -298,7 +375,8 @@ namespace Skizzy.C2
             var engine = _engine;
             if (engine == null) return new List<string> { Status };
             var errors = engine.SetDoctrine(level, target, values);
-            Flush(engine);
+            if (errors == null || errors.Count == 0) Commanded = true;
+            After(engine);
             return errors;
         }
 
@@ -307,7 +385,8 @@ namespace Skizzy.C2
             var engine = _engine;
             if (engine == null) return;
             engine.UnsetDoctrine(level, target, keys);
-            Flush(engine);
+            Commanded = true;
+            After(engine);
         }
 
         public DoctrineValues SideDoctrine(string side) { return _engine?.SideDoctrine(side); }
@@ -321,6 +400,7 @@ namespace Skizzy.C2
             var engine = _engine;
             if (engine == null || side == null) return;
             engine.SetSideManaged(side, managed);
+            Commanded = true;
             _serial++;
         }
 
@@ -333,15 +413,30 @@ namespace Skizzy.C2
 
         // ------------------------------------------------------------------ internals
 
-        private void Flush(C2Engine engine)
+        private void After(C2Engine engine)
+        {
+            if (_host == null) DrainOwn(engine); // a host engine is drained by the host when it publishes
+            Deliver();
+        }
+
+        /// <summary>Own engine: nobody else drains it; the reports were already seen through the observer.</summary>
+        private void DrainOwn(C2Engine engine)
         {
             _drain.Clear();
             engine.DrainEvents(_drain);
-            if (_drain.Count == 0) return;
+            _drain.Clear();
+        }
+
+        private void Deliver()
+        {
+            if (_pending.Count == 0) return;
+            _deliver.Clear();
+            _deliver.AddRange(_pending);
+            _pending.Clear();
             _serial++;
-            for (int i = 0; i < _drain.Count; i++)
+            for (int i = 0; i < _deliver.Count; i++)
             {
-                var e = _drain[i];
+                var e = _deliver[i];
                 _ring[_ringNext] = e;
                 _ringNext = (_ringNext + 1) % ReportRing;
                 if (_ringCount < ReportRing) _ringCount++;
@@ -350,7 +445,7 @@ namespace Skizzy.C2
                 try { h(e); }
                 catch (Exception ex) { Log("C2 runtime: a Reported handler threw: " + ex.Message); }
             }
-            _drain.Clear();
+            _deliver.Clear();
         }
 
         private void RaiseEngineChanged(C2Engine engine)

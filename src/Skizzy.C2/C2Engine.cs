@@ -274,6 +274,12 @@ namespace Skizzy.C2
         /// <summary>Orders still executing (or with executing unit orders).</summary>
         public IList<Order> ActiveOrders => _active;
 
+        /// <summary>
+        /// Sees every report as it is emitted, without draining it (the in-game UIs, through <see cref="C2Runtime"/>, while
+        /// the host drains and publishes). Called synchronously inside engine calls: it must only record the report.
+        /// </summary>
+        public Action<C2Event> ReportObserver;
+
         /// <summary>Moves pending reports into <paramref name="into"/>.</summary>
         public void DrainEvents(List<C2Event> into)
         {
@@ -1023,6 +1029,12 @@ namespace Skizzy.C2
         {
             var e = new C2Event { Ut = _now, Kind = kind, Category = category, Side = side, Order = order, Unit = unit, Code = code, Text = text };
             _events.Add(e);
+            var obs = ReportObserver;
+            if (obs != null)
+            {
+                try { obs(e); }
+                catch (Exception) { /* an observer must never break the engine */ }
+            }
             return e;
         }
 
