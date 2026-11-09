@@ -5,6 +5,9 @@ using KSP.UI.Screens;
 using Skizzy.C2.Toolbar;
 using UnityEngine;
 
+// Skizzy.BDArmory declares KSPAssemblyDependency("Skizzy.C2", 0, 1): KSP only loads it when this is present.
+[assembly: KSPAssembly("Skizzy.C2", 0, 1)]
+
 namespace Skizzy.C2.Ui
 {
     /// <summary>

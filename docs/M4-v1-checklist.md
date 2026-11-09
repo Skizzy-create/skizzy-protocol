@@ -5,8 +5,8 @@ Scope: `24-ksp-parity.md` rows 3–10, 12–14, 17 and 21–28, engine side (`sr
 ## 0. Prerequisites
 
 1. **BDArmory with the Overdrive hooks.** Branch `overdrive-hooks` at commit `9fac1f3bc` or later. `host.status` (or the runtime probe) reports F1, F2, F3, F4, F5, F6, F6b, F9 and F10 as present. If a hook is missing, orders that need it are refused with `HOOK_MISSING`. That is correct behaviour, not a failure.
-2. **The KSP binding.** It implements `IC2World`, `IBdaControl` and `IHookEvents` (`src/Skizzy.C2/Hooks.cs`) over BDArmory. It subscribes to the F1, F6, F6b, F9 and F10 static events and forwards them to `C2Engine`.
-3. **M0 wiring.**
+2. **The KSP binding** (`src/Skizzy.BDArmory`, `Skizzy.BDArmory.dll`). It implements `IC2World`, `IBdaControl` and the hook events (`src/Skizzy.C2/Hooks.cs`) over BDArmory, subscribes to the F1, F6, F6b, F9 and F10 static events and forwards them to `C2Engine`. Section B below tests it.
+3. **M0 wiring** (on main since `a7773ce`).
    - `C2Engine.Tick()` runs from the C2 slot of the host's FixedUpdate at 5 Hz.
    - The protocol methods map onto the engine API:
 
@@ -41,6 +41,111 @@ Scope: `24-ksp-parity.md` rows 3–10, 12–14, 17 and 21–28, engine side (`sr
    - secondary targets
 
    The BDA weapon manager window shows the live target and guard state.
+
+## A. Handover: one C2 engine, three users
+
+`C2Runtime` (`src/Skizzy.C2/C2Runtime.cs`) is the handover point between the BDArmory binding, the host (M0) and the C2 window.
+
+- **Host running** (normal install). In each flight scene the binding attaches through the host, `SkizzyBootstrap.CurrentHost.C2.Attach(world, control, "bdarmory")`, and hands the engine to `C2Runtime.Current.Adopt(binding, engine, hostSlot)`. The host owns the engine: c2.* capabilities, the 5 Hz C2 slot once a c2.* call has commanded something, order.*/log.* publication, the kill switch and the scene-change detach. While the host's slot is idle, the C2 window's orders still run, because the window ticks the engine at 5 Hz *through* `C2Host.Tick()`, so the host still publishes every report. When the host drops the engine (scene change, replaced), the binding restores every hook setting.
+- **No host** (not installed, or failed to start). The binding calls `C2Runtime.Current.Attach(binding)`. The runtime builds its own engine and the C2 window ticks it.
+- **UIs** use `C2Runtime.Current.Console` (`IC2Console`) only. The host may interpose its own console with `SetConsole`, for example to audit window orders. Reports reach UIs through `C2Engine.ReportObserver` without draining; the host keeps draining and publishing.
+- **Cost rule.** The window ticks only while it is open, or after it has commanded something.
+
+## B. The BDArmory binding and the C2 window
+
+Install the package (`scripts/package.ps1`; it needs `refs/BDArmory.dll` from `scripts/copy-refs.ps1`) by copying `artifacts/GameData/SkizzyProtocol` into GameData. Do this by hand; no script installs it.
+
+The binding classifies by name tag first. Name the test craft with a tag where the AI type alone cannot tell the class:
+
+| Class | Tags |
+|---|---|
+| Carrier | `[CV]`, `[CVN]`, `[CARRIER]` |
+| Airfield | `[AF]`, `[BASE]`, `[AIRFIELD]` |
+| AEW | `[AEW]`, `[AWACS]` |
+| Drone | `[UAV]`, `[UCAV]`, `[DRONE]` |
+| Bomber | `[BMR]`, `[BOMBER]` |
+| Fighter | `[FTR]`, `[FIGHTER]` |
+| Ship | `[DD]`, `[FF]`, `[CG]`, `[SHIP]` |
+| Submarine | `[SS]`, `[SSN]`, `[SUB]` |
+| Ground | `[GND]` |
+
+For the test scene use `Kestrel [CV]`, `Eye [AEW]`, `Raider 1 [BMR]` and `Raider 2 [BMR]`. Without a tag the rules are:
+
+- pilot AI: a drone when uncrewed and under 2 t, an AEW when unarmed with a radar, otherwise a fighter;
+- surface AI: a submarine or ground unit by movement type;
+- a carrier when it has catapult, arrestor, hangar or elevator parts, or "carrier" in its name;
+- otherwise a ship.
+
+The callsign group is the name without its trailing number, so "Cobra 1" to "Cobra 4" form the group "Cobra".
+
+1. **Attach.**
+   - KSP.log shows `[Skizzy.BDArmory] C2 binding attached (host engine): BDArmory <version>, all Overdrive hooks`.
+   - host.log shows `c2: engine attached (bdarmory)`.
+   - `host.status` shows C2 as attached and idle.
+
+   **Pass:** both lines are present and there are no exceptions.
+2. **Stock BDArmory.** Swap in a stock BDArmory DLL (keep a backup) and repeat.
+   - The log says `no Overdrive hooks (stock BDArmory)`.
+   - An engage via `c2.order.issue`, or Attack nearest in the window, is refused with `HOOK_MISSING` for each unit.
+   - A ship's move_to still drives it (stock fly-to).
+
+   **Pass:** refusals only. KSP.log has no `MissingMethodException`, `TypeLoadException` or `[Skizzy.BDArmory] ... failed` lines.
+3. **Window and unit list.**
+   - Open the Skizzy toolbar menu: it has a **C2 command** item. There is no second toolbar button.
+   - Open the item. The status line reads `C2 engine of the host, ticked by the toolbar`.
+   - The units of the active vessel's side are listed with the right classes (FTR, UAV, AEW, CV, SHIP...).
+   - Switch to Cobra 2: Cobra 1 to Cobra 4 become selected.
+   - Shift-click a Wasp row: the Wasp group is added.
+
+   **Pass:** classes and groups are right, and switching vessels moves the selection.
+4. **Window orders, no AI client connected.**
+   - Attack nearest for the Cobras: each weapon manager shows a target and the row reads `attack nearest`. host.log has `order.accepted` (the host publishes reports even though the window ticks).
+   - RTB all: the first click shows `Confirm RTB all`. A second click within 3 s sends the aircraft home. Wait 4 s between the clicks and the first click expires.
+   - RTB & land with an AI-off unit selected: that unit's refusal shows on its own line.
+   - Weapons Hold on the Cobras: they keep tracking but do not fire (`Wpn Autofire False (Weapons hold)` with DEBUG_WEAPONS). Free brings it back.
+   - Advance on, then off.
+   - All attack needs two clicks.
+
+   **Pass:** every button acts, and refusals are shown per unit.
+5. **Host takeover.** Connect an AI client and issue any c2.* command.
+   - The window's status changes to `C2 engine run by the host`.
+   - Window orders keep working.
+   - `host.stats` shows c2 ticks at 5 per second, not 10.
+
+   **Pass:** one ticker at a time.
+6. **Primary weapon manager change.** Give Cobra 1 two weapon managers and an engage order. Destroy or decouple the part with the primary one.
+
+   **Pass:**
+   - Within 0.2 s the new primary has the external target and the fire authority.
+   - The old weapon manager, if it survives on debris, is back to Free with no assignment.
+   - KSP.log has no errors.
+7. **Unresolvable target.** Engage a Red unit, then take it out of physics range (Vessel Mover, or fly it away).
+
+   **Pass:** the order reports the loss (`not engageable` / back-off, then retarget or fail with a reason). Nothing throws.
+8. **Restore on release.** On a managed side (Advance on), note Cobra 1's weapon manager "Engage Missiles" toggle and engage ranges. Give it an engage order and weapons Hold. Then click Release.
+
+   **Pass:** the weapon manager is back to Free with no external target. "Engage Missiles" and each missile's engage range are back to the noted values.
+9. **Restore across scenes.** With orders active (missile setting changed), go to the Space Center and back, or revert.
+
+   **Pass:**
+   - KSP.log shows `the host dropped the C2 engine (scene_change); hook settings restored`.
+   - The reloaded craft show their original "Engage Missiles" and ranges.
+   - In the next flight the binding attaches again.
+10. **Unload and reload.** Fly an ordered unit beyond physics range and back.
+
+    **Pass:** the settings are re-applied on reload, with no errors. The persistent fields were restored while the unit was on rails.
+11. **Team change.** Switch an ordered Cobra to Red in its weapon manager.
+
+    **Pass:**
+    - Its orders end with "changed team".
+    - It never fires at its former side because of a Skizzy assignment.
+    - The window lists it under Red.
+12. **Kill switch.** Engage the host kill switch while window orders run.
+
+    **Pass:** orders are cancelled, units return to the BDArmory AI and the weapon managers are back to Free.
+13. **Cost.** In a 100+ unit battle with the window open, check `host.stats` c2 `tickMs`.
+
+    **Pass:** p50 is under 1 ms on Mono. Note the value for M2.
 
 Every step that issues an order must produce an `order.accepted` or `order.refused` report naming each unit. Every accepted order must end with `achieved`, `failed`, `cancelled` or `superseded` and a reason (row 17). Check this on every row.
 
@@ -292,4 +397,9 @@ Run in one call: `move_to` with a destroyed unit, a Red unit, an unknown id, an 
 - **Carrier landing (row 11)** is out of scope. RTB ends at the marshal stack. `landGapS` (5 s) and `deckTurnaroundS` (90 s) are stored doctrine values for the future `recover` adapter.
 - **Surface AI fly-to** behaviour near the point needs a spike (row 3, step 4).
 - **Hunt and self-defence use sticky F1 by default**, deviating from the "non-sticky" wording in rows 23 and 26. A non-sticky assignment outside the missile envelope is dropped at BDA's next scan. Set `huntSticky` / `selfDefenceSticky` to false to get the literal behaviour.
-- **Tick cost:** about 0.8 ms per C2 tick (Release, .NET) at 148 loaded units in a two-sided furball, against the 0.2 ms C2 budget in `02` §2.2. Most of it is the interim own-contacts picture, which the M2 TPE replaces. Measure in game with `C2Engine.Profile`.
+- **Tick cost.** The C2 budget in `02` §2.2 is 0.2 ms per tick. Measured at 148 loaded units in a two-sided furball (Release, CoreCLR, FakeBda world):
+  - about 0.24 ms mean and 0.18 ms p50 for the engine, with the own-contacts picture time-sliced (`ContactSlices` 5: each unit's contacts are re-read once a second, staggered);
+  - about 0.5 ms with every unit read every tick.
+
+  The remaining cost is mostly the interim picture, which the M2 TPE replaces. Mono in KSP is slower: measure in game with `C2Engine.Profile` and `host.stats`. The binding's own scan of the loaded vessels comes on top.
+- **Quicksave during an engagement.** The binding puts persistent fields ("Engage Missiles", engage range) back when a vessel goes on rails and on a scene switch. KSP has no pre-save event, so an F5 quicksave in flight can store the engine's values. They are restored when the vessel next loads under the binding.
