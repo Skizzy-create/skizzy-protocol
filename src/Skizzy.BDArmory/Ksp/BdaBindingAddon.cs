@@ -14,8 +14,10 @@ namespace Skizzy.Bda.Ksp
 {
     /// <summary>
     /// Flight-scene owner of the BDArmory binding: probes the hooks, builds the binding, subscribes to BDArmory's and
-    /// KSP's events, and attaches it to <see cref="C2Runtime.Current"/> (which builds the C2 engine). Detaches, and so
-    /// restores every setting, when a scene switch is requested and again when the scene object is destroyed.
+    /// KSP's events, and attaches the C2 engine: through the host when it runs (<c>C2Host.Attach</c>, then
+    /// <see cref="C2Runtime.Adopt"/>), else <see cref="C2Runtime.Attach"/> (the runtime's own engine, ticked by the C2
+    /// toolbar). Detaches, and so restores every setting, when a scene switch is requested, when the host drops the
+    /// engine, and again when the scene object is destroyed. A new flight scene re-attaches (new addon instance).
     /// KSP skips this assembly entirely when BDArmory is not installed (KSPAssemblyDependency).
     /// </summary>
     [KSPAddon(KSPAddon.Startup.Flight, false)]
@@ -45,8 +47,21 @@ namespace Skizzy.Bda.Ksp
                 Subscribe();
                 var rt = C2Runtime.Current;
                 if (rt.LogError == null) rt.LogError = Debug.LogError;
-                rt.Attach(_binding);
-                Debug.Log("[Skizzy.BDArmory] C2 binding attached: " + _binding.Description);
+                // One engine: the host's when it runs (c2.* capabilities, 5 Hz slot, order.* events), else the runtime's own.
+                IC2EngineHost host = null;
+                C2Engine engine = null;
+                if (HostBridge.HostLoaded())
+                {
+                    try { host = HostBridge.TryAttach(_binding, OnHostDetached, out engine); }
+                    catch (Exception e)
+                    {
+                        Debug.LogError("[Skizzy.BDArmory] attaching through the host failed, using the C2 toolbar's own engine: " + e);
+                        host = null;
+                    }
+                }
+                if (host != null && engine != null) rt.Adopt(_binding, engine, host);
+                else rt.Attach(_binding);
+                Debug.Log("[Skizzy.BDArmory] C2 binding attached (" + (host != null ? "host engine" : "own engine, no host") + "): " + _binding.Description);
             }
             catch (Exception e)
             {
@@ -56,6 +71,16 @@ namespace Skizzy.Bda.Ksp
         }
 
         private void OnDestroy() { Shutdown(); }
+
+        // The host dropped the engine (scene change, kill of the binding, replaced): restore everything now.
+        private void OnHostDetached(string reason)
+        {
+            var b = _binding;
+            if (b == null) return;
+            try { C2Runtime.Current.Detach(b); }
+            catch (Exception e) { Debug.LogError("[Skizzy.BDArmory] detach after the host dropped the engine failed: " + e); }
+            Debug.Log("[Skizzy.BDArmory] the host dropped the C2 engine (" + reason + "); hook settings restored.");
+        }
 
         private void Shutdown()
         {

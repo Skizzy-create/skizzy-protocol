@@ -17,6 +17,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Skizzy.C2.Ksp\Skizzy.C2.Ksp.csproj" Private="false" />
+    <!-- Only touched after the Skizzy.Host assembly is found loaded (Ksp/HostBridge.cs). -->
+    <ProjectReference Include="..\Skizzy.Host\Skizzy.Host.csproj" Private="false" />
   </ItemGroup>
   <Target Name="SkizzyCheckBdaRef" BeforeTargets="ResolveAssemblyReferences;PrepareForBuild">
     <Error Condition="!Exists('$(SkizzyBdaRef)')"

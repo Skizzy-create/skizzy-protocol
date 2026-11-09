@@ -12,6 +12,7 @@
       "tests\\Skizzy.C2.Tests\\Skizzy.C2.Tests.csproj",
       "tests\\Skizzy.Cli.Tests\\Skizzy.Cli.Tests.csproj",
       "tests\\Skizzy.Host.Tests\\Skizzy.Host.Tests.csproj",
+      "tests\\Skizzy.Ksp.Tests\\Skizzy.Ksp.Tests.csproj",
       "tests\\Skizzy.Protocol.Tests\\Skizzy.Protocol.Tests.csproj",
       "tools\\Skizzy.FakeHost\\Skizzy.FakeHost.csproj",
       "tools\\Skizzy.SpecExport\\Skizzy.SpecExport.csproj"

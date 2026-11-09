@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\src\Skizzy.BDArmory\Core\**\*.cs" LinkBase="Bda" />
+    <Compile Include="..\..\src\Skizzy.C2.Ksp\Model\**\*.cs" LinkBase="Toolbar" />
   </ItemGroup>
   <ItemGroup>
     <!-- MIT; reads refs/BDArmory.dll (when present) without loading it, to probe the real Overdrive build. -->
