@@ -231,7 +231,7 @@ public sealed class MapView : UserControl
         _sizeMode.SelectionChanged += (_, _) =>
         {
             if (_syncing) return;
-            lock (_vm.Surface.Gate) _vm.Options.SizeMode = (SizeMode)Math.Max(0, _sizeMode.SelectedIndex);
+            _vm.Options.SizeMode = (SizeMode)Math.Max(0, _sizeMode.SelectedIndex);
         };
         _sizeMul = new Slider { Minimum = .6, Maximum = 1.8, Value = 1, Width = 84, SmallChange = .05, LargeChange = .1 };
         _sizeMul.Classes.Add("acc");
@@ -239,7 +239,7 @@ public sealed class MapView : UserControl
         _sizeMul.ValueChanged += (_, e) =>
         {
             if (_syncing) return;
-            lock (_vm.Surface.Gate) _vm.Options.SizeScale = (float)e.NewValue;
+            _vm.Options.SizeScale = (float)e.NewValue;
         };
 
         ToggleButton Tg(string key, string text, string? tip = null)
@@ -282,18 +282,15 @@ public sealed class MapView : UserControl
     private void SetOption(string key, bool on)
     {
         if (_syncing) return;
-        lock (_vm.Surface.Gate)
+        var o = _vm.Options;
+        switch (key)
         {
-            var o = _vm.Options;
-            switch (key)
-            {
-                case "trails": o.Trails = on; break;
-                case "stalks": o.AltitudeStalks = on; break;
-                case "lines": o.TargetLines = on; break;
-                case "rings": o.Rings = on; break;
-                case "labels": o.Labels = on; break;
-                case "counts": o.Counts = on; break;
-            }
+            case "trails": o.Trails = on; break;
+            case "stalks": o.AltitudeStalks = on; break;
+            case "lines": o.TargetLines = on; break;
+            case "rings": o.Rings = on; break;
+            case "labels": o.Labels = on; break;
+            case "counts": o.Counts = on; break;
         }
         _vm.NotifyChanged();
     }
@@ -450,7 +447,7 @@ public sealed class MapView : UserControl
             }
             _lastPos = p;
         }
-        int hit = _vm.HitTest((float)p.X, (float)p.Y);
+        int hit = _vm.HitTest((float)p.X, (float)p.Y, hover: true);
         _vm.HoverId = hit;
         if (hit != 0 && !_moved) ShowTip(hit, p);
         else _tip.IsVisible = false;

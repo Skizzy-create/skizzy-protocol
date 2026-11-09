@@ -11,8 +11,9 @@ namespace Skizzy.Map.App.Map;
 public enum PlotFilter { All, Air, Missiles, Ships, Inbound, Hostile, Friendly }
 
 /// <summary>
-/// One map window: its own scene, render state, renderer and viewport (the renderer is per window: it is not
+/// One map window: its own scenes, render state, renderer and viewport (the renderer is per window: it is not
 /// thread-safe and keeps per-window caches), its view side (Blue fog, Red fog, God), layer options and filter.
+/// With <see cref="AppState.ThreadedPlots"/> the window's plot renders on its own thread (see <see cref="PlotSurface"/>).
 /// The viewport animates: wheel zoom eases toward the target scale around the cursor, Fit eases to the box.
 /// </summary>
 public sealed class MapViewModel : IDisposable
@@ -30,15 +31,20 @@ public sealed class MapViewModel : IDisposable
         _app = app;
         Id = id;
         Title = title;
-        Surface = new PlotSurface { Renderer = new PlotRenderer(app.Palette.ToRenderTheme()) };
-        Sync = new SceneSync(Surface.Scene);
+        Surface = new PlotSurface(app.ThreadedPlots) { Renderer = new PlotRenderer(app.Palette.ToRenderTheme()) };
+        _syncs = Surface.Scenes.Select(s => new SceneSync(s)).ToArray();
     }
+
+    private readonly SceneSync[] _syncs;
 
     public string Id { get; }
     public string Title { get; set; }
     public PlotSurface Surface { get; }
-    public SceneSync Sync { get; }
-    public PlotOptions Options => Surface.State.Options;
+    /// <summary>The scene sync of the scene published last (counts, tracks by id). UI thread only.</summary>
+    public SceneSync Sync => _syncs[Surface.LastWritten];
+
+    /// <summary>Layer and size options (UI thread; the plot copies them every frame).</summary>
+    public PlotOptions Options => Surface.Options;
 
     /// <summary>Set by the view: repaint the plot control.</summary>
     public Action? Invalidate { get; set; }
@@ -51,15 +57,21 @@ public sealed class MapViewModel : IDisposable
 
     public ViewSide View
     {
-        get => Sync.View;
-        set { Sync.View = value; Changed?.Invoke(); }
+        get => _syncs[0].View;
+        set { foreach (var s in _syncs) s.View = value; Changed?.Invoke(); }
     }
 
     private PlotFilter _filter = PlotFilter.All;
     public PlotFilter Filter
     {
         get => _filter;
-        set { _filter = value; Sync.Filter = FilterFor(value); Changed?.Invoke(); }
+        set
+        {
+            _filter = value;
+            var f = FilterFor(value);
+            foreach (var s in _syncs) s.Filter = f;
+            Changed?.Invoke();
+        }
     }
 
     public bool ShowLegend { get; set; } = true;
@@ -216,7 +228,7 @@ public sealed class MapViewModel : IDisposable
 
     // ------------------------------------------------------------ per frame
 
-    /// <summary>Last frame: ms waiting for the render thread to release the scene, and ms syncing it (diagnostics).</summary>
+    /// <summary>Last frame: ms waiting for a synchronous draw to release the scene, and ms syncing it (diagnostics).</summary>
     public double LastWaitMs { get; private set; }
     public double LastSyncMs { get; private set; }
 
@@ -225,36 +237,41 @@ public sealed class MapViewModel : IDisposable
         Animate(dt);
         var s = Surface;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        lock (s.Gate)
+        int i = s.BeginWrite();
+        try
         {
             long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
             LastWaitMs = System.Diagnostics.Stopwatch.GetElapsedTime(t0, t1).TotalMilliseconds;
-            Sync.Sync(_app.Data, _app.Selection, _app.SizeMul, HoverId);
+            _syncs[i].Sync(_app.Data, _app.Selection, _app.SizeMul, HoverId);
             LastSyncMs = System.Diagnostics.Stopwatch.GetElapsedTime(t1).TotalMilliseconds;
-            s.View = new Viewport(_cx, _cy, _scale, s.View.Width, s.View.Height);
-            s.State.FrameSeconds = (float)Math.Clamp(dt, 1 / 240.0, .25);
+        }
+        finally
+        {
+            s.EndWrite(new Viewport(_cx, _cy, _scale, (int)MathF.Ceiling(Width), (int)MathF.Ceiling(Height)), (float)Math.Clamp(dt, 1 / 240.0, .25));
         }
         Invalidate?.Invoke();
     }
 
-    /// <summary>Hit test against the last drawn frame (symbol boxes); 0 when nothing is under the point.</summary>
-    public int HitTest(float sx, float sy)
+    /// <summary>
+    /// Hit test against the last drawn frame (symbol boxes); 0 when nothing is under the point. A hover test does not
+    /// wait for a plot frame being rendered: it keeps the current hover instead.
+    /// </summary>
+    public int HitTest(float sx, float sy, bool hover = false)
     {
-        lock (Surface.Gate) return Surface.State.HitTest(sx, sy);
+        int hit = Surface.HitTest(sx, sy, Viewport, wait: !hover);
+        return hit < 0 ? HoverId : hit;
     }
 
     /// <summary>Tracks whose symbol centre lies in a screen rectangle (box select).</summary>
     public List<int> TracksInRect(float x0, float y0, float x1, float y1)
     {
         var r = new List<int>();
-        lock (Surface.Gate)
+        // the UI thread is the only writer of the scenes, so reading the last published one needs no lock
+        foreach (var p in Surface.Scene.Tracks)
         {
-            foreach (var p in Surface.Scene.Tracks)
-            {
-                if (!p.IsDrawn) continue;
-                var (sx, sy) = ToScreen(p.X, p.Y);
-                if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1) r.Add(p.Id);
-            }
+            if (!p.IsDrawn) continue;
+            var (sx, sy) = ToScreen(p.X, p.Y);
+            if (sx >= x0 && sx <= x1 && sy >= y0 && sy <= y1) r.Add(p.Id);
         }
         return r;
     }
@@ -288,14 +305,11 @@ public sealed class MapViewModel : IDisposable
     public void Apply(MapConfig c)
     {
         Title = string.IsNullOrWhiteSpace(c.Title) ? Title : c.Title;
-        lock (Surface.Gate)
-        {
-            var o = Options;
-            o.Trails = c.Trails; o.AltitudeStalks = c.Altitude; o.TargetLines = c.TargetLines; o.Rings = c.Rings; o.Labels = c.Labels; o.Counts = c.Counts;
-            o.Grid = c.Grid; o.Zones = c.Zones; o.Events = c.Events; o.ScaleBar = c.ScaleBar;
-            o.SizeMode = Enum.TryParse<SizeMode>(c.SizeMode, out var sm) ? sm : SizeMode.Auto;
-            o.SizeScale = (float)Math.Clamp(c.SizeScale, .6, 1.8);
-        }
+        var o = Options;
+        o.Trails = c.Trails; o.AltitudeStalks = c.Altitude; o.TargetLines = c.TargetLines; o.Rings = c.Rings; o.Labels = c.Labels; o.Counts = c.Counts;
+        o.Grid = c.Grid; o.Zones = c.Zones; o.Events = c.Events; o.ScaleBar = c.ScaleBar;
+        o.SizeMode = Enum.TryParse<SizeMode>(c.SizeMode, out var sm) ? sm : SizeMode.Auto;
+        o.SizeScale = (float)Math.Clamp(c.SizeScale, .6, 1.8);
         View = Enum.TryParse<ViewSide>(c.View, out var v) ? v : ViewSide.Blue;
         Filter = Enum.TryParse<PlotFilter>(c.PlotFilter, out var f) ? f : PlotFilter.All;
         ShowLegend = c.Legend;
@@ -306,11 +320,11 @@ public sealed class MapViewModel : IDisposable
 
     public void Dispose()
     {
+        Surface.Dispose(); // stops the plot thread first
         lock (Surface.Gate)
         {
             Surface.Renderer?.Dispose();
             Surface.Renderer = null;
         }
-        Surface.Dispose();
     }
 }

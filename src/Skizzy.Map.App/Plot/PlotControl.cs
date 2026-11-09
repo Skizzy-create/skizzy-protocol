@@ -9,7 +9,8 @@ namespace Skizzy.Map.App.Plot;
 /// <summary>
 /// Hosts the SkiaSharp <see cref="Skizzy.Map.Render.PlotRenderer"/> inside Avalonia: every frame the control emits a
 /// custom draw operation that leases Avalonia's own Skia canvas (<see cref="ISkiaSharpApiLeaseFeature"/>) on the
-/// render thread, so the plot is drawn straight into the window's GPU surface with no copy.
+/// render thread. Threaded surfaces only draw the plot thread's last bitmap there; synchronous ones render the scene
+/// (see <see cref="PlotSurface"/>).
 /// </summary>
 public class PlotControl : Avalonia.Controls.Control
 {
@@ -33,17 +34,19 @@ public class PlotControl : Avalonia.Controls.Control
     {
         var s = Surface;
         if (s is null) return;
-        context.Custom(new DrawOp(new Rect(Bounds.Size), s));
+        context.Custom(new DrawOp(new Rect(Bounds.Size), s, s.UiView));
     }
 
     private sealed class DrawOp : ICustomDrawOperation
     {
         private readonly PlotSurface _surface;
+        private readonly Skizzy.Map.Render.Viewport _view;
 
-        public DrawOp(Rect bounds, PlotSurface surface)
+        public DrawOp(Rect bounds, PlotSurface surface, Skizzy.Map.Render.Viewport view)
         {
             Bounds = bounds;
             _surface = surface;
+            _view = view;
         }
 
         public Rect Bounds { get; }
@@ -65,7 +68,7 @@ public class PlotControl : Avalonia.Controls.Control
             }
             using var lease = feature.Lease();
             _surface.NoSkia = false;
-            _surface.DrawTo(lease.SkCanvas, lease.GrContext is not null, (float)Bounds.Width, (float)Bounds.Height);
+            _surface.DrawTo(lease.SkCanvas, lease.GrContext is not null, (float)Bounds.Width, (float)Bounds.Height, _view);
         }
     }
 }

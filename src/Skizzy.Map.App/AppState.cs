@@ -32,6 +32,13 @@ public sealed class AppState
     }
 
     public SettingsStore Settings { get; }
+
+    /// <summary>
+    /// Map windows render their plot on a thread of their own (the desktop app). Off by default, so headless tests
+    /// draw synchronously and deterministically.
+    /// </summary>
+    public bool ThreadedPlots { get; init; }
+
     public MapData Data { get; }
     public IDataSource Source { get; private set; }
 

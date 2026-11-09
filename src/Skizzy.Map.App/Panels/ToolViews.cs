@@ -55,11 +55,11 @@ public sealed class LayersView : UserControl
         _legend = Ui.Toggle("Legend", true, on => { if (_bound is not null && !_syncing) { _bound.ShowLegend = on; _bound.NotifyChanged(); } }, "tg");
         _root.Children.Add(Ui.V(6, Ui.Label("Map furniture"), Ui.Wrap(6, 6, _legend)));
 
-        _size = Ui.Seg(["Auto", "Radar", "Zoom", "Fixed"], 0, i => { if (_bound is not null) { lock (_bound.Surface.Gate) _bound.Options.SizeMode = (SizeMode)i; _bound.NotifyChanged(); } }, uiFont: true);
+        _size = Ui.Seg(["Auto", "Radar", "Zoom", "Fixed"], 0, i => { if (_bound is not null) { _bound.Options.SizeMode = (SizeMode)i; _bound.NotifyChanged(); } }, uiFont: true);
         _size.HorizontalAlignment = HorizontalAlignment.Left;
         _scale = new Slider { Minimum = .6, Maximum = 1.8, Value = 1, Width = 160, HorizontalAlignment = HorizontalAlignment.Left };
         _scale.Classes.Add("acc");
-        _scale.ValueChanged += (_, e) => { if (_bound is not null && !_syncing) { lock (_bound.Surface.Gate) _bound.Options.SizeScale = (float)e.NewValue; _bound.NotifyChanged(); } };
+        _scale.ValueChanged += (_, e) => { if (_bound is not null && !_syncing) { _bound.Options.SizeScale = (float)e.NewValue; _bound.NotifyChanged(); } };
         _root.Children.Add(Ui.V(6, Ui.Label("Symbols"), _size, _scale,
             Ui.Text("Auto: radar cross-section sets the size, zoom scales it, neighbours never overlap. Selected symbols draw 1.2× larger; [ and ] resize the selection.", "note")));
 
@@ -85,23 +85,20 @@ public sealed class LayersView : UserControl
     {
         var m = _bound;
         if (m is null || _syncing) return;
-        lock (m.Surface.Gate)
+        var o = m.Options;
+        switch (key)
         {
-            var o = m.Options;
-            switch (key)
-            {
-                case "trails": o.Trails = on; break;
-                case "stalks": o.AltitudeStalks = on; break;
-                case "labels": o.Labels = on; break;
-                case "lines": o.TargetLines = on; break;
-                case "counts": o.Counts = on; break;
-                case "rings": o.Rings = on; break;
-                case "zones": o.Zones = on; break;
-                case "events": o.Events = on; break;
-                case "orders": o.Orders = on; break;
-                case "grid": o.Grid = on; break;
-                case "scale": o.ScaleBar = on; break;
-            }
+            case "trails": o.Trails = on; break;
+            case "stalks": o.AltitudeStalks = on; break;
+            case "labels": o.Labels = on; break;
+            case "lines": o.TargetLines = on; break;
+            case "counts": o.Counts = on; break;
+            case "rings": o.Rings = on; break;
+            case "zones": o.Zones = on; break;
+            case "events": o.Events = on; break;
+            case "orders": o.Orders = on; break;
+            case "grid": o.Grid = on; break;
+            case "scale": o.ScaleBar = on; break;
         }
         m.NotifyChanged();
     }
@@ -171,14 +168,13 @@ public sealed class HealthView : UserControl
             long frames = m.Surface.FramesDrawn;
             if (_lastT > 0 && now > _lastT) _fps = (frames - _lastFrames) / (now - _lastT);
             _lastFrames = frames; _lastT = now;
-            FrameStats st;
-            FrameTimings tm;
-            int sprites;
-            lock (m.Surface.Gate) { st = m.Surface.State.LastFrame; tm = m.Surface.State.LastTimings; sprites = m.Surface.Renderer?.SpriteCount ?? 0; }
+            var (st, tm, sprites) = m.Surface.Stats;
             var r = new List<(string, string)>
             {
                 ("Frames per second", _fps.ToString("0", CultureInfo.InvariantCulture)),
+                ("Plot pipeline", m.Surface.Mode),
                 ("Draw time", m.Surface.LastDrawMs.ToString("0.00", CultureInfo.InvariantCulture) + " ms"),
+                ("UI frame (source / sync)", $"{_app.LastFrameMs:0.00} ({_app.LastSourceMs:0.00} / {m.LastSyncMs:0.00}) ms"),
                 ("Layout / tracks / labels", $"{tm.Layout:0.00} / {tm.Tracks:0.00} / {tm.Labels:0.00} ms"),
                 ("Tracks drawn", st.TracksVisible.ToString("#,0", CultureInfo.InvariantCulture)),
                 ("Full symbols / dots", $"{st.FullSymbols:#,0} / {st.Dots:#,0}"),
@@ -186,6 +182,7 @@ public sealed class HealthView : UserControl
                 ("Sprites cached", sprites.ToString("#,0", CultureInfo.InvariantCulture)),
                 ("Scale", m.Scale.ToString("0.00", CultureInfo.InvariantCulture) + " px/km"),
             };
+            if (m.Surface.LastError is { } err) r.Add(("Last plot error", err));
             _root.Children.Add(Ui.V(6, Ui.Label("Plot · " + m.Title), Table(r)));
         }
     }

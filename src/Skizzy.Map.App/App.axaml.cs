@@ -19,7 +19,11 @@ public partial class App : Application
         DefaultFamilyName = FontRoot + "#IBM Plex Sans Condensed",
     };
 
-    /// <summary>Command line: --source demo|fake|live, --home &lt;settings folder&gt;, --bench 5000|demo [--bench-seconds s] [--bench-out file].</summary>
+    /// <summary>
+    /// Command line: --source demo|fake|live, --home &lt;settings folder&gt;, --bench 5000|demo [--bench-seconds s]
+    /// [--bench-out file], --plot-sync (draw the plot on Avalonia's render thread, no plot thread), --plot-gpu (with
+    /// --plot-sync: straight onto the GPU canvas, no raster bitmap).
+    /// </summary>
     public static string[] Args { get; set; } = [];
 
     public override void Initialize()
@@ -35,6 +39,7 @@ public partial class App : Application
         {
             string? bench = Arg("--bench");
             if (Array.IndexOf(Args, "--plot-gpu") >= 0) Plot.PlotSurface.RasterOnGpu = false; // draw the plot straight on the GPU canvas
+            bool threaded = Array.IndexOf(Args, "--plot-sync") < 0;
             string? home = bench is not null ? Path.Combine(Path.GetTempPath(), "skizzy-map-bench") : Arg("--home");
             var settings = new SettingsStore(string.IsNullOrWhiteSpace(home) ? SettingsStore.DefaultRoot() : home);
             MainWindow win;
@@ -42,7 +47,7 @@ public partial class App : Application
             if (bench is not null)
             {
                 // a clean profile, the default layout, maximised: the desktop perf measurement (checklist P1)
-                app = new AppState(DesktopBench.Source(bench, out var label), settings);
+                app = new AppState(DesktopBench.Source(bench, out var label), settings) { ThreadedPlots = threaded };
                 win = new MainWindow(app, restore: false) { WindowState = Avalonia.Controls.WindowState.Maximized };
                 DesktopBench.Prepare(app);
                 double secs = double.TryParse(Arg("--bench-seconds"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var s) && s > 0 ? s : 10;
@@ -50,7 +55,7 @@ public partial class App : Application
             }
             else
             {
-                app = new AppState(settings: settings);
+                app = new AppState(settings: settings) { ThreadedPlots = threaded };
                 win = new MainWindow(app);
                 string kind = Arg("--source") ?? settings.Current.Source.Kind;
                 if (kind is "fake" or "live") win.UseSource(kind);

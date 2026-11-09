@@ -17,12 +17,12 @@ namespace Skizzy.Map.App.Tests;
 /// </summary>
 internal sealed class UiHarness : IDisposable
 {
-    public UiHarness(IDataSource? source = null, bool restore = false, int width = 1600, int height = 1000, string? home = null)
+    public UiHarness(IDataSource? source = null, bool restore = false, int width = 1600, int height = 1000, string? home = null, bool threadedPlots = false)
     {
         Home = home ?? Path.Combine(Path.GetTempPath(), "skizzy-map-ui-" + Guid.NewGuid().ToString("N")[..8]);
         OwnsHome = home is null;
         Directory.CreateDirectory(Home);
-        App = new AppState(source ?? new DemoBattleSource(), new SettingsStore(Home));
+        App = new AppState(source ?? new DemoBattleSource(), new SettingsStore(Home)) { ThreadedPlots = threadedPlots };
         Win = new MainWindow(App, restore) { AutoFrames = false, Width = width, Height = height };
         Win.Show();
         Pump(3);

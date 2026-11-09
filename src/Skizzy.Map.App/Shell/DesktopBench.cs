@@ -48,6 +48,11 @@ public static class DesktopBench
         var uiWait = new List<double>();
         var rtWait = new List<double>();
         var panels = new List<double>();
+        var blit = new List<double>();
+        var layout = new List<double>();
+        var tracks = new List<double>();
+        var trails = new List<double>();
+        var labels = new List<double>();
         bool measuring = false;
         long f0 = 0, d0 = 0;
         var sw = new Stopwatch();
@@ -63,6 +68,9 @@ public static class DesktopBench
             uiWait.Add(map.LastWaitMs);
             rtWait.Add(map.Surface.LastWaitMs);
             panels.Add(app.LastPanelsMs);
+            blit.Add(map.Surface.LastBlitMs);
+            var tm = map.Surface.Stats.Timings;
+            layout.Add(tm.Layout); tracks.Add(tm.Tracks); trails.Add(tm.Trails); labels.Add(tm.Labels);
         }
 
         win.Opened += (_, _) =>
@@ -90,16 +98,16 @@ public static class DesktopBench
             {
                 double t = sw.Elapsed.TotalSeconds;
                 double appFps = (app.Frames - f0) / t, drawFps = (map.Surface.FramesDrawn - d0) / t;
-                foreach (var l in new[] { draws, work, src, sync, uiWait, rtWait, panels }) l.Sort();
+                foreach (var l in new[] { draws, work, src, sync, uiWait, rtWait, panels, blit, layout, tracks, trails, labels }) l.Sort();
                 double Med(List<double> a) => a.Count == 0 ? double.NaN : a[a.Count / 2];
                 double P95(List<double> a) => a.Count == 0 ? double.NaN : a[(int)(a.Count * .95)];
-                var st = map.Surface.State.LastFrame;
+                var st = map.Surface.Stats.Frame;
                 var screen = win.Screens?.ScreenFromWindow(win);
                 line = string.Create(CultureInfo.InvariantCulture,
                     $"desktop bench, {label}: window {win.Bounds.Width:0}x{win.Bounds.Height:0} (scale {win.RenderScaling:0.##}, screen {screen?.Bounds.Width}x{screen?.Bounds.Height}), " +
-                    $"plot {map.Width:0}x{map.Height:0} px via {(map.Surface.LastWasRaster ? "raster bitmap" : "direct canvas")}; over {t:0.0} s: app frames {appFps:0.0} fps, plot frames drawn {drawFps:0.0} fps; " +
-                    $"plot draw median {Med(draws):0.00} ms (p95 {P95(draws):0.00}), UI frame work median {Med(work):0.00} ms (p95 {P95(work):0.00}); " +
-                    $"UI parts median: source {Med(src):0.00}, sync {Med(sync):0.00}, wait for render {Med(uiWait):0.00}, panels {Med(panels):0.00} ms; render waits for UI {Med(rtWait):0.00} ms; " +
+                    $"plot {map.Width:0}x{map.Height:0} px via {map.Surface.Mode}; over {t:0.0} s: app frames {appFps:0.0} fps, plot frames drawn {drawFps:0.0} fps; " +
+                    $"plot draw median {Med(draws):0.00} ms (p95 {P95(draws):0.00}; layout {Med(layout):0.0}, tracks {Med(tracks):0.0}, trails {Med(trails):0.0}, labels {Med(labels):0.0}), UI frame work median {Med(work):0.00} ms (p95 {P95(work):0.00}); " +
+                    $"UI parts median: source {Med(src):0.00}, sync {Med(sync):0.00}, wait for render {Med(uiWait):0.00}, panels {Med(panels):0.00} ms; render waits for UI {Med(rtWait):0.00} ms, bitmap blit {Med(blit):0.00} ms; " +
                     $"on screen {st.TracksVisible} of {map.Sync.Visible} ({st.FullSymbols} symbols, {st.Dots} dots), view {map.CenterX:0},{map.CenterY:0} at {map.Scale:0.00} px/km");
             }
             try { File.AppendAllText(outPath, DateTime.Now.ToString("s", CultureInfo.InvariantCulture) + "  " + line + Environment.NewLine); }
