@@ -6,7 +6,8 @@ Builds skizzy-protocol and assembles artifacts/GameData/SkizzyProtocol plus a re
 Produces:
   artifacts/GameData/SkizzyProtocol/Plugins/Skizzy.Host.dll
   artifacts/GameData/SkizzyProtocol/Plugins/Skizzy.Protocol.dll
-  artifacts/GameData/SkizzyProtocol/Plugins/Skizzy.C2.dll       (C2 orders engine, net48 build of src/Skizzy.C2)
+  artifacts/GameData/SkizzyProtocol/Plugins/Skizzy.C2.dll       (C2 orders engine, net48 build of src/Skizzy.C2, and the C2 window)
+  artifacts/GameData/SkizzyProtocol/Plugins/Skizzy.BDArmory.dll (the C2 engine's BDArmory binding; loads only with BDArmory)
   artifacts/GameData/SkizzyProtocol/Bin/skizzy.exe          (self-contained, single file, no .NET runtime needed)
   artifacts/GameData/SkizzyProtocol/LICENSE, NOTICE         (Apache-2.0 licence and credit notice)
   artifacts/GameData/SkizzyProtocol/skizzy-protocol.version (KSP-AVC style JSON)
@@ -27,6 +28,10 @@ Do not publish skizzy.exe (partial package; a previously packaged Bin/ is left u
 .PARAMETER SkipHost
 Do not build the plugin DLLs (partial package; previously packaged Plugins/ is left untouched).
 
+.PARAMETER SkipBda
+Do not build the BDArmory binding (partial package without Skizzy.BDArmory.dll). The binding compiles against
+refs\BDArmory.dll (git-ignored, never shipped; see scripts\copy-refs.ps1).
+
 .PARAMETER KspDir
 KSP install folder, passed to the Host build as /p:KSPDIR=... Read-only use (reference DLLs).
 
@@ -44,6 +49,7 @@ param(
     [string]$Configuration = 'Release',
     [switch]$SkipCli,
     [switch]$SkipHost,
+    [switch]$SkipBda,
     [string]$KspDir
 )
 
@@ -118,6 +124,19 @@ if (-not $SkipHost) {
     Copy-Into (Join-Path $RepoRoot "src\Skizzy.C2.Ksp\bin\$Configuration\net48\Skizzy.C2.dll") $plugins
 }
 
+# --- BDArmory binding ----------------------------------------------------------------------------
+if (-not $SkipHost -and -not $SkipBda) {
+    $bdaRef = Join-Path $RepoRoot 'refs\BDArmory.dll'
+    if (-not (Test-Path -LiteralPath $bdaRef)) {
+        throw 'refs\BDArmory.dll is missing. Run scripts\copy-refs.ps1 -Source <an Overdrive-hooks BDArmory.dll>, or pass -SkipBda to package without the C2 binding.'
+    }
+    Write-Step 'Building BDArmory binding (Skizzy.BDArmory)'
+    $bdaArgs = @('build', (Join-Path $RepoRoot 'src\Skizzy.BDArmory\Skizzy.BDArmory.csproj'), '-c', $Configuration, '--nologo')
+    if ($KspDir) { $bdaArgs += "/p:KSPDIR=$KspDir" }
+    Invoke-DotNet $bdaArgs
+    Copy-Into (Join-Path $RepoRoot "src\Skizzy.BDArmory\bin\$Configuration\net48\Skizzy.BDArmory.dll") (Join-Path $PkgRoot 'Plugins')
+}
+
 # --- CLI ---------------------------------------------------------------------------------------
 if (-not $SkipCli) {
     Write-Step 'Publishing CLI (self-contained single file)'
@@ -183,4 +202,4 @@ Get-ChildItem -LiteralPath $PkgRoot -Recurse -File | ForEach-Object {
     Write-Host ("  {0,12}  {1}" -f $_.Length.ToString("N0", [cultureinfo]::InvariantCulture), $_.FullName.Substring($root.Length))
 }
 Write-Host ("  zip: {0}  ({1} bytes)" -f $zipPath, (Get-Item -LiteralPath $zipPath).Length.ToString("N0", [cultureinfo]::InvariantCulture))
-if ($SkipHost -or $SkipCli) { Write-Warning 'Partial package (-SkipHost/-SkipCli): not suitable for release.' }
+if ($SkipHost -or $SkipCli -or $SkipBda) { Write-Warning 'Partial package (-SkipHost/-SkipCli/-SkipBda): not suitable for release.' }
