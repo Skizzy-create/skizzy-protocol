@@ -223,6 +223,8 @@ dotnet run --project src/Skizzy.Map.App -c Release -- --home "$TEMP/skizzy-map-c
 ## Known gaps (not failures for M3)
 
 - Orders, seats and agent hand-over are laid out but disabled until M4.
+- Row 2 (groups): groups, number-key slots and Make group live in the map app and its session file. Storing
+  them in the host (`c2.group.*`, design/09 §2), so agents see them too, needs the M4 host commands.
 - The `source.tactical` stream and `.skzrec` recordings arrive in M2. Today replay is in memory and covers the
   last 20 minutes.
 - At 5,000 tracks the UI holds the display rate, but the plot picture refreshes at about 42 to 46 fps at 150 %
