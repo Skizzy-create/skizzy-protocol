@@ -15,7 +15,7 @@ Run everything from the worktree root. Use Git Bash, or set the same variables i
 export AVALONIA_TELEMETRY_OPTOUT=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
 dotnet build Skizzy.Map.slnx -c Release
 dotnet test tests/Skizzy.Map.Render.Tests -c Release --no-build        # expect 88 passed
-tests/Skizzy.Map.App.Tests/bin/Release/net10.0/Skizzy.Map.App.Tests.exe # expect all passed (49)
+tests/Skizzy.Map.App.Tests/bin/Release/net10.0/Skizzy.Map.App.Tests.exe # expect all passed (51)
 ```
 
 - [ ] A0.1: The build ends with 0 warnings and 0 errors. Warnings are treated as errors.
@@ -194,10 +194,23 @@ dotnet run --project src/Skizzy.Map.App -c Release -- --home "$TEMP/skizzy-map-c
 
 ## 10. Performance
 
-- [ ] P1, desktop GPU run (not yet measured; only headless figures exist). Use a 1920×1080 window and the demo
-  at 8×, about 12 sim minutes in (dense raid). Open Host health and read the fps and draw time for the active
-  map. Record both. The target is 60 fps.
-- [ ] P2: With two map windows open, both keep animating smoothly, and Host health shows each one's draw time.
+- [ ] P1, desktop run. From `src/Skizzy.Map.App/bin/Release/net10.0`, run each of these. Each opens the window
+  maximised, measures for 8 s, closes, and appends a line to `bench.txt` there:
+
+  ```bash
+  ./skizzy-map.exe --bench 5000 --bench-seconds 8
+  ./skizzy-map.exe --bench demo --bench-seconds 8
+  ./skizzy-map.exe --bench 5000 --bench-seconds 8 --plot-sync   # the old single-thread path, for comparison
+  ```
+
+  Record "app frames", "plot frames drawn" and "plot draw median" from each line. Reference figures (2560×1600
+  at 150 %) are in spikes doc §2: 5,000 tracks gave 70 to 73 UI fps and 42 to 46 plot fps; the demo raid gave
+  73/73. Expect the UI frames to reach the display rate in every case, and `--plot-sync` to be much slower.
+- [ ] P1b: In a normal session, open Host health. "Plot pipeline" reads `plot thread`, and there is no
+  "Last plot error" row. Drag-pan quickly across a dense area: the picture stays under the pointer, with no
+  tearing or lag, and the sea briefly fills the uncovered edge.
+- [ ] P2: With two map windows open, both keep animating smoothly (each has its own plot thread). Host health
+  shows the draw time of the active one; click into the other map and it switches.
 - [ ] P3: Run the app for 30 minutes. Memory levels off (history rings are capped at 20 minutes) and the UI never
   hitches more than once a second.
 
@@ -212,4 +225,5 @@ dotnet run --project src/Skizzy.Map.App -c Release -- --home "$TEMP/skizzy-map-c
 - Orders, seats and agent hand-over are laid out but disabled until M4.
 - The `source.tactical` stream and `.skzrec` recordings arrive in M2. Today replay is in memory and covers the
   last 20 minutes.
-- 5,000 symbols sit on the 60 fps line on a CPU raster (spikes doc §2); a render-core follow-up is noted there.
+- At 5,000 tracks the UI holds the display rate, but the plot picture refreshes at about 42 to 46 fps at 150 %
+  scaling (spikes doc §2). Render-core follow-ups are noted there.

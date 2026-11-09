@@ -71,43 +71,71 @@ Avalonia 12 API changes we hit:
 
 ## 2. Hosting PlotRenderer in Avalonia at 60 fps
 
-- **How it draws.** `PlotControl.Render` emits an `ICustomDrawOperation`. On the render thread, that
-  operation leases Avalonia's own Skia canvas through `ISkiaSharpApiLeaseFeature` and calls
-  `PlotRenderer.Render` straight into the window's surface, with no bitmap copy (`Plot/PlotControl.cs`).
+- **How it draws (desktop).** Each map window has a plot thread (`Plot/PlotSurface.cs`):
+  1. The UI thread syncs the mirror into a free scene (three scenes, triple-buffered) and publishes it. It
+     never waits for drawing.
+  2. The plot thread renders the latest scene with `PlotRenderer.Render` into a CPU raster bitmap (two,
+     alternating) at the window's pixel density.
+  3. `PlotControl` emits an `ICustomDrawOperation`. On Avalonia's render thread it leases the window's Skia
+     canvas (`ISkiaSharpApiLeaseFeature`) and only draws the latest bitmap, moved and scaled from the viewport it
+     was rendered for to the live one. A pan or zoom tracks the pointer even when the plot thread is a frame
+     behind; hit tests map the point the same way.
+- **Why a raster bitmap.** The plot is thousands of small anti-aliased paths, sprites and text runs. Skia's CPU
+  rasteriser draws that about 3× faster than its GPU (ANGLE) backend: 19 ms against 58 ms at 5,000 tracks on
+  the same desktop. One bitmap blit costs about 1 ms.
 - **Threading** (the coordinator's constraint: "the renderer isn't thread-safe; layout runs on the render thread"):
-  - each map window owns its own `PlotRenderer`, inside its `PlotSurface`;
-  - only the render thread calls that renderer, and only while holding the surface's `Gate`;
-  - the UI thread takes the same `Gate` while it mutates the scene (data sync, selection, options);
-  - on a theme change the old renderer is disposed under the lock.
+  - each map window owns its own `PlotRenderer` and `RenderState`, inside its `PlotSurface`;
+  - they are only used under the surface's `Gate`: by the plot thread to render, by the UI for click hit tests,
+    and for a theme swap, where the old renderer is disposed under the lock;
+  - hover hit tests use `TryEnter` and keep the last hover rather than wait;
+  - layer options belong to the UI thread and are copied into the render state at the start of each frame.
+    A test checks that every `PlotOptions` property is copied.
 
-  No renderer is ever shared or used from two threads.
+  No renderer is ever used from two threads at once.
+- **Synchronous mode.** Headless tests (and `--plot-sync`) keep one scene, synced under `Gate` by the UI and
+  drawn under `Gate` on the render thread, so screenshots and assertions are deterministic. `--plot-gpu` with
+  `--plot-sync` draws straight onto the GPU canvas, for comparison.
 - **Frame loop.** `TopLevel.RequestAnimationFrame` drives the frame loop. Each frame calls `AppState.Frame(dt)`:
   1. the source ticks;
-  2. each map syncs its scene and invalidates its plot;
+  2. each map publishes its scene and invalidates its plot;
   3. panels refresh on a 0.4 s slow tick.
 
   The display's vsync paces the loop.
-- **Measured.** Release build on this 16-thread desktop CPU with CPU raster. The perf tests are in
-  `PerfAndSampleTests.cs`; every run appends to `bin/Release/net10.0/ui/perf.txt`. Ranges are over several runs
-  on a machine that other builds were also using.
+- **Measured on the desktop.** Run `skizzy-map.exe --bench 5000|2000|demo [--bench-seconds 8]`. It opens the
+  real window maximised with a clean profile, warms up for 3 s, measures, and appends one line to `bench.txt`
+  next to the exe. Test machine: 2560×1600 screen at 150 % scaling, 1707×1044 window, plot 953×689 logical px
+  (1430×1034 device px), display clock about 73 Hz. Release build, 8 s per run.
+
+  | Case | UI frames | Plot frames | Plot draw, median (p95) | UI frame work, median |
+  | --- | --- | --- | --- | --- |
+  | 5,000 synthetic tracks, plot thread | **70 to 73 fps** | **42 to 46 fps** | 20 to 22 ms (28 to 32) | 2.6 ms |
+  | 2,000 synthetic tracks, plot thread | 74 fps | 73 fps | 9.8 ms (14.3) | 1.0 ms |
+  | Demo battle at 8×, dense raid (1,012 tracks), plot thread | 73 fps | 73 fps | 6.8 ms (9.2) | 2.0 ms |
+  | 5,000, `--plot-sync` (raster bitmap on the render thread) | 24 to 26 fps | same | 18 to 19 ms | 20 ms, of which 17 ms waiting for the draw |
+  | 5,000, `--plot-sync --plot-gpu` (straight on the GPU canvas) | 10 fps | same | 58 ms | 55 ms waiting |
+
+  At 5,000 the plot layers take: layout 5.2 to 5.8 ms, tracks 6.7 to 8.6 ms (4,611 dots, 18 full symbols at
+  fit-all), trails 4.1 to 4.5 ms, labels 0.4 ms. The UI side (data source, scene sync, panels) stays under 3 ms.
+- **Measured headless.** These are the perf tests in `PerfAndSampleTests.cs`; every run appends to
+  `bin/Release/net10.0/ui/perf.txt`. Ranges are over several runs on a machine that other builds were also
+  using.
 
   | Case | Result |
   | --- | --- |
-  | Render core alone, 5,000 moving tracks, full 1920×1080 frame | best batch median **16.7 to 20.7 ms (48 to 60 fps)**, the high end on a busy machine; p95 24 to 31 ms; 0 B allocated per frame |
-  | Inside the app: 1920×1080 window, plot 1077×717 px, all 5,000 on screen (18 full symbols, 4,825 dots at fit-all); data source, scene sync and panels plus plot draw | best batch median **15.4 to 17.3 ms (58 to 65 fps)**, of which data, sync and panels take 1.2 to 1.6 ms |
-  | Plot layers at 5,000 (render core timings) | layout 4.4 to 7.4 ms, tracks 6.1 to 6.7 ms, trails 2.6 to 4.7 ms, labels 0.3 ms |
-  | Whole window composited headless | 28 to 36 ms (28 to 35 fps) |
+  | Render core alone, 5,000 moving tracks, full 1920×1080 frame | best batch median **16.7 to 20.7 ms (48 to 60 fps)**; p95 24 to 31 ms; 0 B allocated per frame |
+  | In-app, synchronous: 1920×1080 window, plot 1077×717 px, all 5,000 on screen; data, sync and panels plus plot draw | best batch median **15.4 to 17.3 ms (58 to 65 fps)**, of which data, sync and panels take 1.2 to 1.6 ms |
+  | Whole window composited headless (software) | 28 to 36 ms (28 to 35 fps) |
 
-  The headless whole-window figure is low because headless rasterises every panel in software on the test
-  thread. On the desktop Avalonia composites on the GPU (ANGLE on Windows), so that cost largely goes away.
-  A desktop GPU run has not been measured yet; it is item P1 in the checklist.
-- **Verdict: honest, not green.** 5,000 symbols land on the 60 fps line, not reliably above it. The host side
-  is cheap: about 1.5 ms per frame for the data, sync and panels. The rest is the render core's own draw, and
-  its no-overlap layout pass alone takes 4 to 7 ms at 5,000 and runs on the render thread.
+- **Verdict: honest, not fully green.** The app itself runs at the display rate with 5,000 tracks: 70 to 73 fps,
+  with 2.6 ms of UI work per frame, and pans and zooms follow the pointer. The plot picture at 5,000 refreshes at
+  42 to 46 fps at this 150 % pixel density. Below about 2,000 tracks, and in the dense demo raid (1,012 tracks),
+  everything holds the display rate. The remaining cost is entirely the render core's draw.
 - **Gate in the tests.** The tests assert a regression guard at 1.5× the frame budget and report the measured
   figure. Asserting 60 fps exactly would fail at random on a loaded machine.
-- **Render core follow-up.** Make the layout incremental, or move it off the render thread, and batch the dot
-  tier (one draw per colour). Either should bring 5,000 symbols well under budget.
+- **Render core follow-up.** These would bring 5,000 under 16.7 ms on the plot thread:
+  - batch the dot tier (one `DrawPoints` per colour instead of a path per dot): dots are 7 to 9 ms;
+  - make the no-overlap layout incremental (5 to 6 ms);
+  - draw trails as one path per colour and alpha bucket (4 to 4.5 ms).
 
 ## 3. Headless rendering for tests
 

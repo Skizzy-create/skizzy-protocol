@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Headless.XUnit;
 using Skizzy.Map.App.Plot;
 using Skizzy.Map.Render;
+using SkzPalette = Skizzy.Map.App.Theme.Palette;
 
 namespace Skizzy.Map.App.Tests;
 
@@ -61,6 +62,18 @@ public class PlotThreadTests
         var (px, py) = map.ToScreen(t.X, t.Y);
         Assert.Equal(sx + 120, px, 1);
         Assert.NotEqual(0, map.HitTest(px, py));
+
+        // a theme swap and a second map window, each on its own plot thread
+        h.Win.ApplyTheme(Avalonia.Styling.ThemeVariant.Light);
+        WaitForFrames(h, map.Surface, map.Surface.FramesDrawn + 3);
+        Assert.Equal(SkzPalette.LightSet.Sea.R, map.Surface.Renderer!.Theme.Sea.Red);
+        h.Win.Layouts.AddMap();
+        h.Pump(2);
+        var second = h.App.Maps.Single(m => m != map);
+        WaitForFrames(h, second.Surface, 3);
+        Assert.True(second.Surface.Threaded);
+        Assert.Null(map.Surface.LastError);
+        Assert.Null(second.Surface.LastError);
 
         // closing the window stops the plot thread
         h.App.RemoveMap(map);
