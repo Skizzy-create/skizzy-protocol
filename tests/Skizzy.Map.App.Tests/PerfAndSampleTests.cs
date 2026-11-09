@@ -6,6 +6,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Skizzy.Map.App.Map;
 using Skizzy.Map.Data;
+using Skizzy.Map.Data.Demo;
 using Skizzy.Map.Data.Live;
 using Skizzy.Map.Render;
 using Skizzy.Map.RenderDemo;

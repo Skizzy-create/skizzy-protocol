@@ -19,7 +19,7 @@ public partial class App : Application
         DefaultFamilyName = FontRoot + "#IBM Plex Sans Condensed",
     };
 
-    /// <summary>Command line: --source demo|fake|live, --home &lt;settings folder&gt;.</summary>
+    /// <summary>Command line: --source demo|fake|live, --home &lt;settings folder&gt;, --bench 5000|demo [--bench-seconds s] [--bench-out file].</summary>
     public static string[] Args { get; set; } = [];
 
     public override void Initialize()
@@ -33,12 +33,28 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            string? home = Arg("--home");
+            string? bench = Arg("--bench");
+            if (Array.IndexOf(Args, "--plot-gpu") >= 0) Plot.PlotSurface.RasterOnGpu = false; // draw the plot straight on the GPU canvas
+            string? home = bench is not null ? Path.Combine(Path.GetTempPath(), "skizzy-map-bench") : Arg("--home");
             var settings = new SettingsStore(string.IsNullOrWhiteSpace(home) ? SettingsStore.DefaultRoot() : home);
-            var app = new AppState(settings: settings);
-            var win = new MainWindow(app);
-            string kind = Arg("--source") ?? settings.Current.Source.Kind;
-            if (kind is "fake" or "live") win.UseSource(kind);
+            MainWindow win;
+            AppState app;
+            if (bench is not null)
+            {
+                // a clean profile, the default layout, maximised: the desktop perf measurement (checklist P1)
+                app = new AppState(DesktopBench.Source(bench, out var label), settings);
+                win = new MainWindow(app, restore: false) { WindowState = Avalonia.Controls.WindowState.Maximized };
+                DesktopBench.Prepare(app);
+                double secs = double.TryParse(Arg("--bench-seconds"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var s) && s > 0 ? s : 10;
+                DesktopBench.Attach(win, app, label, secs, Arg("--bench-out") ?? Path.Combine(AppContext.BaseDirectory, "bench.txt"));
+            }
+            else
+            {
+                app = new AppState(settings: settings);
+                win = new MainWindow(app);
+                string kind = Arg("--source") ?? settings.Current.Source.Kind;
+                if (kind is "fake" or "live") win.UseSource(kind);
+            }
             desktop.MainWindow = win;
             // floating panels are windows too: closing the main window ends the app
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;

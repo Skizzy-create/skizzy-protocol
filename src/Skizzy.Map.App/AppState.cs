@@ -341,12 +341,23 @@ public sealed class AppState
 
     public long Frames { get; private set; }
 
+    /// <summary>UI-thread cost of the last <see cref="Frame"/> in ms: source, scene sync, panels (diagnostics, the bench).</summary>
+    public double LastFrameMs { get; private set; }
+
+    /// <summary>Parts of the last frame, ms: the source's tick, the map windows (sync, lock waits) and the panels.</summary>
+    public double LastSourceMs { get; private set; }
+    public double LastMapsMs { get; private set; }
+    public double LastPanelsMs { get; private set; }
+
     /// <summary>One display frame: advance the source, sync and repaint every map, and fire the slow tick.</summary>
     public void Frame(double dt)
     {
+        long t0 = Stopwatch.GetTimestamp();
         Frames++;
         dt = Math.Clamp(dt, 0, 0.5);
         Source.Tick(dt);
+        long tSrc = Stopwatch.GetTimestamp();
+        LastSourceMs = Stopwatch.GetElapsedTime(t0, tSrc).TotalMilliseconds;
         if (Data.CommsVersion != _seenComms)
         {
             UnreadComms += (int)Math.Max(0, Data.CommsVersion - _seenComms);
@@ -359,7 +370,10 @@ public sealed class AppState
             _selection.RemoveWhere(id => Data.Get(id) is null);
             if (_selection.Count != before) { if (!_selection.Contains(Primary)) Primary = _selection.FirstOrDefault(); SelectionChanged?.Invoke(); }
         }
+        long tMaps = Stopwatch.GetTimestamp();
         foreach (var m in Maps) m.Frame(dt);
+        long tPanels = Stopwatch.GetTimestamp();
+        LastMapsMs = Stopwatch.GetElapsedTime(tMaps, tPanels).TotalMilliseconds;
         Ticked?.Invoke();
         _slowAcc += dt;
         if (_slowAcc >= .4)
@@ -367,6 +381,8 @@ public sealed class AppState
             _slowAcc = 0;
             SlowTick?.Invoke();
         }
+        LastPanelsMs = Stopwatch.GetElapsedTime(tPanels).TotalMilliseconds;
+        LastFrameMs = Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
     }
 
     /// <summary>Forces the slow tick now (tests, and after big changes).</summary>

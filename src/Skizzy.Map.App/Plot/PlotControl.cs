@@ -65,7 +65,7 @@ public class PlotControl : Avalonia.Controls.Control
             }
             using var lease = feature.Lease();
             _surface.NoSkia = false;
-            _surface.Draw(lease.SkCanvas, (float)Bounds.Width, (float)Bounds.Height);
+            _surface.DrawTo(lease.SkCanvas, lease.GrContext is not null, (float)Bounds.Width, (float)Bounds.Height);
         }
     }
 }

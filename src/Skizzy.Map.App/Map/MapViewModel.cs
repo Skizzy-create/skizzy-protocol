@@ -216,13 +216,21 @@ public sealed class MapViewModel : IDisposable
 
     // ------------------------------------------------------------ per frame
 
+    /// <summary>Last frame: ms waiting for the render thread to release the scene, and ms syncing it (diagnostics).</summary>
+    public double LastWaitMs { get; private set; }
+    public double LastSyncMs { get; private set; }
+
     public void Frame(double dt)
     {
         Animate(dt);
         var s = Surface;
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         lock (s.Gate)
         {
+            long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+            LastWaitMs = System.Diagnostics.Stopwatch.GetElapsedTime(t0, t1).TotalMilliseconds;
             Sync.Sync(_app.Data, _app.Selection, _app.SizeMul, HoverId);
+            LastSyncMs = System.Diagnostics.Stopwatch.GetElapsedTime(t1).TotalMilliseconds;
             s.View = new Viewport(_cx, _cy, _scale, s.View.Width, s.View.Height);
             s.State.FrameSeconds = (float)Math.Clamp(dt, 1 / 240.0, .25);
         }
