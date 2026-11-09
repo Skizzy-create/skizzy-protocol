@@ -333,8 +333,8 @@ namespace Skizzy.Host.Tests
                 Assert.Equal(metaReads, t.World.ReadMetaCalls);
                 using (var c = t.Connect())
                 {
-                    Assert.True(t.Sim.Runner.PumpEnabled);
-                    Assert.True(t.Sim.Runner.Updates > updates);
+                    // The wake is a post to the main thread (next frame in KSP), so allow the FakeKsp thread to be scheduled.
+                    Expect.Eventually(() => t.Sim.Runner.PumpEnabled && t.Sim.Runner.Updates > updates, 3000, "pump wakes on connect");
                     c.Call("ksp.read");
                 }
                 Expect.Eventually(() => !t.Sim.Runner.PumpEnabled, 3000, "pump to sleep after disconnect");

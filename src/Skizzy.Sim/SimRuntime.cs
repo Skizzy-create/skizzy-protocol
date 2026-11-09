@@ -202,8 +202,11 @@ namespace Skizzy.Sim
             {
                 if (!PumpEnabled)
                 {
-                    Waker.Signal.WaitOne(500);
+                    // The timeout only lets Dispose stop the thread; it must not re-enable the pump (a disabled KSP pump
+                    // gets no callbacks until woken, and the idle tests count them).
+                    bool woken = Waker.Signal.WaitOne(500);
                     if (_stop) return;
+                    if (!woken) continue;
                     PumpEnabled = true;
                     Host.Dispatcher.MarkAwake();
                     nextFixed = nextFrame = sw.Elapsed.TotalMilliseconds;
