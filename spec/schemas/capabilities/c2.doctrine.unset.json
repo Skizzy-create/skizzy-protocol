@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:c2.doctrine.unset@1",
+  "title": "c2.doctrine.unset",
+  "description": "Removes doctrine keys (and their locks) at one level so the next level up applies again. Needs the BDArmory binding (EXECUTOR_UNAVAILABLE without it).",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "c2_doctrine_unset",
+  "input": {
+    "type": "object",
+    "properties": {
+      "level": {
+        "type": "string",
+        "enum": [
+          "side",
+          "group",
+          "unit"
+        ],
+        "description": "doctrine level"
+      },
+      "target": {
+        "type": "string",
+        "description": "side name, group name, or unit reference; defaults to the session's side for level side",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "keys": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "description": "keys to remove",
+        "minItems": 1,
+        "maxItems": 64
+      }
+    },
+    "required": [
+      "level",
+      "keys"
+    ],
+    "additionalProperties": false
+  }
+}

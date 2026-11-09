@@ -262,6 +262,14 @@ namespace Skizzy.Host.Ksp
 
         public ICameraService Camera => CameraImpl;
 
+        public bool RequestPause(string reason)
+        {
+            if (HighLogic.LoadedScene != GameScenes.FLIGHT || FlightDriver.Pause) return false;
+            FlightDriver.SetPause(true);
+            ScreenMessages.PostScreenMessage("Skizzy: paused (" + (reason ?? "pause-on-event") + ")", 5f, ScreenMessageStyle.UPPER_CENTER);
+            return true;
+        }
+
         public string LogPath => _paths.KspLog;
 
         public void Doctor(List<string[]> lines)

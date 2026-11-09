@@ -9,5 +9,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Skizzy.Protocol.Ksp\Skizzy.Protocol.Ksp.csproj" Private="false" />
+    <ProjectReference Include="..\Skizzy.C2.Ksp\Skizzy.C2.Ksp.csproj" Private="false" />
   </ItemGroup>
 </Project>

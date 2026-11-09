@@ -226,6 +226,19 @@ namespace Skizzy.Sim
 
         public ICameraService Camera => FakeCamera;
 
+        /// <summary>Pause requests received (C2 FirstLaunch pause-on-event), newest last.</summary>
+        public readonly List<string> PauseRequests = new List<string>();
+
+        public bool RequestPause(string reason)
+        {
+            PauseRequests.Add(reason ?? "");
+            bool was;
+            lock (_gate) was = _paused;
+            if (was) return false;
+            SetPaused(true);
+            return true;
+        }
+
         public string LogPath => LogFile;
 
         public void Doctor(List<string[]> lines)

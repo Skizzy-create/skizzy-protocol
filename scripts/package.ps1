@@ -6,6 +6,7 @@ Builds skizzy-protocol and assembles artifacts/GameData/SkizzyProtocol plus a re
 Produces:
   artifacts/GameData/SkizzyProtocol/Plugins/Skizzy.Host.dll
   artifacts/GameData/SkizzyProtocol/Plugins/Skizzy.Protocol.dll
+  artifacts/GameData/SkizzyProtocol/Plugins/Skizzy.C2.dll       (C2 orders engine, net48 build of src/Skizzy.C2)
   artifacts/GameData/SkizzyProtocol/Bin/skizzy.exe          (self-contained, single file, no .NET runtime needed)
   artifacts/GameData/SkizzyProtocol/LICENSE, NOTICE         (Apache-2.0 licence and credit notice)
   artifacts/GameData/SkizzyProtocol/skizzy-protocol.version (KSP-AVC style JSON)
@@ -114,6 +115,7 @@ if (-not $SkipHost) {
     if (Test-Path -LiteralPath $plugins) { Remove-Item -LiteralPath $plugins -Recurse -Force }
     Copy-Into (Join-Path $RepoRoot "src\Skizzy.Host\bin\$Configuration\net48\Skizzy.Host.dll") $plugins
     Copy-Into (Join-Path $RepoRoot "src\Skizzy.Protocol.Ksp\bin\$Configuration\net48\Skizzy.Protocol.dll") $plugins
+    Copy-Into (Join-Path $RepoRoot "src\Skizzy.C2.Ksp\bin\$Configuration\net48\Skizzy.C2.dll") $plugins
 }
 
 # --- CLI ---------------------------------------------------------------------------------------

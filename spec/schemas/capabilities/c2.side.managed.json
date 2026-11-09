@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:c2.side.managed@1",
+  "title": "c2.side.managed",
+  "description": "Puts a side under Skizzy control (advance on contact, VIP priority, missile engagement, ship SAM priority run without orders) or returns it to plain BDArmory. Orders work for any side either way. Omit managed to read the state. Needs the BDArmory binding (EXECUTOR_UNAVAILABLE without it).",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "c2_side_managed",
+  "input": {
+    "type": "object",
+    "properties": {
+      "side": {
+        "type": "string",
+        "description": "Side. Defaults to the session's side.",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "managed": {
+        "type": "boolean",
+        "description": "true to manage, false to release"
+      }
+    },
+    "additionalProperties": false
+  }
+}

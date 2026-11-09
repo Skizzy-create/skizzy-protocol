@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:c2.order.cancel@1",
+  "title": "c2.order.cancel",
+  "description": "Cancels an order and all its unit orders; an engagement order gives units back their movement order. Needs the BDArmory binding (EXECUTOR_UNAVAILABLE without it).",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "c2_order_cancel",
+  "input": {
+    "type": "object",
+    "properties": {
+      "order": {
+        "type": "string",
+        "description": "order handle o:<id> (or the bare id)",
+        "pattern": "^(o:)?[0-9]+$"
+      }
+    },
+    "required": [
+      "order"
+    ],
+    "additionalProperties": false
+  }
+}

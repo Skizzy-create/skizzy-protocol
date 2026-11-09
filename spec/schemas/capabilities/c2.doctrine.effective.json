@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:c2.doctrine.effective@1",
+  "title": "c2.doctrine.effective",
+  "description": "A unit's effective doctrine: every key with its value, the level it comes from (default, side:<s>, group:<g>, unit:v:<id>) and whether it is locked. Needs the BDArmory binding (EXECUTOR_UNAVAILABLE without it).",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "c2_doctrine_effective",
+  "input": {
+    "type": "object",
+    "properties": {
+      "unit": {
+        "type": "string",
+        "description": "unit: a handle \"v:<id>\", a vessel id, an exact unit name, or \"active\".",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      }
+    },
+    "required": [
+      "unit"
+    ],
+    "additionalProperties": false
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:c2.unit.status@1",
+  "title": "c2.unit.status",
+  "description": "What the C2 engine is doing with a unit: task, movement and engagement orders with status, hold, fire authority and filter, override target and stickiness, route, yield/leash, divert, self-defence, advance, VIP threat, weapons control, on-contact. Needs the BDArmory binding (EXECUTOR_UNAVAILABLE without it).",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "c2_unit_status",
+  "input": {
+    "type": "object",
+    "properties": {
+      "unit": {
+        "type": "string",
+        "description": "unit: a handle \"v:<id>\", a vessel id, an exact unit name, or \"active\".",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      }
+    },
+    "required": [
+      "unit"
+    ],
+    "additionalProperties": false
+  }
+}

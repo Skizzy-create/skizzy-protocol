@@ -236,7 +236,8 @@ namespace Skizzy.Host.Tests
                 "FakeVessel.ReadField", "FakeModule.Accessor.Read",
             };
             string src = FindRepoDir("src");
-            var tag = new Regex(@"//\s*skizzy:hot\s+([A-Za-z0-9_.]+)");
+            // Same line only: a bare "// skizzy:hot" must not capture the first word of the next line.
+            var tag = new Regex(@"//[ \t]*skizzy:hot[ \t]+([A-Za-z0-9_.]+)");
             var found = new List<string>();
             foreach (var f in Directory.GetFiles(src, "*.cs", SearchOption.AllDirectories))
             {
@@ -244,7 +245,7 @@ namespace Skizzy.Host.Tests
                 string text = File.ReadAllText(f);
                 var ms = tag.Matches(text);
                 if (ms.Count == 0) continue;
-                Assert.True(text.IndexOf("using System.Linq", StringComparison.Ordinal) < 0, f + " has skizzy:hot paths and must not use LINQ (02 §2.3)");
+                Assert.True(text.IndexOf("using System.Linq", StringComparison.Ordinal) < 0, f + " has skizzy:hot paths and must not use LINQ (02 \u00a72.3)");
                 // src/Skizzy.Host/Ksp is the Unity layer: it cannot run under .NET 10, so its hot paths are measured in game
                 // (host.stats timings, host.selfcheck.perf, idle probe) instead of by an allocation assert here.
                 bool unityLayer = f.Contains(Path.DirectorySeparatorChar + "Skizzy.Host" + Path.DirectorySeparatorChar + "Ksp" + Path.DirectorySeparatorChar);

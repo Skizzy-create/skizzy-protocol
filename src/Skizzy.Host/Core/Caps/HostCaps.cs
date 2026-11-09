@@ -19,6 +19,7 @@ namespace Skizzy.Host.Core.Caps
             KspReadCaps.Register(h);
             CameraCaps.Register(h);
             h.Logs.Register(h);
+            C2Host.Register(h);
         }
     }
 
@@ -71,6 +72,7 @@ namespace Skizzy.Host.Core.Caps
                 .Set("ops", h.Ops.RunningCount)
                 .Set("autoDisabled", JsonValue.ArrOf(h.Faults.Disabled().ToArray()))
                 .Set("killSwitch", h.Kill.ToJson())
+                .Set("c2", h.C2.StatsJson())
                 .Set("events", JsonValue.Obj().Set("lastCursor", h.Events.LastCursor).Set("waiters", h.Events.WaiterCount))
                 .Set("audit", JsonValue.Obj().Set("written", h.Audit.Written).Set("dropped", h.Audit.Dropped))
                 .Set("server", srv == null ? JsonValue.Null : JsonValue.Obj().Set("port", srv.Port).Set("connections", srv.ConnectionCount)
@@ -112,6 +114,7 @@ namespace Skizzy.Host.Core.Caps
             var disabled = h.Faults.Disabled();
             lines.Add(new[] { disabled.Count == 0 ? "pass" : "warn", "auto-disabled capabilities", disabled.Count == 0 ? "none" : string.Join(", ", disabled.ToArray()) });
             lines.Add(new[] { h.Kill.Engaged ? "warn" : "pass", "kill switch", h.Kill.Engaged ? "engaged by " + h.Kill.By : "released" });
+            lines.Add(new[] { h.C2.Faults == 0 ? "pass" : "warn", "c2 engine", h.C2.Describe() });
             try { h.SelfCheckExtras?.Invoke(c, lines); }
             catch (Exception e) { lines.Add(new[] { "fail", "self-check provider", e.GetType().Name + ": " + e.Message }); }
             var arr = JsonValue.Arr();
