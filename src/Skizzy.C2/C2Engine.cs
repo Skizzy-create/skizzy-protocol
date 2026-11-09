@@ -698,38 +698,50 @@ namespace Skizzy.C2
                 if (r.Alive && r.P != null && (r.Managed || r.Move != null || r.Engage != null || r.Hold != null)) r.P.Active = true;
             }
             int sides = _sideList.Count;
-            // own-sensor contacts per unit (F5), identification (row 24), holders (row 7): counted on the target record
+            int slices = ContactSlices < 1 ? 1 : ContactSlices;
+            // own-sensor contacts per unit (F5), identification (row 24), holders (row 7): time-sliced, counted on the
+            // target record incrementally (a unit's holds are removed and re-added only when its slice is due)
             for (int i = 0; i < _unitList.Count; i++)
             {
                 var r = _unitList[i];
-                r.Contacts.Clear();
-                if (!r.Alive || r.S.IsMissile || r.P == null) continue;
+                if (!r.Alive || r.S.IsMissile || r.P == null || !r.P.Active)
+                {
+                    if (r.ContribSide >= 0) Uncount(r);
+                    r.Contacts.Clear();
+                    r.ContactsDue = 0;
+                    continue;
+                }
                 var p = r.P;
-                if (!p.Active) continue;
-                _world.GetOwnContacts(r.Id, r.Contacts);
                 int si = p.Index;
+                if (r.ContribSide >= 0 && r.ContribSide != si) { Uncount(r); r.ContactsDue = 0; } // changed side
+                if (r.ContactsDue > _tickNo) continue;
+                int phase = (int)(r.Id % (uint)slices);
+                r.ContactsDue = _tickNo + 1 + ((phase - (_tickNo + 1) % slices) % slices + slices) % slices;
+                Uncount(r);
+                r.Contacts.Clear();
+                _world.GetOwnContacts(r.Id, r.Contacts);
                 double classRange = r.Doc.ClassificationRangeM(r.S.Class);
                 bool surveillance = UnitClasses.IsSurveillance(r.S.Class);
+                r.ContribSide = si;
+                r.ContribSurv = surveillance;
                 for (int c = 0; c < r.Contacts.Count; c++)
                 {
                     var t = Rec(r.Contacts[c]);
                     if (t == null || !t.Alive || t.P == null || !HostileSides(p, t.P)) continue;
-                    if (t.HeldTick == null || t.HeldTick.Length < sides)
+                    if (t.CountedBy == r.Id && t.CountedTick == _tickNo) continue; // reported twice (radar and IRST)
+                    t.CountedBy = r.Id;
+                    t.CountedTick = _tickNo;
+                    if (t.HeldN == null || t.HeldN.Length < sides)
                     {
-                        t.HeldTick = new int[sides];
-                        t.HeldN = new int[sides];
-                        t.HeldBy = new uint[sides];
-                        t.HeldSurv = new bool[sides];
-                    }
-                    if (t.HeldTick[si] != _tickNo)
-                    {
-                        t.HeldTick[si] = _tickNo;
-                        t.HeldN[si] = 0;
-                        t.HeldBy[si] = r.Id;
-                        t.HeldSurv[si] = false;
+                        int n = sides < 2 ? 2 : sides;
+                        Array.Resize(ref t.HeldN, n);
+                        Array.Resize(ref t.HeldSum, n);
+                        Array.Resize(ref t.HeldSurvN, n);
                     }
                     t.HeldN[si]++;
-                    if (surveillance) t.HeldSurv[si] = true;
+                    t.HeldSum[si] += r.Id;
+                    if (surveillance) t.HeldSurvN[si]++;
+                    r.Contrib.Add(t);
                     if (!t.S.IsMissile && classRange > 0 && !p.Identified.Contains(t.Id) && Dist(r, t) <= classRange)
                     {
                         p.Identified.Add(t.Id);
@@ -747,12 +759,12 @@ namespace Skizzy.C2
                 {
                     var t = _unitList[i];
                     if (!t.Alive || t.P == null || !HostileSides(p, t.P)) continue;
-                    bool held = t.HeldTick != null && t.HeldTick.Length > si && t.HeldTick[si] == _tickNo;
+                    bool held = t.HeldN != null && t.HeldN.Length > si && t.HeldN[si] > 0;
                     if (held)
                     {
                         p.Holders[t.Id] = t.HeldN[si];
-                        if (t.HeldN[si] == 1) p.SoleHolder[t.Id] = t.HeldBy[si];
-                        if (t.HeldSurv[si]) p.SurveillanceHeld.Add(t.Id);
+                        if (t.HeldN[si] == 1) p.SoleHolder[t.Id] = (uint)t.HeldSum[si];
+                        if (t.HeldSurvN[si] > 0) p.SurveillanceHeld.Add(t.Id);
                     }
                     else if (!_world.SideDetects(p.Side, t.Id)) continue;
                     p.InView.Add(t.Id);
@@ -772,6 +784,31 @@ namespace Skizzy.C2
                         "Own-sensor contact: " + h.Name + "'s own radar holds " + t.Name + " at " + Km(h, t) + " km. No other unit holds it.");
                 }
             }
+        }
+
+        /// <summary>
+        /// Own-sensor contacts are re-read for each unit every this many ticks, staggered by unit id (5 = every 1 s at
+        /// 5 Hz, the rate of BDArmory's own guard scan). 1 = every tick. The interim picture's main cost (M2 replaces it).
+        /// </summary>
+        public int ContactSlices = 5;
+
+        /// <summary>Removes what <paramref name="r"/> holds from its targets' holder counts.</summary>
+        private void Uncount(UnitRec r)
+        {
+            int si = r.ContribSide;
+            if (si >= 0)
+            {
+                for (int i = 0; i < r.Contrib.Count; i++)
+                {
+                    var t = r.Contrib[i];
+                    if (t.HeldN == null || t.HeldN.Length <= si) continue;
+                    t.HeldN[si]--;
+                    t.HeldSum[si] -= r.Id;
+                    if (r.ContribSurv) t.HeldSurvN[si]--;
+                }
+            }
+            r.Contrib.Clear();
+            r.ContribSide = -1;
         }
 
         private bool SideHasOrders(SidePicture p)
