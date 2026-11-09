@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Skizzy.Map.App/Skizzy.Map.App.csproj" />
+    <Project Path="src/Skizzy.Map.Data/Skizzy.Map.Data.csproj" />
+    <Project Path="src/Skizzy.Map.Render/Skizzy.Map.Render.csproj" />
+    <Project Path="src/Skizzy.Client/Skizzy.Client.csproj" />
+    <Project Path="src/Skizzy.Protocol/Skizzy.Protocol.csproj" />
+    <Project Path="src/Skizzy.Sim/Skizzy.Sim.csproj" />
+    <Project Path="src/Skizzy.Host.Core/Skizzy.Host.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Skizzy.Map.App.Tests/Skizzy.Map.App.Tests.csproj" />
+    <Project Path="tests/Skizzy.Map.Render.Tests/Skizzy.Map.Render.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Skizzy.Map.RenderDemo/Skizzy.Map.RenderDemo.csproj" />
+  </Folder>
+</Solution>

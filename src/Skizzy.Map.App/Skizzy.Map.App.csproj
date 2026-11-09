@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    skizzy-map.exe: the tactical map desktop app (design/11-tactical-map.md, M3, release v1.1.0).
+    Avalonia 12.1 + SkiaSharp 3.119.4 (the SkiaSharp the render core is built on) + Dock.Avalonia for docking.
+    Package choices and pins: docs/M3-spikes.md. Licences: THIRD-PARTY-NOTICES.md.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>skizzy-map</AssemblyName>
+    <RootNamespace>Skizzy.Map.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
+    <SkizzyVersion>1.1.0</SkizzyVersion>
+    <Version>$(SkizzyVersion)</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <InformationalVersion>$(SkizzyVersion)-m3</InformationalVersion>
+    <Product>Skizzy Map</Product>
+    <Copyright>Copyright 2026 Skizzy-create. Apache-2.0.</Copyright>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.5" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.5" />
+    <PackageReference Include="Dock.Avalonia" Version="12.1.5" />
+    <PackageReference Include="Dock.Model.Avalonia" Version="12.1.5" />
+    <PackageReference Include="Dock.Avalonia.Themes.Fluent" Version="12.1.5" />
+    <!-- the render core already references SkiaSharp 3.119.4; pin the Windows natives to the same build -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Skizzy.Map.Render\Skizzy.Map.Render.csproj" />
+    <ProjectReference Include="..\Skizzy.Map.Data\Skizzy.Map.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The same OFL font files the render core embeds, linked (not copied) as Avalonia resources. -->
+    <AvaloniaResource Include="..\Skizzy.Map.Render\Fonts\*.ttf" Link="Assets\Fonts\%(Filename)%(Extension)" />
+    <AvaloniaResource Include="Assets\**\*.png;Assets\**\*.ico" />
+    <None Include="..\Skizzy.Map.Render\Fonts\*.txt" Link="Licences\Fonts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Skizzy.Map.App.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,15 @@
+Bundled fonts for the tactical map renderer (design/23-visual-design.md section 3).
+All three families are licensed under the SIL Open Font License 1.1; the licence
+texts are next to the files (OFL-*.txt).
+
+Fetched 2026-11-08 as raw files from the official Google Fonts repository,
+https://github.com/google/fonts, branch main at commit
+86aced91de05cd4f96a06838124cca45be337b2b:
+
+  ofl/sairasemicondensed/SairaSemiCondensed-{Medium,SemiBold,Bold}.ttf
+  ofl/ibmplexsanscondensed/IBMPlexSansCondensed-{Regular,Medium,SemiBold,Bold}.ttf
+  ofl/ibmplexmono/IBMPlexMono-{Regular,Medium}.ttf
+  ofl/*/OFL.txt  -> OFL-<Family>.txt
+
+They are compiled into Skizzy.Map.Render.dll as embedded resources. The map never
+fetches fonts at runtime.
