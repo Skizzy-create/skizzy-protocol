@@ -90,6 +90,8 @@ Avalonia 12 API changes we hit:
   - hover hit tests use `TryEnter` and keep the last hover rather than wait;
   - layer options belong to the UI thread and are copied into the render state at the start of each frame.
     A test checks that every `PlotOptions` property is copied.
+  - a plot that has not been drawn for 0.5 s (a hidden tab, a minimised window) stops rendering until it is
+    drawn again, so background map windows cost only their scene sync.
 
   No renderer is ever used from two threads at once.
 - **Synchronous mode.** Headless tests (and `--plot-sync`) keep one scene, synced under `Gate` by the UI and
@@ -108,7 +110,7 @@ Avalonia 12 API changes we hit:
 
   | Case | UI frames | Plot frames | Plot draw, median (p95) | UI frame work, median |
   | --- | --- | --- | --- | --- |
-  | 5,000 synthetic tracks, plot thread | **70 to 73 fps** | **42 to 46 fps** | 20 to 22 ms (28 to 32) | 2.6 ms |
+  | 5,000 synthetic tracks, plot thread | **70 to 74 fps** | **42 to 46 fps** | 20 to 22 ms (28 to 32) | 2.6 ms |
   | 2,000 synthetic tracks, plot thread | 74 fps | 73 fps | 9.8 ms (14.3) | 1.0 ms |
   | Demo battle at 8×, dense raid (1,012 tracks), plot thread | 73 fps | 73 fps | 6.8 ms (9.2) | 2.0 ms |
   | 5,000, `--plot-sync` (raster bitmap on the render thread) | 24 to 26 fps | same | 18 to 19 ms | 20 ms, of which 17 ms waiting for the draw |
@@ -126,7 +128,7 @@ Avalonia 12 API changes we hit:
   | In-app, synchronous: 1920×1080 window, plot 1077×717 px, all 5,000 on screen; data, sync and panels plus plot draw | best batch median **15.4 to 17.3 ms (58 to 65 fps)**, of which data, sync and panels take 1.2 to 1.6 ms |
   | Whole window composited headless (software) | 28 to 36 ms (28 to 35 fps) |
 
-- **Verdict: honest, not fully green.** The app itself runs at the display rate with 5,000 tracks: 70 to 73 fps,
+- **Verdict: honest, not fully green.** The app itself runs at the display rate with 5,000 tracks: 70 to 74 fps,
   with 2.6 ms of UI work per frame, and pans and zooms follow the pointer. The plot picture at 5,000 refreshes at
   42 to 46 fps at this 150 % pixel density. Below about 2,000 tracks, and in the dense demo raid (1,012 tracks),
   everything holds the display rate. The remaining cost is entirely the render core's draw.

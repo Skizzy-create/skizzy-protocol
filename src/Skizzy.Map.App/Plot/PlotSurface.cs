@@ -34,6 +34,10 @@ public sealed class PlotSurface : IDisposable
     private SKImage? _front;
     private Viewport _frontView;
     private volatile float _deviceScale = 1;
+    private long _lastBlit = Environment.TickCount64;
+
+    /// <summary>A plot nobody has drawn for this long (a hidden tab, a minimised window) stops rendering, ms.</summary>
+    public const int IdleAfterMs = 500;
     private volatile bool _disposed;
     private SKSurface? _raster;
     private FrameStats _stats;
@@ -235,6 +239,7 @@ public sealed class PlotSurface : IDisposable
     private void Blit(SKCanvas canvas, float width, float height, Viewport cur, float scale)
     {
         if (MathF.Abs(scale - _deviceScale) > .001f) _deviceScale = scale; // the plot thread sizes its bitmaps from this
+        Volatile.Write(ref _lastBlit, Environment.TickCount64);
         long t0 = Stopwatch.GetTimestamp();
         lock (_frameLock)
         {
@@ -286,6 +291,8 @@ public sealed class PlotSurface : IDisposable
                 _dirty = false;
                 vp = _readyView;
             }
+            // not on screen: skip the work until the window draws the plot again (it shows the last bitmap meanwhile)
+            if (_front is not null && Environment.TickCount64 - Volatile.Read(ref _lastBlit) > IdleAfterMs) continue;
             try
             {
                 RenderFrame(_scenes[_render], vp, clock, ref last);
