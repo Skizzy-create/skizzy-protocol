@@ -103,6 +103,9 @@ namespace Skizzy.Host.Ksp
 
             Host.Start();
             if (Host.StartError != null) Log.Error("socket not opened: " + Host.StartError);
+            // The C2 window's commands go through the host: audited, refused under the kill switch, ticked by the C2 slot.
+            try { Skizzy.C2.C2Runtime.Current.SetConsole(Host.C2.WrapConsole(Skizzy.C2.C2Runtime.Current)); }
+            catch (Exception e) { Log.Warn("c2: window console not installed: " + e.Message); }
 
             Pump = gameObject.AddComponent<SkizzyPump>();
             Pump.enabled = false;
@@ -303,6 +306,12 @@ namespace Skizzy.Host.Ksp
             try
             {
                 UiShutdown();
+                try
+                {
+                    var rt = Skizzy.C2.C2Runtime.Current;
+                    if (rt.Console is C2WindowConsole wc && ReferenceEquals(wc.Inner, rt)) rt.SetConsole(null);
+                }
+                catch (Exception) { }
                 Events.RemoveDynamic();
                 Events.RemoveScene();
                 Events.RemoveLauncher();

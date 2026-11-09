@@ -35,6 +35,10 @@ namespace Skizzy.Host.Core
         private readonly HashSet<string> _managedSides = new HashSet<string>(StringComparer.Ordinal);
         private readonly List<C2Event> _drain = new List<C2Event>();
         private readonly List<UnitState> _units = new List<UnitState>();
+        private readonly List<string> _sides = new List<string>();
+
+        /// <summary>Doctrine keys the kill switch resets at every level (they keep Skizzy in charge of fire or movement).</summary>
+        public static readonly string[] KillResetKeys = { "weaponsControl", "advanceOnContact" };
         private int _fixedCount;
         private int _faultsInARow;
         private volatile bool _killPending;
@@ -174,9 +178,20 @@ namespace Skizzy.Host.Core
             _units.Clear();
             try { _world.GetUnits(_units); } catch (Exception ex) { _h.Log.Warn("c2: kill switch unit list failed: " + ex.Message); }
             foreach (var u in _units) e.Release(u.Id, "kill switch");
-            foreach (var s in _managedSides) e.SetSideManaged(s, false);
+            // Every side the engine knows, not only those set through c2.side.managed: the C2 window manages sides too
+            // (advance on contact) and talks to the engine directly.
+            _sides.Clear();
+            e.ListSides(_sides);
+            foreach (var s in _managedSides) if (!_sides.Contains(s)) _sides.Add(s);
+            int unmanaged = 0;
+            foreach (var s in _sides)
+                if (e.IsSideManaged(s)) { e.SetSideManaged(s, false); unmanaged++; }
             _managedSides.Clear();
-            _h.Log.Info("c2: kill switch: " + ids.Count + " orders cancelled, units released, sides un-managed");
+            // Doctrine that keeps Skizzy in control (window weapons Tight/Hold per unit, advance on contact per side, and the
+            // same keys from c2.doctrine.set at any level) goes back to the defaults: plain BDArmory guard behaviour.
+            int cleared = e.Doctrine.UnsetEverywhere(KillResetKeys);
+            _h.Log.Info("c2: kill switch: " + ids.Count + " orders cancelled, units released, " + unmanaged + " sides un-managed, " +
+                        cleared + " doctrine entries reset (" + string.Join(", ", KillResetKeys) + ")");
             // One more tick writes the releases to BDArmory; then the engine idles until the next c2.* command.
             Tick();
             Engaged = false;
@@ -275,6 +290,20 @@ namespace Skizzy.Host.Core
                     "C2 orders need the Skizzy BDArmory binding in a flight scene (and BDArmory installed).");
             return e;
         }
+
+        /// <summary>
+        /// Main thread: something outside the c2.* capabilities commanded the engine (the C2 window through
+        /// <see cref="C2WindowConsole"/>); the host's 5 Hz slot takes over ticking. No-op without an engine or while the
+        /// kill switch is engaged.
+        /// </summary>
+        public void Engage()
+        {
+            if (_engine == null || _h.Kill.Engaged) return;
+            Commanded();
+        }
+
+        /// <summary>The audited console the in-game C2 window should use (<c>C2Runtime.Current.SetConsole(...)</c>).</summary>
+        public C2WindowConsole WrapConsole(IC2Console inner) { return new C2WindowConsole(_h, inner); }
 
         private void Commanded()
         {

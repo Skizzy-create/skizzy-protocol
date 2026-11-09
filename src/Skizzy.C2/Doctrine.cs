@@ -438,6 +438,32 @@ namespace Skizzy.C2
             if (changed) Version++;
         }
 
+        /// <summary>
+        /// Removes <paramref name="keys"/> (values and locks) from every side, group and unit layer, so the defaults apply
+        /// again (the host's kill switch: fire authority back to plain BDArmory). Returns how many entries were removed.
+        /// </summary>
+        public int UnsetEverywhere(IList<string> keys)
+        {
+            if (keys == null) return 0;
+            int n = 0;
+            foreach (var l in _sides.Values) n += Strip(l, keys);
+            foreach (var l in _groups.Values) n += Strip(l, keys);
+            foreach (var l in _units.Values) n += Strip(l, keys);
+            if (n > 0) Version++;
+            return n;
+        }
+
+        private static int Strip(Layer l, IList<string> keys)
+        {
+            int n = 0;
+            foreach (var k in keys)
+            {
+                if (l.Values.Remove(k)) n++;
+                if (l.Locks.Remove(k)) n++;
+            }
+            return n;
+        }
+
         /// <summary>Resolves the effective doctrine for one unit into <paramref name="into"/> (allocation-free apart from boxing at set time).</summary>
         public void Resolve(string side, string group, uint unit, DoctrineValues into)
         {

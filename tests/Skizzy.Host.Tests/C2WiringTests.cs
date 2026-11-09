@@ -83,10 +83,15 @@ namespace Skizzy.Host.Tests
                 var accepted = Events(llm, "order.*");
                 Assert.Contains(accepted, ev => ev.GetString("name") == "order.accepted" && ev.GetObj("data").GetString("order") == "o:1");
 
-                long t0 = _t.Host.C2.Ticks;
+                // One tick per 10 physics steps (5 Hz at KSP's 50 Hz), counted against the FakeKsp FixedUpdates actually run,
+                // so a busy machine that slows the physics loop does not fail the check.
+                long t0 = 0, f0 = 0, t1 = 0, f1n = 0;
+                _t.OnMain(() => { t0 = _t.Host.C2.Ticks; f0 = _t.Sim.Runner.FixedUpdates; });
                 Thread.Sleep(1000);
-                long n = _t.Host.C2.Ticks - t0;
-                Assert.InRange(n, 3, 8); // 5 Hz from the 50 Hz FakeKsp physics loop
+                _t.OnMain(() => { t1 = _t.Host.C2.Ticks; f1n = _t.Sim.Runner.FixedUpdates; });
+                long n = t1 - t0, steps = f1n - f0;
+                Assert.True(steps >= 10, "physics steps " + steps);
+                Assert.InRange(n, steps / 10 - 1, steps / 10 + 1);
 
                 var st = llm.Call("c2.unit.status", JsonValue.Obj().Set("unit", "v:" + f1.Id));
                 Assert.Equal("Cobra 1", st.GetString("name"));
@@ -208,6 +213,139 @@ namespace Skizzy.Host.Tests
                 Thread.Sleep(500);
                 Assert.Equal(ticks, _t.Host.C2.Ticks);
             }
+        }
+
+        /// <summary>A minimal IC2EngineHost over C2Host, as the BDArmory binding's HostSlot does it.</summary>
+        private sealed class TestSlot : IC2EngineHost
+        {
+            private readonly C2Host _c2;
+            public TestSlot(C2Host c2) { _c2 = c2; }
+            public string Name => "host";
+            public bool Ticking => _c2.WantsTicks;
+            public void Tick() { _c2.Tick(); }
+            public void Detach(string reason) { _c2.Detach(reason); }
+        }
+
+        /// <summary>The C2 window's path: C2Runtime adopting the host's engine, with the host's audited console interposed.</summary>
+        private IC2Console WindowConsole(out C2Runtime rt)
+        {
+            var runtime = new C2Runtime();
+            var binding = new FakeBinding(_bda);
+            IC2Console console = null;
+            _t.OnMain(() =>
+            {
+                _engine = _t.Host.C2.Attach(_bda, _bda, "fakebda");
+                runtime.Adopt(binding, _engine, new TestSlot(_t.Host.C2));
+                runtime.SetConsole(_t.Host.C2.WrapConsole(runtime));
+                console = runtime.Console;
+            });
+            rt = runtime;
+            return console;
+        }
+
+        private string EffectiveFrom(uint unit, string key)
+        {
+            string from = null;
+            _t.OnMain(() =>
+            {
+                foreach (var l in _engine.ExplainDoctrine(unit)) if (l.Key == key) from = l.From + "=" + l.Value;
+            });
+            return from;
+        }
+
+        [Fact]
+        public void Kill_switch_unmanages_window_managed_sides_and_resets_window_doctrine()
+        {
+            var f1 = _bda.Add("Cobra 1", Blue, UnitClass.Fighter, 0, 0);
+            var f2 = _bda.Add("Cobra 2", Blue, UnitClass.Fighter, 0, 3);
+            var b1 = _bda.Add("Bandit 1", Red, UnitClass.Fighter, 60, 0);
+            C2Runtime rt;
+            var console = WindowConsole(out rt);
+            using (var llm = _t.ConnectLlm(side: Blue))
+            {
+                // What the C2 window does: Advance (manages the side + side doctrine) and weapons Hold/Tight per unit,
+                // straight to the engine through the runtime, never through c2.side.managed.
+                _t.OnMain(() =>
+                {
+                    console.SetSideManaged(Blue, true);
+                    Assert.Empty(console.SetDoctrine(DoctrineLevel.Side, Blue, new Dictionary<string, object> { { "advanceOnContact", false } }));
+                    Assert.Empty(console.SetDoctrine(DoctrineLevel.Unit, f1.Id.ToString(), new Dictionary<string, object> { { "weaponsControl", "hold" } }));
+                    Assert.Empty(console.SetDoctrine(DoctrineLevel.Unit, f2.Id.ToString(), new Dictionary<string, object> { { "weaponsControl", "tight" } }));
+                    _engine.SetSideManaged(Red, true); // a side the host never heard of
+                });
+                // And an agent's side-level lock through c2.doctrine.set.
+                llm.Call("c2.doctrine.set", JsonValue.Obj().Set("level", "side").Set("values", JsonValue.Obj().Set("weaponsControl", "tight"))
+                    .Set("lock", JsonValue.Arr().Add("weaponsControl")));
+                Expect.Eventually(() => _t.Host.C2.Ticks >= 2, 3000, "ticks after the window commands");
+                Assert.True(_t.Host.C2.Engaged); // window commands hand ticking to the host's slot (Engage)
+                Assert.Equal("host", console.Owner);
+                Assert.Equal("side:Blue=tight", EffectiveFrom(f1.Id, "weaponsControl")); // side lock wins over the unit's hold
+
+                llm.Call("host.kill_switch", JsonValue.Obj().Set("action", "engage").Set("reason", "test"));
+                Expect.Eventually(() => !_t.Host.C2.Engaged, 3000, "C2 idle after the kill switch");
+
+                bool blue = true, red = true;
+                _t.OnMain(() => { blue = _engine.IsSideManaged(Blue); red = _engine.IsSideManaged(Red); });
+                Assert.False(blue);
+                Assert.False(red);
+                Assert.Equal("default=free", EffectiveFrom(f1.Id, "weaponsControl"));
+                Assert.Equal("default=free", EffectiveFrom(f2.Id, "weaponsControl"));
+                Assert.StartsWith("default=", EffectiveFrom(f1.Id, "advanceOnContact"));
+                UnitView v1 = null, v2 = null;
+                _t.OnMain(() => { _t.Host.C2.Tick(); v1 = _engine.GetUnitView(f1.Id); v2 = _engine.GetUnitView(f2.Id); });
+                Assert.Equal(WeaponsControl.Free, v1.WeaponsControl);
+                Assert.Equal(WeaponsControl.Free, v2.WeaponsControl);
+                Assert.Equal(FireAuthorityMode.Free, v1.FireAuthority);
+                Assert.False(v1.FilterInstalled);
+
+                // The window is refused while the kill switch is engaged; releasing and unsetting still work.
+                IssueResult refused = null;
+                List<string> docErr = null;
+                bool rel = false;
+                _t.OnMain(() =>
+                {
+                    refused = console.Issue(OrderRequest.AttackNearest(Blue, f1.Id));
+                    docErr = console.SetDoctrine(DoctrineLevel.Unit, f1.Id.ToString(), new Dictionary<string, object> { { "weaponsControl", "hold" } });
+                    console.SetSideManaged(Blue, true);
+                    rel = console.Release(f2.Id, "test");
+                });
+                Assert.False(refused.Accepted);
+                Assert.Equal(RefusalCode.NotPermitted, refused.Code);
+                Assert.Contains("kill switch", docErr[0]);
+                Assert.True(rel);
+                _t.OnMain(() => blue = _engine.IsSideManaged(Blue));
+                Assert.False(blue);
+                Assert.False(_t.Host.C2.Engaged);
+                Assert.Contains("Kill switch engaged", console.Status);
+            }
+            string audit = string.Join("\n", _t.Host.Audit.Recent(200).Select(e => e.ToString()));
+            Assert.Contains("\"method\":\"c2.window.side.managed\"", audit);
+            Assert.Contains("\"method\":\"c2.window.doctrine.set\"", audit);
+            Assert.Contains("deny:kill_switch", audit);
+            GC.KeepAlive(b1);
+        }
+
+        [Fact]
+        public void Window_orders_are_audited_and_engage_the_host_slot()
+        {
+            var f1 = _bda.Add("Cobra 1", Blue, UnitClass.Fighter, 0, 0);
+            C2Runtime rt;
+            var console = WindowConsole(out rt);
+            Assert.False(_t.Host.C2.Engaged);
+            IssueResult r = null;
+            _t.OnMain(() => r = console.Issue(OrderRequest.MoveTo(Blue, new GeoPoint(0, 0.5), f1.Id)));
+            Assert.True(r.Accepted);
+            Assert.True(_t.Host.C2.Engaged);
+            Expect.Eventually(() => _t.Host.C2.Ticks >= 2, 3000, "host slot ticks the window's order");
+            bool cancelled = false;
+            _t.OnMain(() => cancelled = console.Cancel(r.Order.Id, "test"));
+            Assert.True(cancelled);
+            using (var c = _t.Connect())
+                Expect.Eventually(() => Events(c, "order.cancelled").Count >= 1, 3000, "window cancel published as order.cancelled");
+            string audit = string.Join("\n", _t.Host.Audit.Recent(200).Select(e => e.ToString()));
+            Assert.Contains("\"method\":\"c2.window.order.issue\"", audit);
+            Assert.Contains("\"method\":\"c2.window.order.cancel\"", audit);
+            Assert.Contains("\"actor\":", audit);
         }
 
         [Fact]
