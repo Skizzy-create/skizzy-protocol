@@ -63,6 +63,21 @@ namespace Skizzy.Sim
             return null;
         }
 
+        /// <summary>Test hook: a mode the fake game refuses after a moment (like KSP's orbital camera near the ground).</summary>
+        public string RejectMode;
+
+        public void ConfirmMode(Action<SkizzyError> done)
+        {
+            if (RejectMode != null && Mode == RejectMode)
+            {
+                Mode = "chase";
+                done(SkizzyError.Precondition("mode_rejected", "the game switched the camera from " + RejectMode + " back to chase",
+                    "This mode is not available here; use chase, free, follow or look_at."));
+                return;
+            }
+            done(null);
+        }
+
         public SkizzyError SetTarget(GVessel target) { Target = target; return null; }
 
         public SkizzyError SetOrbit(OrbitSpec orbit) { ApplyOrbit(orbit); return null; }

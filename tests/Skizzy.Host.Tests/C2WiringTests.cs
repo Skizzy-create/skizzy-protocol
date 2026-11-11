@@ -42,6 +42,24 @@ namespace Skizzy.Host.Tests
             return l;
         }
 
+        // PC test 2026-11-11 (M4 checklist 0.1): the host did not say which Overdrive hooks the binding found.
+        [Fact]
+        public void Host_stats_and_selfcheck_list_the_binding_hooks()
+        {
+            using (var c = _t.Connect())
+            {
+                Assert.Null(c.Call("host.stats").GetObj("c2").GetObj("hooks"));
+                _bda.Hooks = HookSet.All & ~HookSet.F6b;
+                Attach();
+                var hooks = c.Call("host.stats").GetObj("c2").GetObj("hooks");
+                Assert.True(hooks.GetBool("F1"));
+                Assert.True(hooks.GetBool("F12"));
+                Assert.False(hooks.GetBool("F6b"));
+                Assert.StartsWith("FakeBda, hooks", c.Call("host.stats").GetObj("c2").GetString("binding"));
+                Assert.Contains("FakeBda", c.Call("host.selfcheck").ToString());
+            }
+        }
+
         [Fact]
         public void Without_the_binding_c2_calls_fail_and_nothing_ticks()
         {

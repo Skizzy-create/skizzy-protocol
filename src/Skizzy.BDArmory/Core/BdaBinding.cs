@@ -21,7 +21,7 @@ namespace Skizzy.Bda
     /// </list>
     /// Main thread only. Never throws into the engine: game errors are logged and the call is dropped.
     /// </summary>
-    public sealed class BdaBinding : IC2World, IBdaControl, IC2Binding
+    public sealed class BdaBinding : IC2World, IBdaControl, IC2Binding, IHookReport
     {
         private sealed class Slot
         {

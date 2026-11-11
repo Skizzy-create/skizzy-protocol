@@ -9,8 +9,8 @@ When a step fails, keep going if you can and send back the files listed in [sect
 ## 1. Build and install
 
 1. Point the build at your game. Either set `$env:KSPDIR = "<KSP>"`, or copy `Directory.Build.props.user.example` to `Directory.Build.props.user` and edit it (that file is git-ignored).
-2. Build the package: `.\scripts\package.ps1`. Expected result: `artifacts\GameData\SkizzyProtocol\` containing `Plugins\` (Skizzy.Host.dll and Skizzy.Protocol.dll, the net48 build of the protocol library), `Bin\skizzy.exe`, the version file, LICENSE and NOTICE. The build fails on purpose if mscorlib, System or System.Core would resolve from anywhere other than `<KSP>\KSP_x64_Data\Managed`.
-3. Dry run: `.\scripts\install.ps1 -DryRun`. Expected: a list of "create dir" and "copy file" lines (one per folder and file: Plugins with Skizzy.Host.dll, Skizzy.Protocol.dll and Skizzy.C2.dll, Bin with skizzy.exe, the version file, LICENSE, NOTICE), all under `<KSP>\GameData\SkizzyProtocol\`, and nothing written. Check that nothing outside that folder appears.
+2. Copy the BDArmory reference the binding compiles against: `.\scripts\copy-refs.ps1` (default source: `<KSP>\GameData\BDArmory\Plugins\BDArmory.dll`; use `-Source <path>` for an Overdrive-hooks build). Then build the package: `.\scripts\package.ps1` (it stops if `refs\BDArmory.dll` is missing; `-SkipBda` builds without the binding). Expected result: `artifacts\GameData\SkizzyProtocol\` containing `Plugins\` with four DLLs (Skizzy.Host.dll, Skizzy.Protocol.dll (the net48 build of the protocol library), Skizzy.C2.dll and Skizzy.BDArmory.dll), `Bin\skizzy.exe`, the version file, LICENSE and NOTICE. The build fails on purpose if mscorlib, System or System.Core would resolve from anywhere other than `<KSP>\KSP_x64_Data\Managed`.
+3. Dry run: `.\scripts\install.ps1 -DryRun`. Expected: a list of "create dir" and "copy file" lines (one per folder and file: Plugins with Skizzy.Host.dll, Skizzy.Protocol.dll, Skizzy.C2.dll and Skizzy.BDArmory.dll, Bin with skizzy.exe, the version file, LICENSE, NOTICE), all under `<KSP>\GameData\SkizzyProtocol\`, and nothing written. Check that nothing outside that folder appears.
 4. Install: `.\scripts\install.ps1`. The script refuses to run while KSP is running unless you pass `-Force`. It never touches `PluginData\`.
 5. To remove everything later: `.\scripts\uninstall.ps1 -DryRun`, then `.\scripts\uninstall.ps1`. It keeps `PluginData\` (token, settings, audit) unless you add `-RemoveData`, and keeps the `<KSP>\Skizzy\` logs unless you add `-RemoveLogs`.
 
@@ -73,7 +73,7 @@ skizzy doctor                         # PASS lines; "connect + hello" should be 
 skizzy call ksp.read vessel=active
 skizzy call ksp.vessels.list
 skizzy call ksp.query fields='["altitude","srfSpeed"]'
-skizzy call ksp.module.describe ...   # pick a module handle from ksp.read depth=2
+skizzy call ksp.module.describe ...   # pick a module handle from ksp.read depth=2 (module.describe and module.get take no `format` parameter)
 skizzy call ksp.mods.list
 skizzy watch altitude srfSpeed --vessels active --rate 5 --duration 10
 skizzy watch events --duration 30     # stage, switch vessel or pause to see vessel.* and sim.* events
@@ -171,12 +171,12 @@ With `skizzy watch altitude --vessels active --rate 1` running in one window and
 1. Switch scenes five times: flight, Space Center, tracking station, flight, VAB, flight.
 2. Pass: no exceptions in KSP.log, `[Skizzy]` warnings at most for expected stale handles, and `skizzy call host.selfcheck textures=true` object counts back to their first value after the last switch.
 3. An old vessel handle (copy one from `ksp.vessels.list` before switching) returns `NOT_FOUND` with reason `stale`: `skizzy call ksp.read vessel=<old handle>`.
-4. Quit KSP with a client connected (`skizzy watch ...` or Claude Code), then start it again. Pass: the client reconnects by itself, and the `watch` window resumes or prints a resync line.
+4. Quit KSP with a client connected (`skizzy watch ...` or Claude Code), then start it again. Pass: the client reconnects by itself. Each `watch` window prints `resync: disconnected ...`, then `resync: reconnected ...` once the game is back, and goes on with a fresh snapshot (header and rows again). `--no-reconnect` makes it exit with code 3 instead.
 
 ## 11. In-game UI and safety
 
-1. Permission prompt: `skizzy call host.debug.confirm_test note="checklist"`. A prompt window appears in game, on top of the other windows. Approve: the call returns `{"confirmed": true}`. Deny: `PERMISSION_DENIED` ("the human denied it"). Ignore it for 60 s: `PERMISSION_DENIED` ("confirmation timed out"). Each case gets a line in `PluginData\audit\`.
-2. Kill switch: Skizzy menu, then ENGAGE KILL SWITCH. A banner appears. `skizzy call rec.log.start ...` is refused, and `skizzy call ksp.read` still works. Release from the banner. With a client connected, Ctrl+Alt+K toggles it too (the hotkey is only checked while a client is connected).
+1. Permission prompt: `skizzy call host.debug.confirm_test note="checklist" --actor-kind llm --role commander` (or ask Claude Code to call it through the skizzy MCP). The plain CLI connects as a `script` actor, which may not run destructive capabilities such as this test (`PERMISSION_DENIED: role_clamp`), and a `script` cannot take the commander role. A prompt window appears in game, on top of the other windows. Approve: the call returns `{"confirmed": true}`. Deny: `PERMISSION_DENIED` ("the human denied it"). Ignore it for 60 s: `PERMISSION_DENIED` ("confirmation timed out"). Each case gets a line in `PluginData\audit\`.
+2. Kill switch: Skizzy menu, then ENGAGE KILL SWITCH. A banner appears. `skizzy call rec.log.start ...` is refused, and `skizzy call ksp.read` still works. Release from the banner. With a client connected, Ctrl+Alt+K toggles it too (the hotkey is only checked while a client is connected). If another program takes Ctrl+Alt+K, set another key in `PluginData\settings.cfg` with KSP closed, e.g. `killSwitchKey = ctrl+alt+j` (modifiers `ctrl`, `alt`, `shift`, plus one Unity KeyCode name).
 3. Connections window: shows the session (client name, actor, age, calls). Disconnect works. "Regenerate token..." asks for confirmation, then disconnects all clients; they reconnect by reading the new token file. The token itself is never shown.
 4. Health window: the self-check lines match `skizzy call host.selfcheck`.
 5. With every window closed and nothing connected, the probe in section 7 still shows `pumpUpdates` constant (the UI component is disabled then).

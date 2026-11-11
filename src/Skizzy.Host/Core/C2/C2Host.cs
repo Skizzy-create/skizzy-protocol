@@ -59,6 +59,10 @@ namespace Skizzy.Host.Core
 
         public C2Host(HostCore h) { _h = h; }
 
+        private bool _hooksKnown;
+        private HookSet _hooks;
+        private string _bindingDescription;
+
         public C2Engine Engine => _engine;
         public bool Attached => _engine != null;
         public string Source => _source;
@@ -81,11 +85,15 @@ namespace Skizzy.Host.Core
             _engine = new C2Engine(world, control);
             _world = world;
             _source = source ?? "binding";
+            var report = control as IHookReport;
+            _hooksKnown = report != null;
+            _hooks = report != null ? report.Hooks : HookSet.None;
+            _bindingDescription = report?.Description;
             Engaged = false;
             _fixedCount = 0;
             _faultsInARow = 0;
             _managedSides.Clear();
-            _h.Log.Info("c2: engine attached (" + _source + ")");
+            _h.Log.Info("c2: engine attached (" + _source + ")" + (_hooksKnown ? ": " + (_bindingDescription ?? _hooks.ToString()) : ""));
             _h.Events.Emit("host.c2_attached", "c2", "C2 engine attached (" + _source + ")", JsonValue.Obj().Set("source", _source));
             return _engine;
         }
@@ -254,8 +262,23 @@ namespace Skizzy.Host.Core
             var o = JsonValue.Obj().Set("attached", Attached).Set("source", _source).Set("engaged", Engaged)
                 .Set("ticks", Ticks).Set("faults", Faults).Set("events", EventsPublished).Set("pauses", Pauses)
                 .Set("tickMs", HostStats.Timing(TickMs));
+            var hooks = HooksJson();
+            if (hooks != null) o.Set("hooks", hooks).Set("binding", _bindingDescription);
             var e = _engine;
             if (e != null) o.Set("activeOrders", e.ActiveOrders.Count).Set("managedSides", JsonValue.ArrOf(new List<string>(_managedSides).ToArray()));
+            return o;
+        }
+
+        /// <summary>The Overdrive hooks of the attached binding, every known hook by name (true/false), or null when unknown.</summary>
+        public JsonValue HooksJson()
+        {
+            if (_engine == null || !_hooksKnown) return null;
+            var o = JsonValue.Obj();
+            foreach (HookSet f in Enum.GetValues(typeof(HookSet)))
+            {
+                if (f == HookSet.None || f == HookSet.All) continue;
+                o.Set(f.ToString(), (_hooks & f) == f);
+            }
             return o;
         }
 
@@ -264,7 +287,8 @@ namespace Skizzy.Host.Core
             if (_engine == null) return "not attached (needs the BDArmory binding in flight); no C2 cost";
             TickMs.Percentiles(out double p50, out double p99, out double max);
             return "attached (" + _source + "), " + (Engaged ? "ticking at 5 Hz" : "idle until a c2.* command") + ", " + Ticks + " ticks, tick p50 " +
-                   Inv.S(p50) + " / p99 " + Inv.S(p99) + " ms, " + _engine.ActiveOrders.Count + " active orders, " + Faults + " faults";
+                   Inv.S(p50) + " / p99 " + Inv.S(p99) + " ms, " + _engine.ActiveOrders.Count + " active orders, " + Faults + " faults" +
+                   (_hooksKnown ? "; " + (_bindingDescription ?? "hooks " + _hooks) : "");
         }
 
         // ------------------------------------------------------------------ capabilities

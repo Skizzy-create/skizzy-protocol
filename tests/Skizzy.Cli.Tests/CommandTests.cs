@@ -147,6 +147,82 @@ namespace Skizzy.Cli.Tests
             Assert.StartsWith("UNAVAILABLE: game_not_running", off.Err);
         }
 
+        // PC test 2026-11-11, M0 checklist 10.4: watch exited on a KSP restart instead of resuming.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void Watch_resyncs_after_the_game_restarts(bool events)
+        {
+            var game = new FakeGame();
+            string root = game.Root;
+            try
+            {
+                var args = events
+                    ? Ksp(game, "watch", "events", "test.*", "--duration", "12")
+                    : Ksp(game, "watch", "altitude", "--rate", "10", "--duration", "12");
+                var task = Task.Run(() => Run(args));
+                var end = DateTime.UtcNow.AddSeconds(3);
+                while (DateTime.UtcNow < end)
+                {
+                    if (events) game.Sim.Host.Events.Emit("test.before", "system", "before the restart");
+                    Thread.Sleep(150);
+                }
+                if (!events) Assert.Equal(1, game.Sim.Host.Streams.Count);
+                game.Sim.Dispose(); // "KSP closes"
+                game.Sim = null;
+                Thread.Sleep(1500);
+                using (var again = new FakeGame(root: root)) // "KSP is back": same folder, new port and endpoint.json
+                {
+                    while (!task.IsCompleted)
+                    {
+                        if (events) again.Sim.Host.Events.Emit("test.after", "system", "after the restart");
+                        Thread.Sleep(150);
+                    }
+                    var r = task.Result;
+                    Assert.Equal(0, r.Code);
+                    Assert.Contains("resync: disconnected", r.Err);
+                    Assert.Contains("resync: reconnected", r.Err);
+                    if (events)
+                    {
+                        Assert.Contains("test.before", r.Out);
+                        Assert.Contains("test.after", r.Out);
+                    }
+                    else
+                    {
+                        // a fresh snapshot after the resync prints the header and the vessel rows again
+                        Assert.True(r.Out.Split('\n').Count(l => l.StartsWith("ut ", StringComparison.Ordinal)) >= 2, r.Out);
+                    }
+                    Assert.True(SpinWait.SpinUntil(() => again.Sim.Host.Streams.Count == 0, 3000));
+                }
+            }
+            finally
+            {
+                game.Sim?.Dispose();
+                try { Directory.Delete(root, true); } catch (Exception) { }
+            }
+        }
+
+        [Fact]
+        public void Watch_no_reconnect_exits_3_when_the_game_goes_away()
+        {
+            var game = new FakeGame();
+            string root = game.Root;
+            try
+            {
+                var task = Task.Run(() => Run(Ksp(game, "watch", "altitude", "--rate", "10", "--duration", "30", "--no-reconnect")));
+                Assert.True(SpinWait.SpinUntil(() => game.Sim.Host.Streams.Count == 1, 10000));
+                game.Sim.Dispose();
+                game.Sim = null;
+                Assert.True(task.Wait(10000));
+                Assert.Equal(3, task.Result.Code);
+                Assert.StartsWith("UNAVAILABLE: disconnected", task.Result.Err);
+            }
+            finally
+            {
+                try { Directory.Delete(root, true); } catch (Exception) { }
+            }
+        }
+
         // ------------------------------------------------------------------ log
 
         [Fact]

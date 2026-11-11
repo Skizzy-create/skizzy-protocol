@@ -17,6 +17,8 @@ namespace Skizzy.Bda.Ksp
 {
     internal static class HookF1
     {
+        // Delegate-typed: a field typed with an Overdrive-only delegate breaks Assembly.GetTypes() on stock BDArmory.
+        private static Delegate _hLost;
         private static Action<MissileFire, TargetInfo, int> _lost;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -32,14 +34,15 @@ namespace Skizzy.Bda.Ksp
         public static void Subscribe(Action<MissileFire, TargetInfo, int> lost)
         {
             _lost = lost;
-            MissileFire.OnExternalOverrideLost -= OnLost;
-            MissileFire.OnExternalOverrideLost += OnLost;
+            MissileFire.OnExternalOverrideLost -= (Action<MissileFire, TargetInfo, OverrideLostReason>)_hLost;
+            { var d = new Action<MissileFire, TargetInfo, OverrideLostReason>(OnLost); MissileFire.OnExternalOverrideLost += d; _hLost = d; }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Unsubscribe()
         {
-            MissileFire.OnExternalOverrideLost -= OnLost;
+            MissileFire.OnExternalOverrideLost -= (Action<MissileFire, TargetInfo, OverrideLostReason>)_hLost;
+            _hLost = null;
             _lost = null;
         }
 
@@ -103,6 +106,9 @@ namespace Skizzy.Bda.Ksp
 
     internal static class HookF6
     {
+        // Delegate-typed: a field typed with an Overdrive-only delegate breaks Assembly.GetTypes() on stock BDArmory.
+        private static Delegate _hReached;
+        private static Delegate _hCompleted;
         private static Action<BDGenericAIBase, int, int> _reached;
         private static Action<BDGenericAIBase> _completed;
 
@@ -120,17 +126,19 @@ namespace Skizzy.Bda.Ksp
         {
             _reached = reached;
             _completed = completed;
-            BDGenericAIBase.OnCustomWaypointReached -= OnReached;
-            BDGenericAIBase.OnCustomWaypointReached += OnReached;
-            BDGenericAIBase.OnCustomWaypointRouteCompleted -= OnCompleted;
-            BDGenericAIBase.OnCustomWaypointRouteCompleted += OnCompleted;
+            BDGenericAIBase.OnCustomWaypointReached -= (Action<BDGenericAIBase, int, int>)_hReached;
+            { var d = new Action<BDGenericAIBase, int, int>(OnReached); BDGenericAIBase.OnCustomWaypointReached += d; _hReached = d; }
+            BDGenericAIBase.OnCustomWaypointRouteCompleted -= (Action<BDGenericAIBase>)_hCompleted;
+            { var d = new Action<BDGenericAIBase>(OnCompleted); BDGenericAIBase.OnCustomWaypointRouteCompleted += d; _hCompleted = d; }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Unsubscribe()
         {
-            BDGenericAIBase.OnCustomWaypointReached -= OnReached;
-            BDGenericAIBase.OnCustomWaypointRouteCompleted -= OnCompleted;
+            BDGenericAIBase.OnCustomWaypointReached -= (Action<BDGenericAIBase, int, int>)_hReached;
+            _hReached = null;
+            BDGenericAIBase.OnCustomWaypointRouteCompleted -= (Action<BDGenericAIBase>)_hCompleted;
+            _hCompleted = null;
             _reached = null;
             _completed = null;
         }
@@ -141,6 +149,9 @@ namespace Skizzy.Bda.Ksp
 
     internal static class HookF6b
     {
+        // Delegate-typed: a field typed with an Overdrive-only delegate breaks Assembly.GetTypes() on stock BDArmory.
+        private static Delegate _hEngage;
+        private static Delegate _hResume;
         private static Action<BDGenericAIBase, Vessel> _engage;
         private static Action<BDGenericAIBase, bool> _resume;
 
@@ -165,17 +176,19 @@ namespace Skizzy.Bda.Ksp
         {
             _engage = engage;
             _resume = resume;
-            BDGenericAIBase.OnPatrolEngage -= OnEngage;
-            BDGenericAIBase.OnPatrolEngage += OnEngage;
-            BDGenericAIBase.OnPatrolResume -= OnResume;
-            BDGenericAIBase.OnPatrolResume += OnResume;
+            BDGenericAIBase.OnPatrolEngage -= (Action<BDGenericAIBase, Vessel>)_hEngage;
+            { var d = new Action<BDGenericAIBase, Vessel>(OnEngage); BDGenericAIBase.OnPatrolEngage += d; _hEngage = d; }
+            BDGenericAIBase.OnPatrolResume -= (Action<BDGenericAIBase, bool>)_hResume;
+            { var d = new Action<BDGenericAIBase, bool>(OnResume); BDGenericAIBase.OnPatrolResume += d; _hResume = d; }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Unsubscribe()
         {
-            BDGenericAIBase.OnPatrolEngage -= OnEngage;
-            BDGenericAIBase.OnPatrolResume -= OnResume;
+            BDGenericAIBase.OnPatrolEngage -= (Action<BDGenericAIBase, Vessel>)_hEngage;
+            _hEngage = null;
+            BDGenericAIBase.OnPatrolResume -= (Action<BDGenericAIBase, bool>)_hResume;
+            _hResume = null;
             _engage = null;
             _resume = null;
         }
@@ -186,20 +199,23 @@ namespace Skizzy.Bda.Ksp
 
     internal static class HookF9
     {
+        // Delegate-typed: a field typed with an Overdrive-only delegate breaks Assembly.GetTypes() on stock BDArmory.
+        private static Delegate _hFired;
         private static Action<MissileFire, MissileBase, Vessel> _fired;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Subscribe(Action<MissileFire, MissileBase, Vessel> fired)
         {
             _fired = fired;
-            MissileFire.OnMissileFired -= OnFired;
-            MissileFire.OnMissileFired += OnFired;
+            MissileFire.OnMissileFired -= (Action<MissileFire, MissileBase, Vessel>)_hFired;
+            { var d = new Action<MissileFire, MissileBase, Vessel>(OnFired); MissileFire.OnMissileFired += d; _hFired = d; }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Unsubscribe()
         {
-            MissileFire.OnMissileFired -= OnFired;
+            MissileFire.OnMissileFired -= (Action<MissileFire, MissileBase, Vessel>)_hFired;
+            _hFired = null;
             _fired = null;
         }
 
@@ -208,6 +224,10 @@ namespace Skizzy.Bda.Ksp
 
     internal static class HookF10
     {
+        // Delegate-typed: a field typed with an Overdrive-only delegate breaks Assembly.GetTypes() on stock BDArmory.
+        private static Delegate _hDetected;
+        private static Delegate _hTLost;
+        private static Delegate _hDeath;
         private static Action<TargetInfo, BDTeam> _detected, _lost;
         private static Action<string> _death;
 
@@ -217,20 +237,23 @@ namespace Skizzy.Bda.Ksp
             _detected = detected;
             _lost = lost;
             _death = death;
-            BDATargetManager.OnTargetDetected -= OnDetected;
-            BDATargetManager.OnTargetDetected += OnDetected;
-            BDATargetManager.OnTargetLost -= OnLost;
-            BDATargetManager.OnTargetLost += OnLost;
-            CompetitionScores.OnDeath -= OnDeath;
-            CompetitionScores.OnDeath += OnDeath;
+            BDATargetManager.OnTargetDetected -= (Action<TargetInfo, BDTeam>)_hDetected;
+            { var d = new Action<TargetInfo, BDTeam>(OnDetected); BDATargetManager.OnTargetDetected += d; _hDetected = d; }
+            BDATargetManager.OnTargetLost -= (Action<TargetInfo, BDTeam>)_hTLost;
+            { var d = new Action<TargetInfo, BDTeam>(OnLost); BDATargetManager.OnTargetLost += d; _hTLost = d; }
+            CompetitionScores.OnDeath -= (Action<string, string, DamageFrom, AliveState>)_hDeath;
+            { var d = new Action<string, string, DamageFrom, AliveState>(OnDeath); CompetitionScores.OnDeath += d; _hDeath = d; }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Unsubscribe()
         {
-            BDATargetManager.OnTargetDetected -= OnDetected;
-            BDATargetManager.OnTargetLost -= OnLost;
-            CompetitionScores.OnDeath -= OnDeath;
+            BDATargetManager.OnTargetDetected -= (Action<TargetInfo, BDTeam>)_hDetected;
+            _hDetected = null;
+            BDATargetManager.OnTargetLost -= (Action<TargetInfo, BDTeam>)_hTLost;
+            _hTLost = null;
+            CompetitionScores.OnDeath -= (Action<string, string, DamageFrom, AliveState>)_hDeath;
+            _hDeath = null;
             _detected = _lost = null;
             _death = null;
         }

@@ -4,7 +4,7 @@ Scope: `24-ksp-parity.md` rows 3–10, 12–14, 17 and 21–28, engine side (`sr
 
 ## 0. Prerequisites
 
-1. **BDArmory with the Overdrive hooks.** Branch `overdrive-hooks` at commit `9fac1f3bc` or later. `host.status` (or the runtime probe) reports F1, F2, F3, F4, F5, F6, F6b, F9 and F10 as present. If a hook is missing, orders that need it are refused with `HOOK_MISSING`. That is correct behaviour, not a failure.
+1. **BDArmory with the Overdrive hooks.** Branch `overdrive-hooks` at commit `9fac1f3bc` or later. In flight, `skizzy call host.stats` shows `c2.hooks` with every hook (F1, F2, F3, F4, F5, F6, F6b, F9, F10, F12) as `true`, and `c2.binding` reads `BDArmory <version>, all Overdrive hooks`; `host.selfcheck`'s "c2 engine" line says the same. If a hook is missing, orders that need it are refused with `HOOK_MISSING`. That is correct behaviour, not a failure.
 2. **The KSP binding** (`src/Skizzy.BDArmory`, `Skizzy.BDArmory.dll`). It implements `IC2World`, `IBdaControl` and the hook events (`src/Skizzy.C2/Hooks.cs`) over BDArmory, subscribes to the F1, F6, F6b, F9 and F10 static events and forwards them to `C2Engine`. Section B below tests it.
 3. **M0 wiring** (on main since `a7773ce`).
    - `C2Engine.Tick()` runs from the C2 slot of the host's FixedUpdate at 5 Hz.
@@ -80,8 +80,8 @@ The callsign group is the name without its trailing number, so "Cobra 1" to "Cob
 
 1. **Attach.**
    - KSP.log shows `[Skizzy.BDArmory] C2 binding attached (host engine): BDArmory <version>, all Overdrive hooks`.
-   - host.log shows `c2: engine attached (bdarmory)`.
-   - `host.status` shows C2 as attached and idle.
+   - host.log shows `c2: engine attached (bdarmory): BDArmory <version>, all Overdrive hooks`.
+   - `skizzy call host.selfcheck` shows the "c2 engine" line as attached and idle, with the hook list.
 
    **Pass:** both lines are present and there are no exceptions.
 2. **Stock BDArmory.** Swap in a stock BDArmory DLL (keep a backup) and repeat.

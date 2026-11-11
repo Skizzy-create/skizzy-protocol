@@ -472,6 +472,47 @@ namespace Skizzy.Host.Ksp
             return SetOrbit(orbit);
         }
 
+        /// <summary>Frames to wait before checking that KSP kept the requested mode (it reverts ORBITAL in its own update).</summary>
+        private const int ConfirmFrames = 15;
+
+        public void ConfirmMode(Action<SkizzyError> done)
+        {
+            var cam = FlightCamera.fetch;
+            if (cam == null) { done(null); return; }
+            _runner.StartCoroutine(ConfirmRoutine(cam.mode, _mode, done));
+        }
+
+        private IEnumerator ConfirmRoutine(FlightCamera.Modes wanted, string asked, Action<SkizzyError> done)
+        {
+            for (int i = 0; i < ConfirmFrames; i++) yield return null;
+            var cam = FlightCamera.fetch;
+            if (cam == null || HighLogic.LoadedScene != GameScenes.FLIGHT)
+            {
+                done(SkizzyError.Unavailable(KspWorld.SceneName(HighLogic.LoadedScene), new[] { "FLIGHT" }, "wrong_scene"));
+                yield break;
+            }
+            // AUTO resolves to a concrete mode by itself, so only explicit modes are checked.
+            if (wanted == FlightCamera.Modes.AUTO || cam.mode == wanted) { done(null); yield break; }
+            _mode = ModeName(cam.mode);
+            string hint = wanted == FlightCamera.Modes.ORBITAL
+                ? "KSP allows the orbital camera only away from the ground; use chase, free, follow or look_at here."
+                : "Use another camera mode.";
+            done(SkizzyError.Precondition("mode_rejected", "KSP switched the camera from " + asked + " (" + wanted + ") back to " + cam.mode, hint));
+        }
+
+        private static string ModeName(FlightCamera.Modes m)
+        {
+            switch (m)
+            {
+                case FlightCamera.Modes.AUTO: return "follow";
+                case FlightCamera.Modes.ORBITAL: return "orbit";
+                case FlightCamera.Modes.CHASE: return "chase";
+                case FlightCamera.Modes.FREE: return "free";
+                case FlightCamera.Modes.LOCKED: return "locked";
+                default: return m.ToString().ToLowerInvariant();
+            }
+        }
+
         public SkizzyError SetTarget(GVessel target)
         {
             var e = CheckFlight() ?? CheckLoaded(target, "/target");

@@ -112,7 +112,16 @@ namespace Skizzy.Host.Core.Caps
             GVessel to = c.Has("to") ? h.Handles.ResolveVessel(c.Str("to"), "/to") : null;
             if (mode == "look_at" && to == null) throw SkizzyError.InvalidParam("/to", "look_at needs `to` (the vessel to keep in view)");
             Check(cam.SetMode(mode, target, to, ParseOrbit(c.Params.GetObj("orbit"))));
-            return JsonValue.Obj().Set("ok", true).Set("camera", cam.State());
+            if (mode == "look_at") return JsonValue.Obj().Set("ok", true).Set("camera", cam.State());
+            // PC test 2026-11-11: KSP accepted ORBITAL on the pad and switched back to CHASE half a second later, so the
+            // call reported a mode the camera was not in. Answer only once the game has kept (or refused) the mode.
+            c.Defer();
+            cam.ConfirmMode(err =>
+            {
+                if (err != null) c.Fail(err);
+                else c.Complete(JsonValue.Obj().Set("ok", true).Set("camera", cam.State()));
+            });
+            return null;
         }
 
         private static JsonValue Target(CallContext c)

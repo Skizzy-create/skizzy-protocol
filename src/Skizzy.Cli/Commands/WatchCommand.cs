@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Text;
 using System.Threading;
 using Skizzy.Client;
+using Skizzy.Protocol.Errors;
 using Skizzy.Protocol.Json;
 
 namespace Skizzy.Cli
@@ -25,8 +26,10 @@ namespace Skizzy.Cli
                     "  Subscribes a stream and prints one aligned line per vessel for every sample (the first line set is the full snapshot);\n" +
                     "  --onchange prints only the rows whose values changed. --json prints one JSON object per message.\n" +
                     "  `watch events` prints host events (vessel.*, sim.*, rec.*, ...) one compact line each, optionally filtered by name globs.\n" +
-                    "  Stops on Ctrl+C, after --count messages (events for `watch events`) or --duration seconds, and unsubscribes cleanly.",
-            Flags = new[] { "onchange" },
+                    "  Stops on Ctrl+C, after --count messages (events for `watch events`) or --duration seconds, and unsubscribes cleanly.\n" +
+                    "  If the game goes away (KSP restart, crash), watch prints a `resync:` line on stderr, reconnects when the game is back\n" +
+                    "  (the new port and token are read again) and subscribes again, starting with a fresh snapshot. --no-reconnect exits instead (code 3).",
+            Flags = new[] { "onchange", "no-reconnect" },
             Run = Run,
         };
 
@@ -48,6 +51,8 @@ namespace Skizzy.Cli
             if (!events && fields.Count == 0) throw new UsageException("missing field name (e.g. altitude)");
 
             var conn = ConnectionOptions.From(a, "cli", "script");
+            bool reconnect = !a.Flag("no-reconnect");
+            var st = new WatchState { Count = count, Deadline = duration > 0 ? DateTime.UtcNow.AddSeconds(duration) : DateTime.MaxValue, Reconnect = reconnect };
             using (var cts = new CancellationTokenSource())
             {
                 ConsoleCancelEventHandler onCancel = (s, e) => { e.Cancel = true; try { cts.Cancel(); } catch (ObjectDisposedException) { } };
@@ -55,11 +60,36 @@ namespace Skizzy.Cli
                 try { Console.CancelKeyPress += onCancel; hooked = true; } catch (Exception) { }
                 try
                 {
-                    using (var c = conn.Connect())
+                    bool first = true;
+                    while (true)
                     {
-                        return events
-                            ? WatchEvents(c, a, count, duration, json, cts.Token)
-                            : WatchStream(c, fields, select, rate, a.Flag("onchange"), a.Has("deadband") ? deadband : -1, count, duration, json, cts.Token);
+                        SkizzyClient c;
+                        if (first) c = conn.Connect(); // the first connect fails the command as before (exit 3)
+                        else
+                        {
+                            c = Reconnect(conn, st, cts.Token);
+                            if (c == null) return cts.IsCancellationRequested ? Program.ExitOk : Program.ExitNotConnected;
+                        }
+                        int r;
+                        using (c)
+                        {
+                            try
+                            {
+                                r = events
+                                    ? WatchEvents(c, a, json, st, cts.Token)
+                                    : WatchStream(c, fields, select, rate, a.Flag("onchange"), a.Has("deadband") ? deadband : -1, json, st, cts.Token);
+                            }
+                            catch (Exception e) when (!first && (e is SkizzyError || e is SkizzyClientException))
+                            {
+                                // Right after a restart the game may still be loading and refuse the subscribe: try again.
+                                Console.Error.WriteLine("resync: subscribe refused (" + e.Message + "); retrying");
+                                r = Disconnected;
+                                cts.Token.WaitHandle.WaitOne(1000);
+                            }
+                        }
+                        if (r != Disconnected) return r;
+                        if (!reconnect) return Program.ExitNotConnected;
+                        first = false;
                     }
                 }
                 finally
@@ -69,10 +99,55 @@ namespace Skizzy.Cli
             }
         }
 
+        /// <summary>Returned by a watch session when the connection dropped (the caller reconnects or exits).</summary>
+        private const int Disconnected = -1;
+
+        /// <summary>What survives a reconnect: the message budget and the deadline.</summary>
+        private sealed class WatchState
+        {
+            public int Count;
+            public int Messages;
+            public DateTime Deadline;
+            public bool Reconnect;
+
+            public bool Done(CancellationToken ct)
+            {
+                return (Count > 0 && Messages >= Count) || ct.IsCancellationRequested || DateTime.UtcNow >= Deadline;
+            }
+        }
+
+        private static int LostConnection(SkizzyClient c, WatchState st)
+        {
+            string why = c.LastError ?? "connection lost";
+            Console.Error.WriteLine(st.Reconnect
+                ? "resync: disconnected - " + why + "; waiting for the game to come back (Ctrl+C to stop)"
+                : "UNAVAILABLE: disconnected - " + why);
+            return Disconnected;
+        }
+
+        /// <summary>Retries the connection (endpoint and token read again each time) until it works, Ctrl+C or the deadline.</summary>
+        private static SkizzyClient Reconnect(ConnectionOptions conn, WatchState st, CancellationToken ct)
+        {
+            while (!ct.IsCancellationRequested && DateTime.UtcNow < st.Deadline)
+            {
+                try
+                {
+                    var c = conn.Connect(3);
+                    Console.Error.WriteLine("resync: reconnected; subscribing again (a fresh snapshot follows)");
+                    return c;
+                }
+                catch (Exception)
+                {
+                    ct.WaitHandle.WaitOne(1000);
+                }
+            }
+            return null;
+        }
+
         // ------------------------------------------------------------------ streams
 
         private static int WatchStream(SkizzyClient c, List<string> fields, JsonValue select, double rate, bool onChange, double deadband,
-            int count, double duration, bool json, CancellationToken ct)
+            bool json, WatchState st, CancellationToken ct)
         {
             var queue = new BlockingCollection<JsonValue>();
             c.Notification += (m, p) => { if (m == "stream.data") queue.Add(p); };
@@ -93,22 +168,15 @@ namespace Skizzy.Cli
                 var colArr = snap.GetArr("columns");
                 if (colArr != null) for (int i = 0; i < colArr.Count; i++) cols.Add(colArr[i].AsString(""));
                 var printer = new RowPrinter(cols, json);
-                int messages = 0;
                 printer.Print(snap.GetArr("rows"), double.NaN, "full", snap.GetLong("seq"), snap, true);
-                messages++;
-                var deadline = duration > 0 ? DateTime.UtcNow.AddSeconds(duration) : DateTime.MaxValue;
-                while (!(count > 0 && messages >= count))
+                st.Messages++;
+                while (!st.Done(ct))
                 {
-                    if (ct.IsCancellationRequested || DateTime.UtcNow >= deadline) break;
-                    if (!c.IsConnected)
-                    {
-                        Console.Error.WriteLine("UNAVAILABLE: disconnected - " + (c.LastError ?? "connection lost"));
-                        return Program.ExitNotConnected;
-                    }
+                    if (!c.IsConnected) return LostConnection(c, st);
                     if (!queue.TryTake(out var p, 200)) continue;
                     if (p.GetString("sub") != null && p.GetString("sub") != sub) continue;
                     printer.Print(p.GetArr("rows"), p.GetDouble("ut", double.NaN), p.GetString("kind", "full"), p.GetLong("seq"), p, false);
-                    messages++;
+                    st.Messages++;
                 }
                 return Program.ExitOk;
             }
@@ -228,7 +296,7 @@ namespace Skizzy.Cli
 
         // ------------------------------------------------------------------ events
 
-        private static int WatchEvents(SkizzyClient c, CliArgs a, int count, double duration, bool json, CancellationToken ct)
+        private static int WatchEvents(SkizzyClient c, CliArgs a, bool json, WatchState st, CancellationToken ct)
         {
             var queue = new BlockingCollection<JsonValue>();
             c.Notification += (m, p) => { if (m == "events.data") queue.Add(p); };
@@ -238,23 +306,16 @@ namespace Skizzy.Cli
             c.Call("events.subscribe", prms, 30);
             try
             {
-                int seen = 0;
-                var deadline = duration > 0 ? DateTime.UtcNow.AddSeconds(duration) : DateTime.MaxValue;
-                while (!(count > 0 && seen >= count))
+                while (!st.Done(ct))
                 {
-                    if (ct.IsCancellationRequested || DateTime.UtcNow >= deadline) break;
-                    if (!c.IsConnected)
-                    {
-                        Console.Error.WriteLine("UNAVAILABLE: disconnected - " + (c.LastError ?? "connection lost"));
-                        return Program.ExitNotConnected;
-                    }
+                    if (!c.IsConnected) return LostConnection(c, st);
                     if (!queue.TryTake(out var p, 200)) continue;
                     var list = p.GetArr("events");
                     if (list == null) continue;
-                    for (int i = 0; i < list.Count && !(count > 0 && seen >= count); i++)
+                    for (int i = 0; i < list.Count && !(st.Count > 0 && st.Messages >= st.Count); i++)
                     {
                         Console.Out.WriteLine(json ? list[i].ToString() : EventLine(list[i]));
-                        seen++;
+                        st.Messages++;
                     }
                 }
                 return Program.ExitOk;

@@ -316,6 +316,22 @@ namespace Skizzy.Host.Tests
                     Assert.Equal(mode, c.Call("ksp.camera.set_mode", JsonValue.Obj().Set("mode", mode)).GetObj("camera").GetString("mode"));
             }
         }
+
+        // PC test 2026-11-11 (M0 §8): KSP switched ORBITAL back to CHASE on the pad while set_mode had said ok.
+        [Fact]
+        public void Set_mode_refuses_a_mode_the_game_does_not_keep()
+        {
+            var cam = (Skizzy.Sim.FakeCamera)_t.World.Camera;
+            cam.RejectMode = "orbit";
+            using (var c = _t.Connect(new HelloOptions { ActorKind = "human", Role = "human" }))
+            {
+                var e = Expect.Error(() => c.Call("ksp.camera.set_mode", JsonValue.Obj().Set("mode", "orbit")), ErrorKind.PreconditionFailed, "mode_rejected");
+                Assert.Contains("chase", e.Message);
+                Assert.Equal("chase", c.Call("ksp.camera.state").GetString("mode"));
+                // other modes still work
+                Assert.Equal("free", c.Call("ksp.camera.set_mode", JsonValue.Obj().Set("mode", "free")).GetObj("camera").GetString("mode"));
+            }
+        }
     }
 
     public class IdleTests

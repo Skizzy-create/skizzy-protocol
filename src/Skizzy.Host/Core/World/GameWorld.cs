@@ -199,6 +199,11 @@ namespace Skizzy.Host.Core.World
         void Capture(CaptureRequest req, Action<CaptureResult> done);
         /// <summary>mode: follow|orbit|chase|free|look_at|auto|orbital|locked. Returns null or an error.</summary>
         SkizzyError SetMode(string mode, GVessel target, GVessel to, OrbitSpec orbit);
+        /// <summary>
+        /// Called after a successful SetMode: reports (on the main thread, within a few frames) null when the game kept
+        /// the mode, or an error when it switched to another one (KSP refuses the orbital camera near the ground).
+        /// </summary>
+        void ConfirmMode(Action<SkizzyError> done);
         SkizzyError SetTarget(GVessel target);
         SkizzyError SetOrbit(OrbitSpec orbit);
         SkizzyError LookAt(GVessel from, GVessel to, double distance, double elevationDeg);

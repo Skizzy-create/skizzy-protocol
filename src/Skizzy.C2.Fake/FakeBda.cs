@@ -75,8 +75,9 @@ namespace Skizzy.C2.Fake
     /// inactive), F6b yield / leash / 30 s cooldown (pilot AI only; Hold never yields; Tight yields only to permitted
     /// targets), F9 launches and F10 deaths. Hook events go to <see cref="Sink"/> synchronously.
     /// </summary>
-    public sealed class FakeBda : IC2World, IBdaControl
+    public sealed class FakeBda : IC2World, IBdaControl, IHookReport
     {
+        public string Description => "FakeBda, " + (Hooks == HookSet.All ? "all Overdrive hooks" : "hooks " + Hooks);
         public double Now { get; set; } = 1000;
         public double BodyRadius { get; set; } = Geo.KerbinRadius;
         public HookSet Hooks { get; set; } = HookSet.All;

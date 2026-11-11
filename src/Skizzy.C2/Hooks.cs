@@ -142,6 +142,17 @@ namespace Skizzy.C2
     /// method only when the desired value changed. Main thread only. The binding never throws for a dead or
     /// unknown unit; it ignores the call (and returns false where a result exists).
     /// </summary>
+    /// <summary>
+    /// Optional, implemented by a binding's <see cref="IBdaControl"/>: which Overdrive hooks the running BDArmory has, so
+    /// the host can report them (host.stats c2.hooks, host.selfcheck; M4 checklist 0.1).
+    /// </summary>
+    public interface IHookReport
+    {
+        HookSet Hooks { get; }
+        /// <summary>One line, e.g. "BDArmory 1.13.1.0, all Overdrive hooks".</summary>
+        string Description { get; }
+    }
+
     public interface IBdaControl
     {
         /// <summary>
