@@ -47,8 +47,10 @@ public sealed class SceneSync
         }
 
         int filtered = 0, visible = 0;
-        foreach (var tr in data.Tracks)
+        var tracks = data.Tracks;
+        for (int ti = 0; ti < tracks.Count; ti++) // indexed: a foreach over the interface boxes the enumerator every frame
         {
+            var tr = tracks[ti];
             bool exists = replay ? tr.ExistsAt(t) : tr.Alive;
             if (!exists) continue;
             double x, y; float alt, hdg, spd;
@@ -112,6 +114,8 @@ public sealed class SceneSync
             scene.Events.Add(e);
         }
 
+        SyncOrders(data.Orders, replay);
+
         FilteredOut = filtered;
         Visible = visible;
         _lastT = t;
@@ -120,6 +124,53 @@ public sealed class SceneSync
     }
 
     private readonly HashSet<int> _seen = new();
+
+    // orders: copied into pooled scene objects only when the picture changed (live view only; replay shows none)
+    private readonly List<PlotOrder> _orderPool = new();
+    private readonly List<PlotRoute> _routePool = new();
+    private readonly List<PlotRacetrack> _trackPool = new();
+    private long _ordersVersion = -1;
+    private bool _ordersHidden;
+
+    private void SyncOrders(OrderPicture src, bool replay)
+    {
+        if (src.Version == _ordersVersion && replay == _ordersHidden) return;
+        _ordersVersion = src.Version;
+        _ordersHidden = replay;
+        var scene = Scene;
+        scene.Orders.Clear();
+        scene.Routes.Clear();
+        scene.Racetracks.Clear();
+        if (replay) return;
+        for (int i = 0; i < src.Orders.Count; i++)
+        {
+            if (_orderPool.Count <= i) _orderPool.Add(new PlotOrder());
+            var o = _orderPool[i];
+            var s = src.Orders[i];
+            o.TrackId = s.TrackId; o.Type = s.Type; o.Destination = s.Destination; o.TargetTrackId = s.TargetTrackId;
+            o.RouteId = s.RouteId; o.RouteIndex = s.RouteIndex; o.RouteOffset = s.RouteOffset; o.PatternId = s.PatternId;
+            o.RtbPhase = s.RtbPhase; o.MarshalAsternKm = s.MarshalAsternKm;
+            scene.Orders.Add(o);
+        }
+        for (int i = 0; i < src.Routes.Count; i++)
+        {
+            if (_routePool.Count <= i) _routePool.Add(new PlotRoute());
+            var r = _routePool[i];
+            var s = src.Routes[i];
+            r.Id = s.Id;
+            r.Points.Clear();
+            for (int k = 0; k < s.Points.Count; k++) r.Points.Add(s.Points[k]);
+            scene.Routes.Add(r);
+        }
+        for (int i = 0; i < src.Racetracks.Count; i++)
+        {
+            if (_trackPool.Count <= i) _trackPool.Add(new PlotRacetrack());
+            var r = _trackPool[i];
+            var s = src.Racetracks[i];
+            r.Id = s.Id; r.A = s.A; r.B = s.B; r.WidthKm = s.WidthKm; r.TurnRight = s.TurnRight;
+            scene.Racetracks.Add(r);
+        }
+    }
 
     private void SyncTrail(TrackInfo tr, PlotTrack p, double t, bool rebuild)
     {

@@ -360,184 +360,43 @@ namespace Skizzy.Host.Core
         /// <summary>Main thread: "active", "v:&lt;id&gt;", a numeric id, or a unit name known to the C2 world.</summary>
         internal uint ResolveUnit(string reference, string pointer)
         {
-            if (string.IsNullOrEmpty(reference)) throw SkizzyError.InvalidParam(pointer, "empty unit reference");
             if (reference == "active")
             {
                 var a = _h.World.ActiveVessel;
                 if (a == null) throw SkizzyError.NotFound("active", "unknown", "There is no active vessel.");
                 return a.PersistentId;
             }
-            uint id;
-            if (HandleRegistry.TryParseVessel(reference, out id)) return id;
-            if (uint.TryParse(reference, NumberStyles.None, CultureInfo.InvariantCulture, out id)) return id;
-            _units.Clear();
-            if (_world != null) _world.GetUnits(_units);
-            UnitState ci = null;
-            int ciCount = 0;
-            foreach (var u in _units)
-            {
-                if (u.Name == null) continue;
-                if (string.Equals(u.Name, reference, StringComparison.Ordinal)) return u.Id;
-                if (string.Equals(u.Name, reference, StringComparison.OrdinalIgnoreCase)) { ci = u; ciCount++; }
-            }
-            if (ciCount == 1) return ci.Id;
-            if (ciCount > 1) throw SkizzyError.InvalidParam(pointer, "unit name '" + reference + "' is ambiguous", "Use the handle v:<id>.");
-            throw SkizzyError.NotFound(reference, "unknown", "No C2 unit with that name; units are vessels with a BDArmory AI or weapon manager. Use ksp.vessels.list for handles.");
+            return C2Wire.ResolveInWorld(_world, _units, reference, pointer);
         }
 
-        private static GeoPoint Pt(JsonValue o)
-        {
-            return new GeoPoint(o.GetDouble("lat"), o.GetDouble("lon"));
-        }
-
-        private static string Handle(uint id) { return HandleRegistry.VesselHandle(id); }
-
-        private static ErrorKind KindOf(string wire)
-        {
-            switch (wire)
-            {
-                case "INVALID_PARAMS": return ErrorKind.InvalidParams;
-                case "NOT_FOUND": return ErrorKind.NotFound;
-                case "PERMISSION_DENIED": return ErrorKind.PermissionDenied;
-                case "NOT_IN_VIEW": return ErrorKind.NotInView;
-                case "EXECUTOR_UNAVAILABLE": return ErrorKind.ExecutorUnavailable;
-                default: return ErrorKind.PreconditionFailed;
-            }
-        }
-
-        private static JsonValue OutcomesJson(IssueResult r)
-        {
-            var arr = JsonValue.Arr();
-            foreach (var u in r.Units)
-            {
-                var o = JsonValue.Obj().Set("unit", Handle(u.Unit)).Set("name", u.Name).Set("accepted", u.Accepted);
-                if (!u.Accepted) o.Set("code", Orders.Wire(u.Code)).Set("reason", u.Reason);
-                if (u.SubstitutedBy.HasValue) o.Set("substitutedBy", Orders.Wire(u.SubstitutedBy.Value));
-                arr.Add(o);
-            }
-            return arr;
-        }
+        private static string Handle(uint id) { return C2Wire.Handle(id); }
 
         private JsonValue Issue(CallContext c)
         {
             var e = Need();
-            var p = c.Params;
-            OrderType type;
-            if (!Orders.TryParse(c.Str("type"), out type)) throw SkizzyError.InvalidParam("/type", "unknown order type " + c.Str("type"));
-            var req = new OrderRequest
-            {
-                Type = type,
-                Issuer = By(c),
-                Role = RoleOf(c.Session),
-                Side = ActingSide(c, c.Str("side"), true),
-                Group = c.Str("group"),
-                SideScope = c.Str("scope", "units") == "side" || type == OrderType.AllAttack,
-                Label = c.Str("label"),
-            };
-            var units = p.Get("units");
-            if (units != null && units.IsArray)
-                for (int i = 0; i < units.Count; i++) req.Units.Add(ResolveUnit(units[i].AsString(), "/units/" + i));
-            switch (c.Str("domain"))
-            {
-                case "air": req.DomainFilter = Domain.Air; break;
-                case "surface": req.DomainFilter = Domain.Surface; break;
-                case "subsurface": req.DomainFilter = Domain.Subsurface; break;
-                case "land": req.DomainFilter = Domain.Land; break;
-            }
-            var point = p.GetObj("point");
-            if (point != null) req.Point = Pt(point);
-            if (c.Has("altitudeM")) req.AltitudeM = c.Num("altitudeM");
-            var route = p.Get("route");
-            if (route != null && route.IsArray)
-            {
-                req.Route = new List<GeoPoint>();
-                for (int i = 0; i < route.Count; i++) req.Route.Add(Pt(route[i]));
-            }
-            if (c.Has("target")) req.Target = ResolveUnit(c.Str("target"), "/target");
-            var targets = p.Get("targets");
-            if (targets != null && targets.IsArray)
-            {
-                req.Targets = new List<uint>();
-                for (int i = 0; i < targets.Count; i++) req.Targets.Add(ResolveUnit(targets[i].AsString(), "/targets/" + i));
-            }
-            var pa = p.GetObj("patternA");
-            if (pa != null) req.PatternA = Pt(pa);
-            var pb = p.GetObj("patternB");
-            if (pb != null) req.PatternB = Pt(pb);
-            if (c.Has("widthKm")) req.WidthKm = c.Num("widthKm");
-            req.TurnRight = c.Bool("turnRight", true);
-            if (c.Has("altStackM")) req.AltStackM = c.Num("altStackM");
-            if (c.Has("base")) req.Base = ResolveUnit(c.Str("base"), "/base");
-            switch (c.Str("weapons"))
-            {
-                case "free": req.Weapons = WeaponsControl.Free; break;
-                case "tight": req.Weapons = WeaponsControl.Tight; break;
-                case "hold": req.Weapons = WeaponsControl.Hold; break;
-            }
-            if (c.Has("protect")) req.Protect = ResolveUnit(c.Str("protect"), "/protect");
-            if (c.Has("radiusKm")) req.RadiusKm = c.Num("radiusKm");
-            if (c.Has("escortOf")) req.EscortOf = ResolveUnit(c.Str("escortOf"), "/escortOf");
-            switch (c.Str("slot", "ahead"))
-            {
-                case "abreast": req.Slot = EscortSlot.Abreast; break;
-                case "astern": req.Slot = EscortSlot.Astern; break;
-                default: req.Slot = EscortSlot.Ahead; break;
-            }
-            if (c.Has("distanceKm")) req.DistanceKm = c.Num("distanceKm");
-            req.ExtendRange = c.Bool("extendRange") || type == OrderType.AllAttack;
-
+            var req = C2Wire.ParseIssue(c.Params, ResolveUnit);
+            req.Issuer = By(c);
+            req.Role = RoleOf(c.Session);
+            req.Side = ActingSide(c, c.Str("side"), true);
             var r = e.Issue(req);
             Publish(); // order.accepted / refused reports go out with the reply
-            if (!r.Accepted)
-            {
-                string code = Orders.Wire(r.Code);
-                throw new SkizzyError(KindOf(Orders.ErrorKind(r.Code)), r.Message ?? ("order refused: " + code), code.ToLowerInvariant(),
-                    r.Summary, JsonValue.Obj().Set("code", code).Set("summary", r.Summary).Set("units", OutcomesJson(r)));
-            }
+            if (!r.Accepted) throw C2Wire.Refusal(r);
             Commanded();
-            var o = r.Order;
-            return JsonValue.Obj()
-                .Set("order", o.Handle)
-                .Set("type", Orders.Wire(o.Type))
-                .Set("side", o.Side)
-                .Set("status", Orders.Wire(o.Status))
-                .Set("accepted", r.AcceptedCount)
-                .Set("refused", r.Units.Count - r.AcceptedCount)
-                .Set("summary", r.Summary)
-                .Set("units", OutcomesJson(r))
-                .Set("text", r.Summary ?? (o.Handle + " " + Orders.Wire(o.Type)));
+            return C2Wire.IssueReply(r);
         }
 
         private JsonValue CancelCap(CallContext c)
         {
             var e = Need();
-            string s = c.Str("order");
-            if (s.StartsWith("o:", StringComparison.Ordinal)) s = s.Substring(2);
-            int id;
-            if (!int.TryParse(s, NumberStyles.None, CultureInfo.InvariantCulture, out id)) throw SkizzyError.InvalidParam("/order", "not an order handle");
+            int id = C2Wire.OrderId(c.Str("order"));
             var o = e.GetOrder(id);
-            if (o == null) throw SkizzyError.NotFound("o:" + s, "unknown", "No such order (completed orders are forgotten after a while).");
+            if (o == null) throw SkizzyError.NotFound("o:" + id.ToString(CultureInfo.InvariantCulture), "unknown", "No such order (completed orders are forgotten after a while).");
             if (c.Session != null && c.Session.Side != null && o.Side != c.Session.Side && !Privileged(c.Session))
                 throw new SkizzyError(ErrorKind.PermissionDenied, "order " + o.Handle + " belongs to side " + o.Side, "not_own_side");
-            // The order's own status rolls up from its unit orders at the next tick; until then all-terminal unit orders count.
-            string ended = o.IsTerminal ? Orders.Wire(o.Status) : null;
-            if (ended == null && o.Units.Count > 0)
-            {
-                bool all = true;
-                for (int i = 0; i < o.Units.Count && all; i++) all = o.Units[i].IsTerminal;
-                if (all) ended = Orders.Wire(o.Units[0].Status);
-            }
-            if (ended != null)
-                throw SkizzyError.Precondition("already_" + ended, "order " + o.Handle + " is already " + ended);
-            bool ok = e.Cancel(id, By(c)); // unit orders end now; the order status rolls up at the next tick
+            var reply = C2Wire.Cancel(e, o, By(c));
             Publish();
             Commanded();
-            return JsonValue.Obj().Set("order", o.Handle).Set("cancelled", ok).Set("status", ok ? "cancelled" : Orders.Wire(o.Status)).Set("text", o.Handle + (ok ? " cancelled" : " not cancelled"));
-        }
-
-        private static DoctrineLevel Level(string s)
-        {
-            return s == "unit" ? DoctrineLevel.Unit : s == "group" ? DoctrineLevel.Group : DoctrineLevel.Side;
+            return reply;
         }
 
         private string DoctrineTarget(CallContext c, DoctrineLevel level)
@@ -549,47 +408,15 @@ namespace Skizzy.Host.Core
             return t;
         }
 
-        private static List<string> Strings(JsonValue arr)
-        {
-            var l = new List<string>();
-            if (arr != null && arr.IsArray) for (int i = 0; i < arr.Count; i++) { var s = arr[i].AsString(); if (s != null) l.Add(s); }
-            return l;
-        }
-
         private JsonValue DoctrineSet(CallContext c)
         {
             var e = Need();
-            var level = Level(c.Str("level"));
+            var level = C2Wire.Level(c.Str("level"));
             string target = DoctrineTarget(c, level);
-            var vals = c.Params.GetObj("values");
-            var dict = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < vals.Count; i++)
-            {
-                var v = vals.ValueAt(i);
-                object o;
-                switch (v.Kind)
-                {
-                    case JsonKind.String: o = v.AsString(); break;
-                    case JsonKind.Bool: o = v.AsBool(); break;
-                    case JsonKind.Number: o = v.AsDouble(); break;
-                    default: throw SkizzyError.InvalidParam("/values/" + vals.KeyAt(i), "doctrine values are strings, numbers or booleans");
-                }
-                dict[vals.KeyAt(i)] = o;
-            }
-            var locks = Strings(c.Params.Get("lock"));
+            var dict = C2Wire.DoctrineValues(c.Params.GetObj("values"));
+            var locks = C2Wire.Strings(c.Params.Get("lock"));
             var errors = e.SetDoctrine(level, target, dict, locks.Count > 0 ? locks : null);
-            if (errors.Count > 0)
-            {
-                var arr = JsonValue.ArrOf(errors.ToArray());
-                foreach (var err in errors)
-                    if (err.StartsWith("locked_by:", StringComparison.Ordinal) || err.Contains(" locked_by:"))
-                    {
-                        int k = err.IndexOf("locked_by:", StringComparison.Ordinal);
-                        string reason = err.Substring(k).Split(' ')[0];
-                        throw new SkizzyError(ErrorKind.PreconditionFailed, err, reason, "A higher level locked this key; change it there or unset the lock.", JsonValue.Obj().Set("errors", arr));
-                    }
-                throw new SkizzyError(ErrorKind.InvalidParams, errors[0], "doctrine", null, JsonValue.Obj().Set("errors", arr));
-            }
+            if (errors.Count > 0) throw C2Wire.DoctrineError(errors);
             Publish();
             Commanded();
             return JsonValue.Obj().Set("level", c.Str("level")).Set("target", target).Set("set", dict.Count).Set("locked", locks.Count)
@@ -599,9 +426,9 @@ namespace Skizzy.Host.Core
         private JsonValue DoctrineUnset(CallContext c)
         {
             var e = Need();
-            var level = Level(c.Str("level"));
+            var level = C2Wire.Level(c.Str("level"));
             string target = DoctrineTarget(c, level);
-            var keys = Strings(c.Params.Get("keys"));
+            var keys = C2Wire.Strings(c.Params.Get("keys"));
             e.UnsetDoctrine(level, target, keys);
             Publish();
             Commanded();
@@ -614,63 +441,17 @@ namespace Skizzy.Host.Core
             var e = Need();
             uint id = ResolveUnit(c.Str("unit"), "/unit");
             var lines = e.ExplainDoctrine(id);
-            if (lines == null) throw SkizzyError.NotFound(Handle(id), "unknown", "The C2 engine does not know this unit yet (it appears after the next tick if it has a BDArmory AI or weapon manager).");
-            var arr = JsonValue.Arr();
-            var sb = new System.Text.StringBuilder();
-            foreach (var l in lines)
-            {
-                arr.Add(JsonValue.Obj().Set("key", l.Key).Set("value", l.Value).Set("from", l.From).Set("locked", l.Locked));
-                sb.Append(l.Key).Append('=').Append(l.Value).Append(" (").Append(l.From).Append(l.Locked ? ", locked" : "").Append(")\n");
-            }
-            return JsonValue.Obj().Set("unit", Handle(id)).Set("doctrine", arr).Set("text", sb.ToString());
+            if (lines == null) throw C2Wire.UnknownUnit(id);
+            return C2Wire.DoctrineExplained(id, lines);
         }
-
-        private static JsonValue UnitOrderJson(UnitOrder u)
-        {
-            if (u == null) return JsonValue.Null;
-            return JsonValue.Obj()
-                .Set("order", u.Parent != null ? u.Parent.Handle : null)
-                .Set("type", Orders.Wire(u.Type))
-                .Set("status", Orders.Wire(u.Status))
-                .Set("reason", u.Reason)
-                .Set("phase", u.Phase);
-        }
-
-        private static string Lower(object o) { return o.ToString().ToLowerInvariant(); }
 
         private JsonValue UnitStatus(CallContext c)
         {
             var e = Need();
             uint id = ResolveUnit(c.Str("unit"), "/unit");
             var v = e.GetUnitView(id);
-            if (v == null) throw SkizzyError.NotFound(Handle(id), "unknown", "The C2 engine does not know this unit yet (it appears after the next tick if it has a BDArmory AI or weapon manager).");
-            var route = JsonValue.Arr();
-            foreach (var pt in v.RoutePoints) route.Add(JsonValue.Obj().Set("lat", Math.Round(pt.Lat, 5)).Set("lon", Math.Round(pt.Lon, 5)));
-            var sec = JsonValue.Arr();
-            foreach (var s in v.Secondary) sec.Add(Handle(s));
-            var allows = JsonValue.Arr();
-            foreach (var s in v.FilterAllows) allows.Add(Handle(s));
-            var o = JsonValue.Obj()
-                .Set("unit", Handle(v.Id)).Set("name", v.Name).Set("side", v.Side).Set("alive", v.Alive)
-                .Set("task", v.Task)
-                .Set("movement", UnitOrderJson(v.Movement)).Set("movementSuspended", v.MovementSuspended)
-                .Set("engagement", UnitOrderJson(v.Engagement))
-                .Set("hold", v.Hold).Set("marshalSlot", v.MarshalSlot).SetFinite("holdAltM", v.HoldAltM)
-                .Set("fireAuthority", Lower(v.FireAuthority)).Set("filterInstalled", v.FilterInstalled).Set("filterAllows", allows)
-                .Set("overrideTarget", v.OverrideTarget != 0 ? Handle(v.OverrideTarget) : null).Set("overrideSticky", v.OverrideSticky)
-                .Set("secondary", sec)
-                .Set("route", v.Route).Set("routeId", v.RouteId).Set("routePoints", route)
-                .Set("yieldToCombat", v.YieldToCombat).Set("leashM", v.LeashM)
-                .Set("divert", v.Divert != 0 ? Handle(v.Divert) : null)
-                .Set("selfDefence", v.SelfDefence != 0 ? Handle(v.SelfDefence) : null)
-                .Set("advance", v.Advance != 0 ? Handle(v.Advance) : null)
-                .Set("vipThreat", v.VipThreat != 0 ? Handle(v.VipThreat) : null)
-                .Set("vip", v.Vip).Set("rangeExtended", v.RangeExtended)
-                .Set("weaponsControl", Lower(v.WeaponsControl)).Set("onContact", Lower(v.OnContact));
-            o.Set("text", v.Name + ": " + (v.Task ?? "idle") + (v.Movement != null ? ", " + Orders.Wire(v.Movement.Type) + " " + Orders.Wire(v.Movement.Status) : "") +
-                          (v.Engagement != null ? ", " + Orders.Wire(v.Engagement.Type) + " " + Orders.Wire(v.Engagement.Status) : "") +
-                          ", weapons " + Lower(v.WeaponsControl));
-            return o;
+            if (v == null) throw C2Wire.UnknownUnit(id);
+            return C2Wire.UnitStatus(v);
         }
 
         private JsonValue ReleaseCap(CallContext c)
@@ -696,8 +477,7 @@ namespace Skizzy.Host.Core
             var e = Need();
             uint id = ResolveUnit(c.Str("unit"), "/unit");
             bool vip = c.Bool("vip", true);
-            if (!e.SetVip(id, vip))
-                throw SkizzyError.NotFound(Handle(id), "unknown", "The C2 engine does not know this unit yet (it appears after the next tick if it has a BDArmory AI or weapon manager).");
+            if (!e.SetVip(id, vip)) throw C2Wire.UnknownUnit(id);
             Publish();
             Commanded();
             return JsonValue.Obj().Set("unit", Handle(id)).Set("vip", e.IsVip(id)).Set("text", Handle(id) + (vip ? " flagged VIP" : " VIP flag cleared"));

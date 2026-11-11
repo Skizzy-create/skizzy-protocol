@@ -183,7 +183,7 @@ public sealed class MainWindow : Window
         {
             _app.Settings.Current.Layout = name;
             _app.Settings.Save();
-            _app.Toast($"Layout \"{name}\" loaded.");
+            ToastAfterLayout($"Layout \"{name}\" loaded.");
         }
     }
 
@@ -192,8 +192,11 @@ public sealed class MainWindow : Window
         _layouts.UseDefault();
         foreach (var m in _app.Maps) m.FitAll(animate: false);
         _app.Settings.Current.Layout = null;
-        _app.Toast("Default layout restored.");
+        ToastAfterLayout("Default layout restored.");
     }
+
+    /// <summary>A new layout re-creates the map views; they pick up a toast raised just before they were built (AppState.LastToast).</summary>
+    private void ToastAfterLayout(string text) => _app.Toast(text);
 
     // ------------------------------------------------------------ sources
 
@@ -235,16 +238,26 @@ public sealed class MainWindow : Window
             if (e.Key == Key.Escape) { _palette.Escape(); e.Handled = true; }
             return;
         }
-        if (FocusManager?.GetFocusedElement() is TextBox) return;
+        // like the mockup, keys typed into a field, a select or a slider stay there (splitters take the arrow keys)
+        if (FocusManager?.GetFocusedElement() is TextBox or ComboBox or Slider or Dock.Controls.ProportionalStackPanel.ProportionalStackPanelSplitter) return;
         var m = _app.ActiveMap;
         bool shift = (e.KeyModifiers & KeyModifiers.Shift) != 0, alt = (e.KeyModifiers & KeyModifiers.Alt) != 0, ctrl = (e.KeyModifiers & KeyModifiers.Control) != 0;
         if (ctrl) return;
+        var cmd = _app.Commands;
         switch (e.Key)
         {
             case Key.Space: _app.TogglePlay(); break;
-            case Key.F: m?.FitSelection(); break;
+            case Key.F: if (shift) m?.FitSelection(); else m?.FitAll(); break;
             case Key.Home: if (shift) m?.FitFilter(); else m?.FitAll(); break;
-            case Key.Escape: _app.ClearSelection(); break;
+            case Key.Escape:
+                // a racetrack or route being drawn, then a pending mode, then the selection (the mockup's order)
+                if (m?.CancelGesture?.Invoke() == true || cmd.CancelPending()) break;
+                _app.ClearSelection();
+                break;
+            case Key.V: _ = cmd.ToggleVip(); break;
+            case Key.A: _ = shift ? cmd.AllAttack() : cmd.AttackNearest(); break;
+            case Key.R: _ = shift ? cmd.RtbAll() : cmd.Rtb(); break;
+            case Key.T: cmd.ToggleRacetrack(fromKey: true); break;
             case Key.OemCloseBrackets: _app.SizeSelection(1.25f); break;
             case Key.OemOpenBrackets: _app.SizeSelection(.8f); break;
             case Key.OemPlus or Key.Add: m?.ZoomAt(m.Width / 2, m.Height / 2, 1.4f); break;
@@ -269,8 +282,14 @@ public sealed class MainWindow : Window
         var p = _palette;
         p.AddAction("Pause / play", "Time", "Space", () => _app.TogglePlay());
         p.AddAction("Back to live", "Time", "leave replay", () => _app.GoLive());
-        p.AddAction("Fit all", "Map", "Home", () => _app.ActiveMap?.FitAll());
-        p.AddAction("Fit selection", "Map", "F", () => _app.ActiveMap?.FitSelection());
+        p.AddAction("Fit all", "Map", "F or Home", () => _app.ActiveMap?.FitAll());
+        p.AddAction("Fit selection", "Map", "Shift+F", () => _app.ActiveMap?.FitSelection());
+        p.AddAction("Attack nearest", "Orders", "A: the selection hunts the nearest hostiles", () => _app.Commands.AttackNearest());
+        p.AddAction("RTB & land", "Orders", "R: the selection goes home", () => _app.Commands.Rtb());
+        p.AddAction("All attack", "Orders", "Shift+A twice: every unit attacks the nearest hostiles", () => _app.Commands.AllAttack());
+        p.AddAction("RTB all", "Orders", "Shift+R twice: every aircraft goes home", () => _app.Commands.RtbAll());
+        p.AddAction("Mark VIP", "Orders", "V: toggles VIP on the selection", () => _app.Commands.ToggleVip());
+        p.AddAction("Racetrack", "Orders", "T, then drag the long leg on the plot", () => _app.Commands.ToggleRacetrack(fromKey: false));
         p.AddAction("Fit filter", "Map", "Shift+Home", () => _app.ActiveMap?.FitFilter());
         p.AddAction("New map window", "Map", "another plot, dockable and detachable", () => _layouts.AddMap());
         p.AddAction("Toggle dark / light theme", "View", "", () => ApplyTheme(_app.Theme == ThemeVariant.Light ? ThemeVariant.Dark : ThemeVariant.Light));
@@ -302,10 +321,13 @@ public sealed class TopBar : Border
     private readonly Button _play;
     private readonly Segmented _speeds;
     private readonly Button _restart;
-    private readonly Control[] _demo;
+    private readonly Control[] _orders;
     private readonly ToggleButton _advance;
+    private readonly Button _allAtk, _rtbAll, _seatBtn;
+    private readonly Border _seat;
     private readonly Segmented _posture;
     private readonly ComboBox _ff;
+    private bool _allArmed, _rtbArmed;
     private readonly ComboBox _source;
     private readonly ToggleButton _tgTracks, _tgUnit, _tgLog;
     private readonly Segmented _theme;
@@ -341,37 +363,33 @@ public sealed class TopBar : Border
         _stance = Ui.Pill("Blue ↔ Red · War", "war");
         ToolTip.SetTip(_stance, "Side stance");
 
+        var cmd = _app.Commands;
         _advance = Ui.Toggle("Advance: on", true, on =>
         {
             if (_syncing) return;
-            if (_app.Source is DemoBattleSource d) d.SetAdvanceOnContact(on);
             _advance!.Content = "Advance: " + (on ? "on" : "off");
+            _ = cmd.SetAdvance(on);
         }, "btn");
         ToolTip.SetTip(_advance, "Advance on contact: when the first hostile is identified, airborne fighters and drones head for the nearest identified hostile.");
-        var allAtk = Ui.Button("All attack", () => { });
-        allAtk.IsEnabled = false;
-        ToolTip.SetTip(allAtk, "Every Blue unit attacks the nearest hostiles (orders arrive in M4).");
-        ToolTip.SetShowOnDisabled(allAtk, true);
-        var rtbAll = Ui.Button("RTB all", () => { });
-        rtbAll.IsEnabled = false;
-        ToolTip.SetTip(rtbAll, "Send every Blue aircraft home to land (orders arrive in M4).");
-        ToolTip.SetShowOnDisabled(rtbAll, true);
-        _posture = Ui.Seg(["Defensive", "Proactive"], 1, i => { if (_app.Source is DemoBattleSource d) d.SetPosture(i == 0 ? "Defensive" : "Proactive"); }, uiFont: true);
+        _allAtk = Ui.Button("All attack", () => cmd.AllAttack());
+        ToolTip.SetTip(_allAtk, "Every Blue unit attacks the nearest hostiles; carriers launch their decks. Click twice to confirm.");
+        _rtbAll = Ui.Button("RTB all", () => cmd.RtbAll());
+        ToolTip.SetTip(_rtbAll, "Send every Blue aircraft home to land on Kestrel. Click twice to confirm.");
+        _posture = Ui.Seg(["Defensive", "Proactive"], 1, i => { if (!_syncing) _ = cmd.SetPosture(i == 0 ? "Defensive" : "Proactive"); }, uiFont: true);
         var postureGrp = Ui.H(4, Ui.Label("Blue posture"), _posture);
         _ff = new ComboBox { ItemsSource = new[] { "Off", "1 in 1,000 missiles", "1 in 100 missiles" }, SelectedIndex = 1 };
         _ff.Classes.Add("tsel");
         _ff.SelectionChanged += (_, _) =>
         {
-            if (_syncing || _app.Source is not DemoBattleSource d) return;
-            d.SetFriendlyFire(_ff.SelectedIndex switch { 0 => 0, 2 => .01, _ => .001 });
+            if (_syncing) return;
+            cmd.SetFriendlyFire(_ff.SelectedIndex switch { 0 => 0, 2 => .01, _ => .001 });
         };
         var ffGrp = Ui.H(4, Ui.Label("Friendly fire"), _ff);
-        var seat = Ui.Pill("Blue seat · You", "seat");
-        var seatBtn = Ui.Button("Hand seat to agent", () => { }, "ghost");
-        seatBtn.IsEnabled = false;
-        ToolTip.SetTip(seatBtn, "Seats and agent hand-over arrive with the orders engine (M4).");
-        ToolTip.SetShowOnDisabled(seatBtn, true);
-        _demo = [_advance, Ui.H(6, allAtk, rtbAll), postureGrp, ffGrp];
+        _seat = Ui.Pill("Blue seat · You", "seat");
+        _seatBtn = Ui.Button("Hand seat to agent", () => cmd.ToggleSeat(), "ghost");
+        _orders = [_advance, Ui.H(6, _allAtk, _rtbAll), postureGrp];
+        var reset = Ui.Button("Reset layout", () => _win.ResetLayout(), "ghost");
+        ToolTip.SetTip(reset, "Restore the default panel sizes and show every panel");
 
         _source = new ComboBox { ItemsSource = new[] { "Demo battle", "FakeKSP (in-process)", "Live host (KSP)" }, SelectedIndex = 0 };
         _source.Classes.Add("tsel");
@@ -388,22 +406,44 @@ public sealed class TopBar : Border
         var layouts = Ui.Button("Layouts ▾", () => { }, "ghost");
         layouts.Flyout = BuildLayoutsMenu();
         ToolTip.SetTip(layouts, "Save, load or delete named layouts; open another map window; reset");
-        var panelsGrp = Ui.H(4, Ui.Label("Panels"), _tgTracks, _tgUnit, _tgLog, layouts);
+        var panelsGrp = Ui.H(4, Ui.Label("Panels"), _tgTracks, _tgUnit, _tgLog, reset, layouts);
 
         _theme = Ui.Seg(["Dark", "Light"], 0, i => { if (!_syncing) _win.ApplyTheme(i == 1 ? ThemeVariant.Light : ThemeVariant.Dark); }, uiFont: true);
         ToolTip.SetTip(_theme, "Theme");
-        var cmd = Ui.Button("Commands", () => _win.TogglePalette(), "ghost");
-        ToolTip.SetTip(cmd, "Command palette: every app action and host capability (Ctrl+K)");
+        var cmdBtn = Ui.Button("Commands", () => _win.TogglePalette(), "ghost");
+        ToolTip.SetTip(cmdBtn, "Command palette: every app action and host capability (Ctrl+K)");
 
         // the mockup's header: one flex-wrap row, with the panel controls pushed right on whichever row they land
         var bar = new FlowBar { ItemSpacing = 18, LineSpacing = 10 };
-        bar.Children.AddRange([brandRow, utBlock, timeGrp, _stance, .. _demo, Ui.H(10, seat, seatBtn), Ui.H(18, sourceGrp, panelsGrp, _theme, cmd)]);
+        bar.Children.AddRange([brandRow, utBlock, timeGrp, _stance, .. _orders, ffGrp, Ui.H(10, _seat, _seatBtn), Ui.H(18, sourceGrp, panelsGrp, _theme, cmdBtn)]);
         Child = bar;
 
         _app.Ticked += OnTick;
         _app.SourceChanged += SyncSource;
         _app.SlowTick += SyncPanels;
+        cmd.Changed += SyncCommands;
         SyncSource();
+    }
+
+    internal Button AllAttackButton => _allAtk;
+    internal Button RtbAllButton => _rtbAll;
+    internal ToggleButton AdvanceButton => _advance;
+    internal Segmented PostureSeg => _posture;
+    internal ComboBox FriendlyFireBox => _ff;
+    internal Border SeatPill => _seat;
+    internal Button SeatButton => _seatBtn;
+
+    /// <summary>Confirm labels (3 s), seat pill and the side-level values the command service holds.</summary>
+    private void SyncCommands()
+    {
+        var c = _app.Commands;
+        bool aa = c.AllAttackArmed, ra = c.RtbAllArmed;
+        if (aa != _allArmed) { _allArmed = aa; _allAtk.Content = aa ? "Confirm all attack" : "All attack"; _allAtk.Classes.Set("acc", aa); }
+        if (ra != _rtbArmed) { _rtbArmed = ra; _rtbAll.Content = ra ? "Confirm RTB all" : "RTB all"; _rtbAll.Classes.Set("acc", ra); }
+        string pill = (c.SeatAgent ? "Blue seat · Agent (Claude Code)" : "Blue seat · You").ToUpperInvariant();
+        if (_seat.Child is TextBlock t && t.Text != pill) t.Text = pill;
+        string btn = c.SeatAgent ? "Take seat back" : "Hand seat to agent";
+        if ((_seatBtn.Content as string) != btn) _seatBtn.Content = btn;
     }
 
     private MenuFlyout BuildLayoutsMenu()
@@ -449,6 +489,8 @@ public sealed class TopBar : Border
         var d = _app.Data;
         _ut.Text = d.UtText(d.ViewTime);
         _play.Content = _app.Paused ? "▶" : "❚❚";
+        var c = _app.Commands;
+        if (c.AllAttackArmed != _allArmed || c.RtbAllArmed != _rtbArmed) SyncCommands(); // the 3 s confirmations lapse
     }
 
     public void SyncSource()
@@ -459,23 +501,33 @@ public sealed class TopBar : Border
             var s = _app.Source;
             _desc.Text = s.Description;
             bool demo = s is DemoBattleSource;
-            foreach (var c in _demo) c.IsVisible = demo;
+            var cmd = _app.Commands;
+            foreach (var c in _orders) c.IsVisible = cmd.CanCommand;
             _stance.IsVisible = demo;
+            Exception(_ff, demo ? null : Unsupported.FriendlyFire);
+            Exception(_seatBtn, demo ? null : Unsupported.Seat);
             _play.IsEnabled = (s.Caps & SourceCaps.Pause) != 0;
             _speeds.IsVisible = (s.Caps & SourceCaps.Speed) != 0;
             _restart.IsVisible = (s.Caps & SourceCaps.Restart) != 0;
             int si = Array.IndexOf(AppState.Speeds, s.Speed);
             _speeds.SetSelected(si < 0 ? 2 : si);
-            if (s is DemoBattleSource d)
-            {
-                _advance.IsChecked = d.AdvanceOnContact;
-                _advance.Content = "Advance: " + (d.AdvanceOnContact ? "on" : "off");
-                _posture.SetSelected(d.Posture == "Defensive" ? 0 : 1);
-                _ff.SelectedIndex = d.FriendlyFire <= 0 ? 0 : d.FriendlyFire >= .005 ? 2 : 1;
-            }
+            bool adv = s is DemoBattleSource dd ? dd.AdvanceOnContact : cmd.Advance;
+            _advance.IsChecked = adv;
+            _advance.Content = "Advance: " + (adv ? "on" : "off");
+            _posture.SetSelected((s is DemoBattleSource dp ? dp.Posture : cmd.Posture) == "Defensive" ? 0 : 1);
+            if (s is DemoBattleSource d) _ff.SelectedIndex = d.FriendlyFire <= 0 ? 0 : d.FriendlyFire >= .005 ? 2 : 1;
+            SyncCommands();
             _source.SelectedIndex = s.Kind switch { SourceKind.FakeKsp => 1, SourceKind.LiveHost => 2, _ => 0 };
         }
         finally { _syncing = false; }
+    }
+
+    /// <summary>A control this source cannot perform: disabled, with the reason as its tooltip (null = enabled).</summary>
+    private static void Exception(Control c, string? reason)
+    {
+        c.IsEnabled = reason is null;
+        ToolTip.SetTip(c, reason);
+        ToolTip.SetShowOnDisabled(c, reason is not null);
     }
 
     public void SyncTheme()

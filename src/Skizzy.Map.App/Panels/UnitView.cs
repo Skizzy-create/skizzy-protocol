@@ -1,8 +1,10 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Skizzy.Map.App.Services;
 using Skizzy.Map.App.Views;
 using Skizzy.Map.Data;
 using Skizzy.Map.Render.Model;
@@ -12,9 +14,9 @@ namespace Skizzy.Map.App.Panels;
 /// <summary>
 /// The Unit panel (the mockup's renderUnit): symbol, name and class, control state, bearing/range/altitude/heading/
 /// speed/RCS, engagement and data link for missiles, magazines, weapons and fuel, damage, the orders section,
-/// flight deck, weapons control and symbol size. The orders and weapons-control controls are laid out as in the
-/// mockup but read-only until the M4 orders engine. The layout is rebuilt only when the shape changes (another
-/// unit, a section appears); values update in place every refresh.
+/// flight deck, weapons control and symbol size. Every command goes through <see cref="CommandService"/> (c2.* to
+/// the source); a control the source cannot perform is disabled with the reason as its tooltip. The layout is
+/// rebuilt only when the shape changes (another unit, a section appears); values and button states update in place.
 /// </summary>
 public sealed class UnitView : UserControl
 {
@@ -32,6 +34,7 @@ public sealed class UnitView : UserControl
             _app.SlowTick += Refresh;
             _app.SelectionChanged += Refresh;
             _app.SourceChanged += Refresh;
+            _app.Commands.Changed += Refresh;
             Refresh();
         };
         DetachedFromVisualTree += (_, _) =>
@@ -39,12 +42,18 @@ public sealed class UnitView : UserControl
             _app.SlowTick -= Refresh;
             _app.SelectionChanged -= Refresh;
             _app.SourceChanged -= Refresh;
+            _app.Commands.Changed -= Refresh;
         };
     }
 
     internal string CurrentShape => _shape;
 
     private ViewSide View => _app.ActiveMap?.View ?? ViewSide.Blue;
+
+    private CommandService Cmd => _app.Commands;
+
+    /// <summary>Own unit: the panel shows its control state, commands and doctrine.</summary>
+    private bool Own(TrackInfo o) => o.Side == Side.Blue || (o.Alive && Cmd.IsOwn(o));
 
     public void Refresh()
     {
@@ -63,8 +72,9 @@ public sealed class UnitView : UserControl
         if (o is null) return "none";
         var d = o.Details;
         return string.Join("|", o.Id, _app.Selection.Count > 1 ? "multi" : "one", o.Alive, d.Magazines.Count, d.Aam is not null, d.Fuel is not null,
-            d.Damage is not null, d.TargetName is not null, d.LinkHolder is not null || d.LinkSelfDestructIn is not null, d.DeckCount > 0, d.Doctrine, d.Emcon,
-            d.OnContact, View, d.Extra.Count, _app.Selection.Any(i => _app.Data.Get(i)?.Side == Side.Blue));
+            d.Damage is not null, d.TargetName is not null, d.LinkHolder is not null || d.LinkSelfDestructIn is not null, o.Kind == TrackKind.Carrier || d.DeckCount > 0,
+            d.Doctrine is not null, d.Emcon is not null, d.OnContact is not null, View, d.Extra.Count, _app.Selection.Any(i => _app.Data.Get(i)?.Side == Side.Blue),
+            Own(o), Cmd.CanCommand, Cmd.IsDemo);
     }
 
     private void Build(TrackInfo? o)
@@ -77,8 +87,9 @@ public sealed class UnitView : UserControl
             return;
         }
         var data = _app.Data;
-        bool blue = o.Side == Side.Blue;
+        bool blue = Own(o);
         var d = o.Details;
+        var cmd = Cmd;
 
         // header: symbol, name, class · side
         var sym = new SymbolView();
@@ -126,19 +137,37 @@ public sealed class UnitView : UserControl
         // control state and the unit commands
         if (blue)
         {
-            var cstate = CState("", o.Control is ControlState.Manual or ControlState.Order ? "manual" : o.Control == ControlState.Agent ? "agent" : "");
+            var cstate = CState("", "");
+            string kind = "";
             var mission = Ui.Text("", "note");
             mission.TextWrapping = TextWrapping.NoWrap;
             mission.TextTrimming = TextTrimming.CharacterEllipsis;
             _root.Children.Add(Ui.Wrap(6, 6, cstate, mission));
-            _updaters.Add(() => { ((TextBlock)cstate.Child!).Text = o.ControlText.ToUpperInvariant(); mission.Text = o.Details.Mission ?? ""; });
-            _root.Children.Add(Ui.Wrap(6, 6,
-                Disabled(Ui.Button("Take control", () => { }, "acc")),
-                Disabled(Ui.Button("Send to…", () => { })),
-                Disabled(Ui.Button(o.Vip ? "VIP ✓" : "Mark VIP", () => { })),
-                Disabled(Ui.Button("Fly in KSP", () => { }, "ghost")),
-                Ui.Button("Center", () => _app.CenterOn(o.Id), "ghost")));
-            _root.Children.Add(Ui.Text("Orders arrive with the M4 orders engine: right-click to send, attack or protect will work here and on the plot. Shift-drag box-selects; double-click selects a group.", "note"));
+            _updaters.Add(() =>
+            {
+                bool manual = cmd.Manual.Contains(o.Id);
+                ((TextBlock)cstate.Child!).Text = (manual ? "Manual · you" : o.ControlText).ToUpperInvariant();
+                string k = manual || o.Control is ControlState.Order || cmd.IsControlled(o) ? "manual" : o.Control == ControlState.Agent ? "agent" : "";
+                if (k != kind) { kind = k; StyleCState(cstate, k); }
+                mission.Text = o.Details.Mission ?? "";
+            });
+            var take = Ui.Button("Take control", () => { if (cmd.IsControlled(o)) _ = cmd.ReturnToMission(); else _ = cmd.TakeControl(); }, "acc");
+            var send = Press("Send to…", cmd.ToggleSendTo);
+            var vip = Press("Mark VIP", () => _ = cmd.ToggleVip());
+            var fly = Ui.Button("Fly in KSP", () => cmd.FlyInKsp(o), "ghost");
+            Exception(fly, cmd.IsDemo ? null : Unsupported.FlyInKsp);
+            foreach (var c in new Control[] { take, send, vip }) Exception(c, cmd.CanCommand ? null : Unsupported.Orders);
+            _root.Children.Add(Ui.Wrap(6, 6, take, send, vip, fly, Ui.Button("Center", () => _app.CenterOn(o.Id), "ghost")));
+            _updaters.Add(() =>
+            {
+                string t = cmd.IsControlled(o) ? "Return to mission" : "Take control";
+                if ((take.Content as string) != t) take.Content = t;
+                send.IsChecked = cmd.Pending == PendingMode.SendTo;
+                string v = o.Vip ? "VIP ✓" : "Mark VIP";
+                if ((vip.Content as string) != v) vip.Content = v;
+                vip.IsChecked = o.Vip;
+            });
+            _root.Children.Add(Ui.Text("Right-click the plot to send the selected units there. Right-click a hostile to attack it. Right-click one of your own units to make the selection protect it. V marks the selection as VIP. Shift-drag to box-select several units.", "note"));
         }
         else
         {
@@ -252,49 +281,73 @@ public sealed class UnitView : UserControl
             _updaters.Add(() => { for (int i = 0; i < vals.Count && i < o.Details.Extra.Count; i++) vals[i].Text = o.Details.Extra[i].Value; });
         }
 
-        // orders for the selection (read-only until M4)
+        // orders for the selection
         if (blue && o.Alive && !o.IsMissile)
         {
-            _root.Children.Add(Section("Orders for the selection",
-                Ui.Wrap(6, 6, Disabled(Ui.Button("Attack nearest", () => { }, "acc")), Disabled(Ui.Button("RTB & land", () => { }, "acc")), Disabled(Ui.Button("Racetrack…", () => { }))),
-                Ui.Text("Attack nearest (A), RTB & land (R) and racetrack patrols (T) are shown where they will live; they need the orders engine (M4). Until then units follow their missions and BDArmory AI.", "note")));
+            var hunt = Ui.Button("Attack nearest", () => _ = cmd.AttackNearest(), "acc");
+            var rtb = Ui.Button("RTB & land", () => _ = cmd.Rtb(), "acc");
+            var track = Press("Racetrack…", () => cmd.ToggleRacetrack(fromKey: false));
+            foreach (var c in new Control[] { hunt, rtb, track }) Exception(c, cmd.CanCommand ? null : Unsupported.Orders);
+            _updaters.Add(() => track.IsChecked = cmd.Pending == PendingMode.Racetrack);
+            _root.Children.Add(Section("Orders for the selection", Ui.Wrap(6, 6, hunt, rtb, track),
+                Ui.Text("A (Attack nearest): aircraft hunt the nearest hostiles and missiles nobody is engaging, ships go weapons free at full range, carriers launch their decks; fighters RTB when out of missiles. Shift+A twice = all Blue forces. R sends the selection home: aircraft stack at the marshal point astern of Kestrel and land one at a time; ships return to station. T, then drag on the plot, sets a racetrack patrol: with weapons Free (guard) aircraft leave the pattern to fight anything they detect, then come back. The top-bar RTB all button (or Shift+R twice) sends every aircraft home.", "note")));
         }
 
-        if (blue && d.DeckCount > 0)
+        if (blue && (o.Kind == TrackKind.Carrier || d.DeckCount > 0))
         {
             var deck = new TextBlock { TextWrapping = TextWrapping.Wrap };
             var names = Ui.Text("", "note");
-            _root.Children.Add(Section("Flight deck", deck, names, Ui.Wrap(6, 6, Disabled(Ui.Button("Launch ready aircraft", () => { }, "acc")))));
+            names.TextWrapping = TextWrapping.Wrap;
+            var launch = Ui.Button("Launch ready aircraft", () => _ = cmd.LaunchDeck(o), "acc");
+            if (!cmd.IsDemo) Exception(launch, Unsupported.DeckLaunch);
+            _root.Children.Add(Section("Flight deck", deck, names, Ui.Wrap(6, 6, launch)));
             _updaters.Add(() =>
             {
                 var dd = o.Details;
                 deck.Text = (dd.DeckCount > 0 ? $"{dd.DeckCount} aircraft on deck, {dd.DeckReady} ready" : "Deck empty") +
                             (dd.DeckCount > dd.DeckReady ? $" · {dd.DeckCount - dd.DeckReady} rearming (90 s)" : "");
                 names.Text = dd.DeckNames ?? "";
+                if (cmd.IsDemo) launch.IsEnabled = dd.DeckReady > 0 && o.Alive;
             });
         }
 
-        if (blue && d.Doctrine is not null)
+        // weapons control: the source's doctrine (demo), or any own vessel on a live host (unit doctrine through c2.*)
+        bool liveOwn = blue && !cmd.IsDemo && cmd.CanCommand && o.Alive && !o.IsMissile;
+        if (blue && (d.Doctrine is not null || liveOwn))
         {
-            var items = new List<Control> { SegReadOnly(["Free", "Tight", "Hold"], d.Doctrine) };
-            if (d.Emcon is not null)
+            string[] wc = ["Free", "Tight", "Hold"];
+            var weapons = Ui.Seg(wc, Array.IndexOf(wc, cmd.WeaponsOf(o) ?? ""), i => _ = cmd.SetWeapons(wc[i]), uiFont: true);
+            weapons.HorizontalAlignment = HorizontalAlignment.Left;
+            _updaters.Add(() => weapons.SetSelected(Array.IndexOf(wc, cmd.WeaponsOf(o) ?? "")));
+            var items = new List<Control> { weapons };
+            bool ship = d.Emcon is not null || (liveOwn && o.Domain != TrackDomain.Air);
+            if (ship)
             {
+                string[] em = ["Active", "Passive"];
                 var l = Ui.Label("Radar"); l.Margin = new Thickness(0, 6, 0, 0);
                 items.Add(l);
-                items.Add(SegReadOnly(["Active", "Passive"], d.Emcon));
+                var radar = Ui.Seg(em, Array.IndexOf(em, d.Emcon ?? ""), i => _ = cmd.SetRadar(em[i]), uiFont: true);
+                radar.HorizontalAlignment = HorizontalAlignment.Left;
+                if (!cmd.IsDemo) Exception(radar, Unsupported.Radar);
+                _updaters.Add(() => radar.SetSelected(Array.IndexOf(em, o.Details.Emcon ?? "")));
+                items.Add(radar);
                 items.Add(Ui.Text("Hold or passive radar stops SAM fire. Close-in guns keep defending the ship.", "note"));
             }
             else
             {
-                items.Add(Ui.Text("Free = guard mode: hunts and engages hostiles. Tight = assigned targets and close threats only. Hold = passive: does not fire.", "note"));
-                if (d.OnContact is not null)
+                items.Add(Ui.Text("Free = guard mode: hunts and engages hostiles, and leaves a patrol to fight what it detects. Tight = assigned targets and close threats only. Hold = passive: stays on its pattern and does not fire.", "note"));
+                if (d.OnContact is not null || liveOwn)
                 {
                     var l = Ui.Label("When a new hostile appears during an order"); l.Margin = new Thickness(0, 6, 0, 0); l.TextWrapping = TextWrapping.Wrap;
                     items.Add(l);
-                    items.Add(SegReadOnly(["Stay on task", "Engage on contact"], d.OnContact == "engage" ? "Engage on contact" : "Stay on task"));
+                    string[] oc = ["task", "engage"];
+                    var onContact = Ui.Seg(["Stay on task", "Engage on contact"], Array.IndexOf(oc, cmd.OnContactOf(o) ?? "task"), i => _ = cmd.SetOnContact(oc[i]), uiFont: true);
+                    onContact.HorizontalAlignment = HorizontalAlignment.Left;
+                    _updaters.Add(() => onContact.SetSelected(Array.IndexOf(oc, cmd.OnContactOf(o) ?? "task")));
+                    items.Add(onContact);
+                    items.Add(Ui.Text("Stay on task: go straight for the assigned target and ignore others crossing the path. Engage on contact: attack any hostile the unit's own radar detects on the way (even one the shared picture missed), then continue the order.", "note"));
                 }
             }
-            items.Add(Ui.Text("Shown read-only: changing weapons control is an order (M4).", "note"));
             _root.Children.Add(Section("Weapons control", items.ToArray()));
         }
 
@@ -308,12 +361,22 @@ public sealed class UnitView : UserControl
 
     private static string SideName(Side s) => s switch { Side.Blue => "Blue", Side.Red => "Red", Side.Green => "Green", _ => "Other" };
 
-    private static T Disabled<T>(T c) where T : Control
+    /// <summary>A control this source cannot perform: disabled, with the reason as its tooltip (null = enabled).</summary>
+    private static void Exception(Control c, string? reason)
     {
+        if (reason is null) return;
         c.IsEnabled = false;
-        ToolTip.SetTip(c, "Orders arrive in M4");
+        ToolTip.SetTip(c, reason);
         ToolTip.SetShowOnDisabled(c, true);
-        return c;
+    }
+
+    /// <summary>A button that shows pressed while its mode is on (the mockup's aria-pressed buttons); the click toggles the mode.</summary>
+    private static ToggleButton Press(string text, Action onClick)
+    {
+        var b = new ToggleButton { Content = text };
+        b.Classes.Add("btn");
+        b.Click += (_, _) => onClick();
+        return b;
     }
 
     private static Border CState(string text, string kind)
@@ -321,6 +384,15 @@ public sealed class UnitView : UserControl
         var t = new TextBlock { Text = text, FontSize = 10.5, FontWeight = FontWeight.SemiBold, LetterSpacing = 1.26 };
         Ui.BindFont(t, "FontDisplay");
         var b = new Border { Child = t, Padding = new Thickness(8, 3), CornerRadius = new CornerRadius(4), BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
+        StyleCState(b, kind);
+        return b;
+    }
+
+    /// <summary>The mockup's .cstate colours: manual/order (accent fill), agent, or plain.</summary>
+    private static void StyleCState(Border b, string kind)
+    {
+        var t = (TextBlock)b.Child!;
+        b.ClearValue(Border.BackgroundProperty);
         switch (kind)
         {
             case "manual":
@@ -335,9 +407,9 @@ public sealed class UnitView : UserControl
             default:
                 Ui.BindBrush(t, "TextDimBrush");
                 b.Bind(Border.BorderBrushProperty, b.GetResourceObservable("LineHiBrush"));
+                b.ClearValue(Border.BackgroundProperty);
                 break;
         }
-        return b;
     }
 
     private static TextBlock Kv(Grid g, int row, int col, string label)
@@ -360,13 +432,6 @@ public sealed class UnitView : UserControl
         return p;
     }
 
-    private static Segmented SegReadOnly(string[] options, string current)
-    {
-        var s = Ui.Seg(options, Array.IndexOf(options, current), _ => { }, uiFont: true);
-        s.IsEnabled = false;
-        s.HorizontalAlignment = HorizontalAlignment.Left;
-        return s;
-    }
 }
 
 /// <summary>The mockup's .mag row: name, 6 px bar, value (crit when empty).</summary>

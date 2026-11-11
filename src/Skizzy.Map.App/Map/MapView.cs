@@ -2,11 +2,13 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Skizzy.Map.App.Plot;
+using Skizzy.Map.App.Services;
 using Skizzy.Map.App.Views;
 using Skizzy.Map.Data;
 using Skizzy.Map.Data.Demo;
@@ -17,8 +19,10 @@ namespace Skizzy.Map.App.Map;
 /// <summary>
 /// A map window's content: the plot plus the mockup's overlays (plot toolbar with layer toggles and filter chips,
 /// pause-on-event banner, hover tooltip, toast, legend, timeline with replay scrubber) and the plot interactions
-/// (wheel zoom at the cursor, drag pan, Shift-drag box select, click and Shift-click, double-click group,
-/// right-click menu).
+/// (wheel zoom at the cursor, drag pan, Shift-drag box select, click and Shift-click, double-click group) and the
+/// order gestures through <see cref="CommandService"/>: right-click to move, attack or protect, right-drag to draw a
+/// route, the racetrack drag and the Send to… click, with a live preview of what is being drawn. Ctrl+right-click
+/// opens the view menu.
 /// </summary>
 public sealed class MapView : UserControl
 {
@@ -45,7 +49,7 @@ public sealed class MapView : UserControl
 
     private readonly Border _toast;
     private readonly TextBlock _toastText = new() { TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, FontSize = 12, FontWeight = FontWeight.Medium };
-    private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(3.2) };
+    private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(ToastSeconds) };
 
     private readonly Border _legendBox;
     private readonly TextBlock _tlTime = Ui.Text("T+0:00");
@@ -58,7 +62,17 @@ public sealed class MapView : UserControl
     // pointer state
     private Point _downPos, _lastPos;
     private bool _down, _moved, _boxing, _panning;
+
+    /// <summary>The press was the second click of a double-click: its release must not undo the group selection.</summary>
+    private bool _second;
     private Point _hoverPos;
+
+    // order gestures: right-drag route (a point every 14 px once past 10 px), racetrack drag
+    private bool _rdown, _rmoved, _tdrag;
+    private Point _rStart, _rLast;
+    private readonly List<(double X, double Y)> _route = new();
+    private (double X, double Y) _ta, _tb;
+    private readonly Polyline _preview = new() { IsHitTestVisible = false, IsVisible = false, StrokeThickness = 1.5 };
 
     public MapView(AppState app, MapViewModel vm)
     {
@@ -73,6 +87,10 @@ public sealed class MapView : UserControl
         _box.Bind(Border.BorderBrushProperty, _box.GetResourceObservable("AccentBrush"));
         _box.Background = new SolidColorBrush(Color.FromArgb(28, 181, 163, 255));
         _overlay.Children.Add(_box);
+        _preview.Bind(Shape.StrokeProperty, _preview.GetResourceObservable("AccentBrush"));
+        _preview.StrokeDashArray = new Avalonia.Collections.AvaloniaList<double> { 5, 3 };
+        _overlay.Children.Add(_preview);
+        vm.CancelGesture = CancelGesture;
 
         var toolbar = BuildToolbar();
 
@@ -169,7 +187,7 @@ public sealed class MapView : UserControl
         _plot.PointerExited += (_, _) => { _vm.HoverId = 0; _tip.IsVisible = false; };
         _plot.PointerWheelChanged += OnWheel;
         _plot.DoubleTapped += OnDoubleTapped;
-        _plot.PointerCaptureLost += (_, _) => EndDrag();
+        _plot.PointerCaptureLost += (_, _) => { EndDrag(); EndOrderGesture(); };
         _plot.SizeChanged += (_, e) => _vm.SetSize((float)e.NewSize.Width, (float)e.NewSize.Height);
         GotFocus += (_, _) => _app.Activate(_vm);
         PointerPressed += (_, _) => _app.Activate(_vm);
@@ -184,7 +202,12 @@ public sealed class MapView : UserControl
         _hooked = true;
         SyncToolbar();
         OnSlowTick();
+        // a layout change re-creates the views: a toast raised a moment before (“Default layout restored.”) still shows
+        if (_app.LastToast is { } last && _app.Now - last.At < 1.0) OnToast(last.Text);
     }
+
+    /// <summary>How long a toast stays up (the mockup's 4.5 s).</summary>
+    public const double ToastSeconds = 4.5;
 
     private bool _hooked;
 
@@ -198,6 +221,7 @@ public sealed class MapView : UserControl
         _app.SourceChanged += SyncToolbar;
         _vm.Changed += SyncToolbar;
         _vm.Invalidate = _plot.InvalidateVisual;
+        _vm.CancelGesture = CancelGesture;
     }
 
     private void Unhook()
@@ -215,8 +239,14 @@ public sealed class MapView : UserControl
     public PlotControl Plot => _plot;
     internal Border Banner => _banner;
     internal Border Toast => _toast;
+    internal Border Tip => _tip;
+    internal string TipTitle => _tipName.Text ?? "";
+    internal Border LegendBox => _legendBox;
     internal Slider Scrubber => _scrub;
     internal Button LiveButton => _live;
+
+    /// <summary>The route or racetrack being drawn (screen points), hidden when nothing is.</summary>
+    internal Polyline Preview => _preview;
 
     // ------------------------------------------------------------ toolbar
 
@@ -255,7 +285,7 @@ public sealed class MapView : UserControl
         var fit = Ui.Button("Fit", () => _vm.FitAll(), "ghost", "icon");
         ToolTip.SetTip(zout, "Zoom out (−)");
         ToolTip.SetTip(zin, "Zoom in (+)");
-        ToolTip.SetTip(fit, "Fit all (Home). F fits the selection.");
+        ToolTip.SetTip(fit, "Fit all (F or Home). Shift+F fits the selection.");
 
         _viewSeg = Ui.Seg(["Blue fog", "Red fog", "God"], 0, i => _vm.View = (ViewSide)i, uiFont: true);
         ToolTip.SetTip(_viewSeg, "Picture: what Blue knows, what Red knows, or the truth");
@@ -401,9 +431,31 @@ public sealed class MapView : UserControl
         var pt = e.GetCurrentPoint(_plot);
         _downPos = _lastPos = pt.Position;
         _moved = false;
+        if (pt.Properties.IsRightButtonPressed)
+        {
+            // right: a click orders (move / attack / protect), a drag draws a route
+            _rdown = true;
+            _rmoved = false;
+            _rStart = _rLast = pt.Position;
+            _route.Clear();
+            _route.Add(World(pt.Position));
+            e.Pointer.Capture(_plot);
+            e.Handled = true;
+            return;
+        }
+        if (pt.Properties.IsLeftButtonPressed && _app.Commands.Pending == PendingMode.Racetrack)
+        {
+            _tdrag = true;
+            _ta = _tb = World(pt.Position);
+            e.Pointer.Capture(_plot);
+            ShowTrackPreview();
+            e.Handled = true;
+            return;
+        }
         if (pt.Properties.IsLeftButtonPressed)
         {
             _down = true;
+            _second = e.ClickCount >= 2;
             _boxing = (e.KeyModifiers & KeyModifiers.Shift) != 0;
             _panning = false;
             e.Pointer.Capture(_plot);
@@ -422,6 +474,17 @@ public sealed class MapView : UserControl
     {
         var p = e.GetPosition(_plot);
         _hoverPos = p;
+        if (_tdrag)
+        {
+            _tb = World(p);
+            ShowTrackPreview();
+        }
+        if (_rdown)
+        {
+            if (!_rmoved && Dist(p, _rStart) > 10) _rmoved = true;
+            if (_rmoved && Dist(p, _rLast) > 14) { _route.Add(World(p)); _rLast = p; }
+            if (_rmoved) ShowRoutePreview(p);
+        }
         if (_down)
         {
             var dx = p.X - _downPos.X;
@@ -458,8 +521,28 @@ public sealed class MapView : UserControl
         var p = e.GetPosition(_plot);
         if (e.InitialPressMouseButton == MouseButton.Right)
         {
-            ShowContextMenu(p);
             e.Handled = true;
+            if (!_rdown) return; // Esc cancelled the route
+            bool moved = _rmoved;
+            List<(double X, double Y)>? route = null;
+            if (moved) { _route.Add(World(p)); route = _route.ToList(); }
+            EndOrderGesture();
+            e.Pointer.Capture(null);
+            if (route is not null) { _ = _app.Commands.Route(route); return; }
+            if ((e.KeyModifiers & KeyModifiers.Control) != 0) { ShowContextMenu(p); return; }
+            int rhit = _vm.HitTest((float)p.X, (float)p.Y);
+            var (rx, ry) = World(p);
+            _ = _app.Commands.RightClick(rx, ry, rhit != 0 ? _app.Data.Get(rhit) : null);
+            return;
+        }
+        if (_tdrag && e.InitialPressMouseButton == MouseButton.Left)
+        {
+            _tb = World(p);
+            var (a, b) = (_ta, _tb);
+            EndOrderGesture();
+            e.Pointer.Capture(null);
+            e.Handled = true;
+            _ = _app.Commands.Racetrack(a, b);
             return;
         }
         if (!_down) return;
@@ -473,7 +556,13 @@ public sealed class MapView : UserControl
             var pick = own.Count > 0 ? own : inBox;
             _app.Select(pick, pick.FirstOrDefault());
         }
-        else if (!_moved && e.InitialPressMouseButton == MouseButton.Left)
+        else if (!_moved && e.InitialPressMouseButton == MouseButton.Left && _app.Commands.Pending == PendingMode.SendTo)
+        {
+            int hit = _vm.HitTest((float)p.X, (float)p.Y);
+            var (wx, wy) = World(p);
+            _ = _app.Commands.SendToClick(wx, wy, hit != 0 ? _app.Data.Get(hit) : null);
+        }
+        else if (!_moved && e.InitialPressMouseButton == MouseButton.Left && !_second) // a double-click selected the group on its second press
         {
             int hit = _vm.HitTest((float)p.X, (float)p.Y);
             if (hit != 0)
@@ -493,6 +582,65 @@ public sealed class MapView : UserControl
         _down = _moved = _boxing = _panning = false;
         _box.IsVisible = false;
         _plot.Cursor = new Cursor(StandardCursorType.Cross);
+    }
+
+    // ------------------------------------------------------------ order gestures and their preview
+
+    private (double X, double Y) World(Point p)
+    {
+        var (x, y) = _vm.ToWorld((float)p.X, (float)p.Y);
+        return (x, y);
+    }
+
+    private static double Dist(Point a, Point b) => Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
+
+    private void EndOrderGesture()
+    {
+        _rdown = _rmoved = _tdrag = false;
+        _route.Clear();
+        _preview.IsVisible = false;
+    }
+
+    /// <summary>Esc while drawing: drops the route or the racetrack (and the racetrack mode with it).</summary>
+    private bool CancelGesture()
+    {
+        if (!_rdown && !_tdrag) return false;
+        bool track = _tdrag;
+        EndOrderGesture();
+        if (track) _app.Commands.CancelPending();
+        return true;
+    }
+
+    private void ShowRoutePreview(Point cursor)
+    {
+        var pts = new List<Point>(_route.Count + 1);
+        foreach (var (x, y) in _route) pts.Add(Screen(x, y));
+        pts.Add(cursor);
+        _preview.Points = pts;
+        _preview.IsVisible = true;
+    }
+
+    /// <summary>The mockup's trackPts: both legs and the two half circles, 3 km either side of A-B.</summary>
+    private void ShowTrackPreview()
+    {
+        var (a, b) = (_ta, _tb);
+        double ux = b.X - a.X, uy = b.Y - a.Y, len = Math.Sqrt(ux * ux + uy * uy);
+        if (len < CommandService.RacetrackMinLegKm) { b = (a.X + CommandService.RacetrackClickLegKm, a.Y); ux = b.X - a.X; uy = 0; len = ux; }
+        double r = CommandService.RacetrackWidthKm / 2, nx = -uy / len, ny = ux / len, an = Math.Atan2(ny, nx);
+        var pts = new List<Point>(46);
+        for (int k = 0; k <= 10; k++) { double t = k / 10.0; pts.Add(Screen(a.X + nx * r + ux * t, a.Y + ny * r + uy * t)); }
+        for (int k = 1; k < 12; k++) { double th = an - Math.PI * k / 12; pts.Add(Screen(b.X + Math.Cos(th) * r, b.Y + Math.Sin(th) * r)); }
+        for (int k = 0; k <= 10; k++) { double t = k / 10.0; pts.Add(Screen(b.X - nx * r - ux * t, b.Y - ny * r - uy * t)); }
+        for (int k = 1; k < 12; k++) { double th = an + Math.PI - Math.PI * k / 12; pts.Add(Screen(a.X + Math.Cos(th) * r, a.Y + Math.Sin(th) * r)); }
+        pts.Add(pts[0]);
+        _preview.Points = pts;
+        _preview.IsVisible = true;
+    }
+
+    private Point Screen(double x, double y)
+    {
+        var (sx, sy) = _vm.ToScreen((float)x, (float)y);
+        return new Point(sx, sy);
     }
 
     private void OnWheel(object? sender, PointerWheelEventArgs e)
@@ -573,16 +721,18 @@ public sealed class MapView : UserControl
             items.Add(Item($"Center on {t.Name}", () => _app.CenterOn(t.Id)));
         }
         items.Add(Item("Center here", () => _vm.CenterOn(wx, wy)));
-        items.Add(Item("Fit selection", () => _vm.FitSelection(), gesture: "F"));
-        items.Add(Item("Fit all", () => _vm.FitAll(), gesture: "Home"));
+        items.Add(Item("Fit selection", () => _vm.FitSelection(), gesture: "Shift+F"));
+        items.Add(Item("Fit all", () => _vm.FitAll(), gesture: "F"));
         items.Add(new Separator());
-        // the mockup's orders, shown where they will live; the orders engine arrives in M4
+        // the orders, as the plain right-click and the keys give them
+        var cmd = _app.Commands;
         string sel = _app.Selection.Count > 1 ? $"{_app.Selection.Count} units" : "selection";
-        items.Add(Item($"Send {sel} here (orders arrive in M4)", null));
-        if (t is { Side: Side.Red }) items.Add(Item($"Attack {t.Name} (M4)", null));
-        if (t is { Side: Side.Blue }) items.Add(Item($"Protect {t.Name} (M4)", null));
-        items.Add(Item("Racetrack… (M4)", null));
-        items.Add(Item("RTB & land (M4)", null));
+        items.Add(Item($"Send {sel} here", () => cmd.MoveTo(wx, wy)));
+        if (t is { Side: Side.Red }) items.Add(Item($"Attack {t.Name}", () => cmd.Attack(t, wx, wy)));
+        if (t is { Side: Side.Blue, IsMissile: false }) items.Add(Item($"Protect {t.Name}", () => cmd.Protect(t)));
+        items.Add(Item("Racetrack…", () => cmd.ToggleRacetrack(fromKey: false), gesture: "T"));
+        items.Add(Item("Attack nearest", () => cmd.AttackNearest(), gesture: "A"));
+        items.Add(Item("RTB & land", () => cmd.Rtb(), gesture: "R"));
         var menu = new ContextMenu { ItemsSource = items, Placement = PlacementMode.Pointer };
         menu.Open(_plot);
     }

@@ -29,9 +29,13 @@ public sealed class AppState
         Data = new MapData(historyCapacity: 1200);
         Source = source ?? new DemoBattleSource();
         Source.Attach(Data);
+        Commands = new CommandService(this);
     }
 
     public SettingsStore Settings { get; }
+
+    /// <summary>The one command path: orders, doctrine and VIP as c2.* calls to the source (docs/M3-command-parity.md).</summary>
+    public CommandService Commands { get; }
 
     /// <summary>
     /// Map windows render their plot on a thread of their own (the desktop app). Off by default, so headless tests
@@ -289,6 +293,7 @@ public sealed class AppState
     public void Restart()
     {
         Source.Restart();
+        Commands.Reset(keepSeat: true);
         ClearSelection();
         Slots.Clear();
         SizeMul.Clear();
@@ -321,6 +326,7 @@ public sealed class AppState
         SizeMul.Clear();
         source.Attach(Data);
         old.Dispose();
+        Commands.Reset(keepSeat: false);
         _seenComms = 0;
         UnreadComms = 0;
         GroupsChanged?.Invoke();
@@ -330,7 +336,14 @@ public sealed class AppState
 
     // ------------------------------------------------------------ toast and focus
 
-    public void Toast(string text) => ToastRequested?.Invoke(text);
+    public void Toast(string text)
+    {
+        LastToast = (text, Now);
+        ToastRequested?.Invoke(text);
+    }
+
+    /// <summary>The newest toast and when it was raised (app seconds): a map view built just after it (a new layout) still shows it.</summary>
+    public (string Text, double At)? LastToast { get; private set; }
 
     /// <summary>Centres the active map on a track (list double-click, message jump).</summary>
     public void CenterOn(int id)

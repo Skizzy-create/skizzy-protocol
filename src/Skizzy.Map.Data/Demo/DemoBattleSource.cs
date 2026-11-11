@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Numerics;
 using Skizzy.Map.Render.Model;
 using Skizzy.Protocol.Catalog;
+using Skizzy.Protocol.Errors;
 using Skizzy.Protocol.Json;
 
 namespace Skizzy.Map.Data.Demo;
@@ -11,7 +12,7 @@ namespace Skizzy.Map.Data.Demo;
 /// live tactical stream would be: kinematic samples every step, unit facts at 2 Hz, the Red fog picture at 1 Hz,
 /// log, comms and events as they happen. Runs with no KSP and no host.
 /// </summary>
-public sealed class DemoBattleSource : IDataSource
+public sealed class DemoBattleSource : IDataSource, ICommandSource
 {
     private static readonly RangeRing Essm = new(22, "ESSM 22 km");
     private static readonly RangeRing Radar = new(150, "Radar 150 km", IsRadar: true);
@@ -32,6 +33,8 @@ public sealed class DemoBattleSource : IDataSource
     private readonly List<(double Due, string Text)> _replies = new();
     private readonly List<CatalogEntry> _catalog;
     private long _ticks;
+    private DemoC2? _c2;
+    private long _ordersVersion = -1;
 
     public DemoBattleSource()
     {
@@ -41,7 +44,7 @@ public sealed class DemoBattleSource : IDataSource
     public string Name => "Demo battle";
     public string Description => "Kerbin Strait · air raid on Task Group 1 · sample scenario";
     public SourceKind Kind => SourceKind.Demo;
-    public SourceCaps Caps => SourceCaps.Pause | SourceCaps.Speed | SourceCaps.Restart | SourceCaps.Catalog | SourceCaps.DemoControls | SourceCaps.Compose;
+    public SourceCaps Caps => SourceCaps.Pause | SourceCaps.Speed | SourceCaps.Restart | SourceCaps.Catalog | SourceCaps.DemoControls | SourceCaps.Compose | SourceCaps.Orders;
     public SourceState State => _data is null ? SourceState.Idle : SourceState.Online;
     public string StatusText => "Built-in scenario · no KSP";
     public bool Paused { get; private set; }
@@ -49,6 +52,25 @@ public sealed class DemoBattleSource : IDataSource
 
     /// <summary>The running battle (tests and the demo's top-bar controls).</summary>
     public BattleSim Sim => _sim;
+
+    /// <summary>The demo's C2 engine and executor endpoint, created on the first c2.* call.</summary>
+    public DemoC2 C2 => _c2 ??= new DemoC2(_sim);
+
+    /// <summary>The C2 layer if the map has commanded anything since the last restart.</summary>
+    public DemoC2? C2IfStarted => _c2;
+
+    // ------------------------------------------------------------ ICommandSource
+
+    public bool TryToGeo(double xKm, double yKm, out double lat, out double lon)
+    {
+        var g = DemoC2.ToGeo(xKm, yKm);
+        (lat, lon) = (g.Lat, g.Lon);
+        return true;
+    }
+
+    public string? UnitRef(TrackInfo track) => "v:" + track.Id.ToString(CultureInfo.InvariantCulture);
+
+    public string? CommandSide => DemoC2.BlueSide;
 
     public IReadOnlyList<CatalogEntry> Catalog => _catalog;
 
@@ -127,6 +149,8 @@ public sealed class DemoBattleSource : IDataSource
     {
         var keep = (_sim.Posture, _sim.AdvanceAuto, _sim.FriendlyFire, _sim.PauseOnEvents);
         _sim = new BattleSim { Posture = keep.Posture, AdvanceAuto = keep.AdvanceAuto, FriendlyFire = keep.FriendlyFire, PauseOnEvents = keep.PauseOnEvents };
+        _c2 = null;
+        _ordersVersion = -1;
         Paused = false;
         if (_data is not null) Reset();
     }
@@ -170,6 +194,21 @@ public sealed class DemoBattleSource : IDataSource
     public Task<string> CallAsync(string method, string argsJson, CancellationToken ct)
     {
         var data = _data ?? throw new InvalidOperationException("not attached");
+        if (method.StartsWith("c2.", StringComparison.Ordinal) || method.StartsWith("demo.", StringComparison.Ordinal))
+        {
+            try
+            {
+                var args = string.IsNullOrWhiteSpace(argsJson) ? JsonValue.Obj() : JsonParser.Parse(argsJson);
+                var res = C2.Call(method, args);
+                return Task.FromResult(JsonWriter.Serialize(res, true));
+            }
+            catch (SkizzyError e) { return Task.FromException<string>(e); }
+            finally
+            {
+                _lastFactsT = double.NegativeInfinity; // the unit panel shows the new state at once
+                Publish();
+            }
+        }
         switch (method)
         {
             case "host.stats":
@@ -198,7 +237,7 @@ public sealed class DemoBattleSource : IDataSource
                 return Task.FromResult(JsonWriter.Serialize(o, true));
             }
             default:
-                throw new InvalidOperationException($"'{method}' needs a live host. The demo battle answers host.stats, ksp.vessels.list and ksp.vessel.get.");
+                throw new InvalidOperationException($"'{method}' needs a live host. The demo battle answers host.stats, ksp.vessels.list, ksp.vessel.get, the c2.* orders and doctrine capabilities and demo.*.");
         }
     }
 
@@ -267,11 +306,44 @@ public sealed class DemoBattleSource : IDataSource
         _sim.NewEvents.Clear();
 
         if (facts) Losses(data.Losses);
+        if (_c2 is not null && _c2.Version != _ordersVersion) PublishOrders(data.Orders, _c2);
         data.LiveTime = now;
         if (newSample && Math.Floor(_sim.SimT / 10) != Math.Floor(_lastSampleT / 10)) data.Prune();
         _lastSampleT = _sim.SimT;
         if (facts) _lastFactsT = _sim.SimT;
         if (fog) _lastFogT = _sim.SimT;
+    }
+
+    /// <summary>The engine's orders as the plot draws them.</summary>
+    private void PublishOrders(OrderPicture pic, DemoC2 c2)
+    {
+        _ordersVersion = c2.Version;
+        pic.Begin();
+        foreach (var (id, u) in c2.UnitOrders)
+        {
+            if (u.Draw == OrderType.Move && !u.HasDest) continue;
+            var o = pic.AddOrder();
+            o.TrackId = id;
+            o.Type = u.Draw;
+            o.Destination = new Vector2(u.DestX, u.DestY);
+            o.TargetTrackId = u.TargetId;
+            o.RouteId = u.RouteId;
+            o.RouteIndex = u.RouteIndex;
+            o.RouteOffset = new Vector2(u.OffX, u.OffY);
+            o.PatternId = u.PatternId;
+            o.RtbPhase = u.Phase;
+        }
+        foreach (var (id, pts) in c2.Routes)
+        {
+            var r = pic.AddRoute(id);
+            foreach (var (x, y) in pts) r.Points.Add(new Vector2(x, y));
+        }
+        foreach (var rt in c2.Racetracks.Values)
+        {
+            var r = pic.AddRacetrack();
+            r.Id = rt.Id; r.A = rt.A; r.B = rt.B; r.WidthKm = rt.WidthKm; r.TurnRight = rt.TurnRight;
+        }
+        pic.Commit();
     }
 
     private void Sample(TrackInfo tr, SimObj o, double now)
@@ -309,6 +381,7 @@ public sealed class DemoBattleSource : IDataSource
             "Order" => (ControlState.Order, "Your order"),
             _ => (ControlState.Bda, "BDArmory AI"),
         };
+        if (_c2 is not null && _c2.UnitOrders.TryGetValue(o.Id, out var uo)) (tr.Control, tr.ControlText) = (ControlState.Order, uo.ControlText);
         tr.TargetId = o.K.Missile ? o.Target ?? 0 : o.TgtId is int tg && _sim.Get(tg)?.Alive == true ? tg : 0;
 
         var d = tr.Details;

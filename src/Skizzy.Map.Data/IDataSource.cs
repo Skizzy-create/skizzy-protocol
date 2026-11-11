@@ -13,7 +13,7 @@ public enum SourceCaps
     Restart = 4,
     /// <summary>Has a capability catalog for the command palette.</summary>
     Catalog = 8,
-    /// <summary>Can take operator orders (M4; always off in M3).</summary>
+    /// <summary>Takes operator orders through the c2.* contract (<see cref="ICommandSource"/>).</summary>
     Orders = 16,
     /// <summary>The demo battle's side-level controls (posture, advance, friendly fire).</summary>
     DemoControls = 32,
@@ -66,4 +66,20 @@ public interface IDataSource : IDisposable
     Task<string> CallAsync(string method, string argsJson, CancellationToken ct);
 
     HealthSnapshot Health { get; }
+}
+
+/// <summary>
+/// A source the map can command through the c2.* contract (<see cref="IDataSource.CallAsync"/>): it maps plot points
+/// to the lat/lon the contract uses and tracks to C2 unit references.
+/// </summary>
+public interface ICommandSource
+{
+    /// <summary>lat/lon (degrees) of a plot point (km east and north of the source's origin). False before the origin is known.</summary>
+    bool TryToGeo(double xKm, double yKm, out double lat, out double lon);
+
+    /// <summary>The C2 unit reference of a track ("v:&lt;id&gt;"), or null when the track is not a vessel the engine knows.</summary>
+    string? UnitRef(TrackInfo track);
+
+    /// <summary>The side the operator commands when the source knows it (demo: "Blue"); null = ask the engine (c2.unit.status).</summary>
+    string? CommandSide { get; }
 }

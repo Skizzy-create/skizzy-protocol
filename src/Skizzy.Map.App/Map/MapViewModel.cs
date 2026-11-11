@@ -49,6 +49,9 @@ public sealed class MapViewModel : IDisposable
     /// <summary>Set by the view: repaint the plot control.</summary>
     public Action? Invalidate { get; set; }
 
+    /// <summary>Set by the map view: cancels a racetrack or route being drawn (Esc). True when there was one.</summary>
+    public Func<bool>? CancelGesture { get; set; }
+
     public int HoverId { get; set; }
 
     /// <summary>Logical size of the plot control.</summary>

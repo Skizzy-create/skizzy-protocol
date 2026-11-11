@@ -230,7 +230,7 @@ namespace Skizzy.C2
 
         public List<DoctrineExplain> ExplainDoctrine(uint unit)
         {
-            var r = Rec(unit);
+            var r = RecNow(unit);
             return r == null ? null : _doctrine.Explain(r.S.Side, r.Group, unit);
         }
 
@@ -347,7 +347,7 @@ namespace Skizzy.C2
 
         public UnitView GetUnitView(uint unit)
         {
-            var r = Rec(unit);
+            var r = RecNow(unit);
             if (r == null) return null;
             var v = new UnitView
             {
@@ -987,6 +987,19 @@ namespace Skizzy.C2
         {
             UnitRec r;
             return id != 0 && _units.TryGetValue(id, out r) ? r : null;
+        }
+
+        /// <summary>
+        /// A unit the engine has not read yet is read now: the engine reads the world on its tick and on an order, and
+        /// it only ticks once commanded, so a status or doctrine query before the first order would not find the unit.
+        /// </summary>
+        private UnitRec RecNow(uint id)
+        {
+            var r = Rec(id);
+            if (r != null || id == 0) return r;
+            _now = _world.Now;
+            RefreshUnits();
+            return Rec(id);
         }
 
         private UnitRec RecOrCreate(uint id)

@@ -68,6 +68,12 @@ public sealed class SimObj
     public double LandedT;
     public int Shots;
     public int? Diverted;
+    /// <summary>BDArmory-level control the C2 engine drives (overrides, routes, fire authority); null until it touches the unit.</summary>
+    public SimBda? Bda;
+    /// <summary>Recover adapter: the carrier this aircraft is approaching to land on (null = not landing).</summary>
+    public int? ApproachBase;
+    /// <summary>Ship speed before the C2 engine first moved it (restored when it is released).</summary>
+    public double? BaseSpd;
     /// <summary>Time the object died (for replay and losses), NaN while alive.</summary>
     public double DiedT = double.NaN;
 }
@@ -95,10 +101,12 @@ public sealed class SimStats
 /// The demo battle: a C# port of the simulation in design/mockups/command-screen-v1.html (v15): three Blue carrier
 /// groups with 30 destroyers, six submarines and their air wings against a four-wave Red raid of strike packages,
 /// fighter sweeps, defensive CAPs, 200 attack drones and stealth pairs. Deterministic (the mockup's mulberry32
-/// with seed 11). Operator orders are not ported: in the real system they come from the M4 orders engine. The
-/// side-level controls the mockup has (posture, advance on contact, friendly-fire stand-in, pause on events) are.
+/// with seed 11). Operator orders come from the real C2 engine (<c>Skizzy.C2</c>) through
+/// <see cref="DemoC2"/>, which drives the BDArmory-level executor in <c>BattleSim.Executor.cs</c>; units it does not
+/// command keep the mockup's mission behaviour. The side-level controls (posture, advance on contact,
+/// friendly-fire stand-in, pause on events) are ported as they are.
 /// </summary>
-public sealed class BattleSim
+public sealed partial class BattleSim
 {
     public static readonly IReadOnlyDictionary<string, SimKind> Kinds = new Dictionary<string, SimKind>
     {
@@ -630,6 +638,7 @@ public sealed class BattleSim
         if (!o.Alive) return;
         o.Alive = false;
         o.DiedT = SimT;
+        if (Hooks is not null) Died.Add(o.Id);
     }
 
     private void KillObj(SimObj o, string? how = null)
@@ -686,6 +695,7 @@ public sealed class BattleSim
 
     private void Think(SimObj o, double dt)
     {
+        if (o.Side == "blue" && (o.ApproachBase is not null || o.Bda is { Commanded: true } || o.BaseSpd is not null) && ThinkCommanded(o, dt)) return;
         switch (o.Kind)
         {
             case "aew":
@@ -972,18 +982,22 @@ public sealed class BattleSim
             int free = s.Channels - inflight;
             if (free <= 0) continue;
             var c = new List<(double d, SimObj t, int p)>();
+            var bda = s.Bda; // C2 engine control: override and secondary targets first, filter, full range
             foreach (var t in Objs)
             {
                 if (!t.Alive || t.Side != "red") continue;
                 if (t.EngagedBy is not null && AliveId(t.EngagedBy)) continue;
                 bool msl = t.Kind == "asm" || t.Kind == "uav";
-                if (!msl)
+                bool assigned = bda is not null && (t.Id == bda.Override || bda.Secondary.Contains(t.Id));
+                if (!msl && !assigned)
                 {
+                    if (bda?.Filter is { } flt && !flt.Allows((uint)t.Id)) continue;
                     if (s.Doctrine == "Tight" && t.IdState != "hostile") continue;
                     if (t.IdState == "unknown") continue;
                 }
-                double d = Dist(s, t), r = t.Alt < 100 ? 38 : (Posture == "Proactive" ? 90 : 60);
-                if (d <= r) c.Add((d, t, vips.Count > 0 && ThreatensVip(t, vips) ? 0 : 1));
+                double d = Dist(s, t), r = t.Alt < 100 ? 38 : (Posture == "Proactive" || bda?.RangeMax == true ? 90 : 60);
+                int pri = bda is not null && t.Id == bda.Override ? -2 : assigned ? -1 : vips.Count > 0 && ThreatensVip(t, vips) ? 0 : 1;
+                if (d <= r) c.Add((d, t, pri));
             }
             c.Sort((a, b) => a.p != b.p ? a.p.CompareTo(b.p) : a.d.CompareTo(b.d));
             var mag = s.Mag!;
@@ -1174,6 +1188,7 @@ public sealed class BattleSim
         }
         if (Math.Floor(SimT / 6) != Math.Floor((SimT - dt) / 6)) FlushReports();
         if (Math.Floor(SimT / 10) != Math.Floor((SimT - dt) / 10)) Objs = Objs.Where(o => o.Alive || !o.K.Missile).ToList();
+        AfterStep?.Invoke();
     }
 
     /// <summary>Formats scenario time as Kerbin UT "hh:mm:ss" (6-hour days), like the mockup's fmtT.</summary>

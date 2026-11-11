@@ -98,6 +98,69 @@ public sealed record HealthSnapshot(
 /// The map's mirror of the world: tracks with history, the message log, comms, events, losses, zones and the
 /// pause-on-event state. One instance per app; every map window reads it on the UI thread.
 /// </summary>
+/// <summary>
+/// The current orders as the map draws them (doc 09 §2.1.2): one <see cref="PlotOrder"/> per unit with an order,
+/// plus the shared drawn routes and racetracks. The source fills it (demo: from the C2 engine; live: from order
+/// events); <see cref="SceneSync"/> copies it into each window's scene without allocating. Objects are pooled.
+/// </summary>
+public sealed class OrderPicture
+{
+    private readonly List<PlotOrder> _orderPool = new();
+    private readonly List<PlotRoute> _routePool = new();
+    private readonly List<PlotRacetrack> _trackPool = new();
+
+    public List<PlotOrder> Orders { get; } = new();
+    public List<PlotRoute> Routes { get; } = new();
+    public List<PlotRacetrack> Racetracks { get; } = new();
+
+    /// <summary>Incremented by <see cref="Commit"/> and <see cref="Clear"/>.</summary>
+    public long Version { get; private set; }
+
+    /// <summary>Starts a rebuild: empties the lists (pooled objects are reused by the Add calls).</summary>
+    public void Begin()
+    {
+        Orders.Clear();
+        Routes.Clear();
+        Racetracks.Clear();
+    }
+
+    public PlotOrder AddOrder()
+    {
+        if (_orderPool.Count <= Orders.Count) _orderPool.Add(new PlotOrder());
+        var o = _orderPool[Orders.Count];
+        o.TrackId = 0; o.Type = OrderType.Move; o.Destination = default; o.TargetTrackId = 0; o.RouteId = 0; o.RouteIndex = 0;
+        o.RouteOffset = default; o.PatternId = 0; o.RtbPhase = RtbPhase.Inbound; o.MarshalAsternKm = 8f;
+        Orders.Add(o);
+        return o;
+    }
+
+    public PlotRoute AddRoute(int id)
+    {
+        if (_routePool.Count <= Routes.Count) _routePool.Add(new PlotRoute());
+        var r = _routePool[Routes.Count];
+        r.Id = id;
+        r.Points.Clear();
+        Routes.Add(r);
+        return r;
+    }
+
+    public PlotRacetrack AddRacetrack()
+    {
+        if (_trackPool.Count <= Racetracks.Count) _trackPool.Add(new PlotRacetrack());
+        var r = _trackPool[Racetracks.Count];
+        Racetracks.Add(r);
+        return r;
+    }
+
+    public void Commit() => Version++;
+
+    public void Clear()
+    {
+        Begin();
+        Version++;
+    }
+}
+
 public sealed class MapData
 {
     private readonly List<TrackInfo> _tracks = new();
@@ -125,6 +188,9 @@ public sealed class MapData
     public List<PlotEvent> Events { get; } = new();
     public LossReport Losses { get; } = new();
     public List<PlotZone> Zones { get; } = new();
+
+    /// <summary>The current orders (drawn on the plot in live view).</summary>
+    public OrderPicture Orders { get; } = new();
 
     /// <summary>The track bearings and ranges are measured from (the flagship). 0 = plot origin.</summary>
     public int ReferenceTrackId { get; set; }
@@ -234,6 +300,7 @@ public sealed class MapData
         Losses.Note = null;
         Losses.Version++;
         Zones.Clear();
+        Orders.Clear();
         GroupOverrides.Clear();
         LiveTime = 0;
         ReplayTime = null;

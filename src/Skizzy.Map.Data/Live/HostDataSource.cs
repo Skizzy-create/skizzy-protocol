@@ -16,7 +16,7 @@ namespace Skizzy.Map.Data.Live;
 /// Notifications arrive on the client's read thread and are applied on the UI thread in <see cref="Tick"/>.
 /// The token is never logged or shown.
 /// </summary>
-public class HostDataSource : IDataSource
+public class HostDataSource : IDataSource, ICommandSource
 {
     public static readonly string[] Fields =
         ["type", "situation", "body", "lat", "lon", "altitude", "srfSpeed", "heading", "verticalSpeed", "isActive", "crewCount", "mass"];
@@ -61,7 +61,8 @@ public class HostDataSource : IDataSource
     public string Name { get; }
     public string Description { get; }
     public SourceKind Kind { get; }
-    public virtual SourceCaps Caps => SourceCaps.Catalog;
+    /// <summary>Orders go to the host's c2.* capabilities; the host answers (or refuses) them itself.</summary>
+    public virtual SourceCaps Caps => SourceCaps.Catalog | SourceCaps.Orders;
     public SourceState State { get; private set; } = SourceState.Idle;
     public string StatusText { get; private set; } = "Not connected";
     public bool Paused => false;
@@ -360,6 +361,32 @@ public class HostDataSource : IDataSource
         tr.DetBlue = TrackDetection.Shared;
         tr.DetRed = TrackDetection.Shared;
     }
+
+    // ------------------------------------------------------------ ICommandSource
+
+    /// <summary>The inverse of <see cref="Project"/>: a plot point back to lat/lon on the origin's body.</summary>
+    public bool TryToGeo(double xKm, double yKm, out double lat, out double lon)
+    {
+        lat = lon = 0;
+        if (_lat0 is not double lat0 || _lon0 is not double lon0) return false;
+        double r = Radii.GetValueOrDefault(_body0 ?? "Kerbin", 600);
+        double rho = Math.Sqrt(xKm * xKm + yKm * yKm);
+        if (rho < 1e-9) { lat = lat0; lon = lon0; return true; }
+        double la0 = lat0 * Math.PI / 180, lo0 = lon0 * Math.PI / 180, c = rho / r;
+        double sinC = Math.Sin(c), cosC = Math.Cos(c);
+        double la = Math.Asin(Math.Clamp(cosC * Math.Sin(la0) + yKm * sinC * Math.Cos(la0) / rho, -1, 1));
+        double lo = lo0 + Math.Atan2(xKm * sinC, rho * Math.Cos(la0) * cosC - yKm * Math.Sin(la0) * sinC);
+        lat = la * 180 / Math.PI;
+        lon = (lo * 180 / Math.PI + 540) % 360 - 180;
+        return true;
+    }
+
+    /// <summary>The host's vessel handle ("v:&lt;pid&gt;"), which the C2 engine resolves as a unit.</summary>
+    public string? UnitRef(TrackInfo track) =>
+        track.Key.StartsWith("vessel:", StringComparison.Ordinal) ? track.Key["vessel:".Length..] : null;
+
+    /// <summary>The map's session has no side; the side comes from the engine (c2.unit.status of the ordered units).</summary>
+    public string? CommandSide => null;
 
     /// <summary>Azimuthal equidistant about the origin: km east (+X) and north (+Y).</summary>
     private (double X, double Y) Project(double lat, double lon, double radiusKm)

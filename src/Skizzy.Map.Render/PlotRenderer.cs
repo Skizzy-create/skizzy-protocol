@@ -59,7 +59,7 @@ public sealed class PlotRenderer : IDisposable
     private readonly SKPath _gridLo = new(), _gridHi = new(), _scratch = new(), _labelBacks = new(), _brackets = new();
     private readonly SegmentBatch _ringPrimary = new(), _ringSecondary = new(), _ringRadar = new();
     private readonly SegmentBatch _orderLines = new(), _routeLegs = new(), _dashes = new();
-    private readonly SKPath _orderMarks = new(), _racetracks = new(), _arrows = new(), _vipBrackets = new();
+    private readonly SKPath _orderMarks = new(), _racetracks = new(), _arrows = new(), _vipBrackets = new(), _routes = new(), _routeEnds = new();
     private readonly SegmentBatch _marshal = new(), _vipRing = new(), _vipRingSelected = new();
     private readonly SegmentBatch[] _ownSensor = [new(), new(), new(), new()];
 
@@ -193,12 +193,31 @@ public sealed class PlotRenderer : IDisposable
         else _stroke.Color = color.WithAlpha((byte)(a + .5f));
     }
 
+    /// <summary>
+    /// Sets <see cref="_stroke"/> for a thin line of <paramref name="widthPx"/> (the order lines' 1.2 px): a hairline
+    /// carrying the same ink (alpha scaled by the width and the device scale) where the colour leaves room, else a real
+    /// stroke. Skia strokes every dash of a wide line as its own path; hairline dashes go through its fast line blitter,
+    /// which keeps thousands of order lines (an all-attack) inside the frame budget.
+    /// </summary>
+    private void ThinLine(SKColor color, float widthPx)
+    {
+        _stroke.StrokeWidth = widthPx;
+        _stroke.Color = color;
+        if (_hair != 0f) return;
+        float a = color.Alpha * _hairGain * widthPx;
+        if (a > 255.5f) return;
+        _stroke.StrokeWidth = 0f;
+        _stroke.Color = color.WithAlpha((byte)(a + .5f));
+    }
+
     /// <summary>The device-scale handling chosen for the last frame (for tests).</summary>
     internal (float Width, float Gain) HairlineMode => (_hair, _hairGain);
 
     // ---------------------------------------------------------------- background
 
-    private static ReadOnlySpan<int> NiceSteps => [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+    // an array, not a ReadOnlySpan<int> property: unoptimised (Debug) code builds that span through a field handle,
+    // which allocates on every call (once a frame for the grid and once for the scale bar)
+    private static readonly int[] NiceSteps = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
 
     /// <summary>
     /// The mockup's step choice (first of 1, 2, 5 … <paramref name="mockupLast"/> km that is at least
@@ -590,6 +609,7 @@ public sealed class PlotRenderer : IDisposable
         var accent = _theme.Accent;
         st.RoutesDrawn.Clear(); st.PatternsDrawn.Clear(); st.MarshalBases.Clear();
         _routeLegs.Reset(); _orderLines.Reset(); _orderMarks.Reset(); _racetracks.Reset(); _arrows.Reset(); _marshal.Reset();
+        _routes.Rewind(); _routeEnds.Rewind();
 
         // drawn routes: the shared path once, bright; each unit a faint line to its next point
         foreach (var o in scene.Orders)
@@ -603,21 +623,24 @@ public sealed class PlotRenderer : IDisposable
             var nx = route.Points[Math.Clamp(o.RouteIndex, 0, route.Points.Count - 1)];
             Dasher.Line(_routeLegs, vp.ToScreenX(u.X), vp.ToScreenY(u.Y), vp.ToScreenX(nx.X + o.RouteOffset.X), vp.ToScreenY(nx.Y + o.RouteOffset.Y), 2, 4, _clip);
             if (!st.RoutesDrawn.Add(route.Id)) continue;
-            _scratch.Reset();
             for (int i = 0; i < route.Points.Count; i++)
             {
                 float sx = vp.ToScreenX(route.Points[i].X), sy = vp.ToScreenY(route.Points[i].Y);
-                if (i == 0) _scratch.MoveTo(sx, sy); else _scratch.LineTo(sx, sy);
+                if (i == 0) _routes.MoveTo(sx, sy); else _routes.LineTo(sx, sy);
             }
+            var end = route.Points[^1];
+            _routeEnds.AddCircle(vp.ToScreenX(end.X), vp.ToScreenY(end.Y), 5);
+        }
+        // every shared route in one stroke, every end ring in another (one draw call each, however many routes)
+        if (!_routes.IsEmpty)
+        {
             _stroke.Color = Theme.A(accent, .8f);
             _stroke.StrokeWidth = 1.6f;
-            c.DrawPath(_scratch, _stroke);
-            var end = route.Points[^1];
-            _stroke.StrokeWidth = 1.2f;
-            c.DrawCircle(vp.ToScreenX(end.X), vp.ToScreenY(end.Y), 5, _stroke);
+            c.DrawPath(_routes, _stroke);
+            ThinLine(Theme.A(accent, .8f), 1.2f);
+            c.DrawPath(_routeEnds, _stroke);
         }
-        _stroke.StrokeWidth = 1.2f;
-        if (!_routeLegs.IsEmpty) { _stroke.Color = Theme.A(accent, .25f); _routeLegs.Draw(c, _stroke); }
+        if (!_routeLegs.IsEmpty) { ThinLine(Theme.A(accent, .25f), 1.2f); _routeLegs.Draw(c, _stroke); }
 
         // racetracks, each shared pattern once; and a MARSHAL ring for each base with RTB traffic
         foreach (var o in scene.Orders)
@@ -645,16 +668,14 @@ public sealed class PlotRenderer : IDisposable
         }
         if (!_racetracks.IsEmpty)
         {
-            _stroke.Color = Theme.A(accent, .7f);
-            _stroke.StrokeWidth = 1.4f;
+            ThinLine(Theme.A(accent, .7f), 1.4f);
             c.DrawPath(_racetracks, _stroke);
             _fill.Color = Theme.A(accent, .8f);
             c.DrawPath(_arrows, _fill);
         }
         if (!_marshal.IsEmpty)
         {
-            _stroke.Color = Theme.A(accent, .55f);
-            _stroke.StrokeWidth = 1.2f;
+            ThinLine(Theme.A(accent, .55f), 1.2f);
             _marshal.Draw(c, _stroke);
         }
 
@@ -695,8 +716,7 @@ public sealed class PlotRenderer : IDisposable
                 _orderMarks.MoveTo(bx - 5, by); _orderMarks.LineTo(bx, by - 5); _orderMarks.LineTo(bx + 5, by); _orderMarks.LineTo(bx, by + 5); _orderMarks.Close();
             }
         }
-        _stroke.Color = Theme.A(accent, la);
-        _stroke.StrokeWidth = 1.2f;
+        ThinLine(Theme.A(accent, la), 1.2f);
         _orderLines.Draw(c, _stroke);
         if (!_orderMarks.IsEmpty) c.DrawPath(_orderMarks, _stroke);
         st.LastFrame = stats;

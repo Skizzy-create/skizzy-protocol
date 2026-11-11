@@ -29,6 +29,7 @@ public partial class App : Application
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
+        SplitterKeys.Install();
         // the palette before any window exists, so nothing paints with Fluent's defaults first
         Resources.MergedDictionaries.Add(SkzPalette.DarkSet.ToResources());
     }

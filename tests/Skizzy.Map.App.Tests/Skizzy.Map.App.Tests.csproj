@@ -27,6 +27,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Skizzy.Map.App\Skizzy.Map.App.csproj" />
     <ProjectReference Include="..\..\src\Skizzy.Map.Data\Skizzy.Map.Data.csproj" />
+    <ProjectReference Include="..\..\src\Skizzy.C2.Fake\Skizzy.C2.Fake.csproj" />
     <ProjectReference Include="..\..\tools\Skizzy.Map.RenderDemo\Skizzy.Map.RenderDemo.csproj" />
   </ItemGroup>
 
