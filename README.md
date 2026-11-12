@@ -312,6 +312,21 @@ Not verified yet, because it needs a running KSP:
 
 Ahead of M4, the C2 orders and doctrine engine (`src/Skizzy.C2`, with `Skizzy.C2.Fake` and 69 scenario tests) is merged and wired to the `c2.*` capabilities (`c2.order.issue|cancel`, `c2.doctrine.set|unset|effective`, `c2.unit.status|release`, `c2.vip.set`, `c2.side.managed`), a 5 Hz tick and `order.*`/`log.*` events. In game it needs the BDArmory binding, which is not in this repository yet; until it attaches, `c2.*` calls fail with `EXECUTOR_UNAVAILABLE` and the engine costs nothing.
 
+M2 (in progress, branch `m2-bda-picture`) adds the tactical picture and the missile engagement log. It works once the BDArmory binding attaches in a flight scene; before that these calls fail with `tactical_not_attached`. The capabilities are:
+
+| Capability | What it does |
+|---|---|
+| `tac.status` | Engine state, sample rate, missiles in flight, log size, and the main-thread and feed-worker cost per sample. |
+| `tac.configure` | Sets fog, `revealNames`, `dropAfterS`, and `sampleHz` (1–10, default 5). |
+| `tac.summary`, `tac.query`, `tac.threats`, `tac.track.get`, `tac.sitrep` | One team's picture: tracks `T12` with IFF and ID state, BRAA, threat ranking, and compact text. |
+| `tac.missiles` | Every missile in flight: team, weapon, launcher, target, position and velocity, state, fired time, and cost in KSP funds. |
+| `tac.engagements` | Non-friendly tracks being engaged or with missiles in the air at them, and how many hostiles are unengaged. |
+| `tac.engagement_log` | The running log (fired, hit, intercepted, missed, destroyed, killed) with per-team totals: fired, hits, misses, intercepts made, kills, funds spent, value intercepted, value of hits. Pages with `since`/`before`. |
+| `source.tactical` stream | Map rows for every track and every missile, new log entries and totals. Snapshotted on the main thread at `sampleHz`, serialised off it. |
+| `engagement.*` events | One event per log entry. |
+
+Costs are KSP part costs (catalog plus module costs), summed over all the parts of a multi-part missile. Hits and kills use BDArmory competition scoring when a competition runs; otherwise they come from BDArmory's missile state when KSP destroys the missile. The map app draws the missiles and has an Engagements panel. In-game steps are in [`docs/M2-checklist.md`](docs/M2-checklist.md).
+
 The manual in-game checklist is [`docs/M0-checklist.md`](docs/M0-checklist.md). Design documents are in `design/`; the scope of this milestone is in `design/17-milestones.md`.
 
 ## Licence
