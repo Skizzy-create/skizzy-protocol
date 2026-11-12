@@ -2278,6 +2278,599 @@
         "additionalProperties": false
       },
       "x-skz-listShaped": true
+    },
+    {
+      "name": "tac.configure",
+      "version": 1,
+      "provider": "tac",
+      "title": "tac.configure",
+      "description": "Picture settings for every side (human, referee or director only): fog (IFF unknown until identified), revealNames, dropAfterS for tracks no longer held, and sampleHz, the main-thread snapshot rate that drives the picture, the missile ledger and source.tactical (1-10 Hz, default 5). Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+      "safety": "control",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "tactical",
+      "mod": "BDArmory",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fog": {
+            "type": "boolean",
+            "description": "IFF unknown until identified"
+          },
+          "revealNames": {
+            "type": "boolean",
+            "description": "show names of identified hostiles"
+          },
+          "dropAfterS": {
+            "type": "number",
+            "description": "drop tracks not held for this long",
+            "minimum": 5,
+            "maximum": 600,
+            "x-skz-unit": "s"
+          },
+          "sampleHz": {
+            "type": "number",
+            "description": "snapshot rate of the picture and missile ledger",
+            "minimum": 1,
+            "maximum": 10,
+            "x-skz-unit": "Hz"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "tac.engagement_log",
+      "version": 1,
+      "provider": "tac",
+      "title": "tac.engagement_log",
+      "description": "The missile engagement log and costs: newest first, lines like \"A Hornet-1 fired AIM-120 at Kirov\", \"intercepted by B Kirov SM-2\", \"hit Kirov\", \"missed\", plus per-team totals (fired, intercepts made, hits, misses, destroyed) and funds: spent, cost of own missiles intercepted, cost of hits. Costs are KSP part costs summed over each missile's parts. Page backwards with before, or poll forwards with since (the last seq you saw). Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "tactical",
+      "mod": "BDArmory",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "type": "string",
+            "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "team": {
+            "type": "string",
+            "description": "only entries where this team fired or was fired at",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "since": {
+            "type": "integer",
+            "description": "only entries with seq greater than this (polling)",
+            "minimum": 0
+          },
+          "before": {
+            "type": "integer",
+            "description": "only entries with seq less than this (paging back)",
+            "minimum": 1
+          },
+          "limit": {
+            "type": "integer",
+            "description": "maximum rows (default 10, max 50)",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "compact",
+              "json"
+            ],
+            "description": "\"compact\" = readable text lines (best for LLMs), \"json\" = structured rows",
+            "default": "compact"
+          }
+        },
+        "additionalProperties": false
+      },
+      "x-skz-listShaped": true
+    },
+    {
+      "name": "tac.engagements",
+      "version": 1,
+      "provider": "tac",
+      "title": "tac.engagements",
+      "description": "Current engagements in a side's picture: every non-friendly track that is being engaged or has missiles in the air at it, and how many hostiles are unengaged. Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "tactical",
+      "mod": "BDArmory",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "type": "string",
+            "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "tac.missiles",
+      "version": 1,
+      "provider": "tac",
+      "title": "tac.missiles",
+      "description": "Missiles in flight in a side's picture, most threatening first: track, team or IFF, position and velocity, weapon, launcher, target, state, fired time, cost in KSP funds and time to closest approach. Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "tactical",
+      "mod": "BDArmory",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "type": "string",
+            "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "limit": {
+            "type": "integer",
+            "description": "maximum rows (default 10, max 50)",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+          }
+        },
+        "additionalProperties": false
+      },
+      "x-skz-listShaped": true
+    },
+    {
+      "name": "tac.query",
+      "version": 1,
+      "provider": "tac",
+      "title": "tac.query",
+      "description": "Lists tracks of a side's picture: one line each with track number, IFF, class, position or BRAA from ref, speed, threat, engagement. Filter by iff, domain, class, state, threat, age, quality, inboundTo, within or ids; sort by threat, range, id or age; page with cursor. Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "tactical",
+      "mod": "BDArmory",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "type": "string",
+            "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "ref": {
+            "type": "string",
+            "description": "reference unit for BRAA and range sort: a handle \"v:<id>\", a vessel id or an exact unit name.",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "units": {
+            "type": "string",
+            "enum": [
+              "nm",
+              "km"
+            ],
+            "description": "distance units for text: nm (naval: nm, kt, ft) or km (metric)",
+            "default": "nm"
+          },
+          "filter": {
+            "type": "object",
+            "description": "Row filter; all conditions must match.",
+            "properties": {
+              "iff": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "hostile",
+                    "unknown",
+                    "friend",
+                    "neutral"
+                  ],
+                  "description": "iff"
+                },
+                "description": "IFF states",
+                "maxItems": 4
+              },
+              "domain": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "air",
+                    "surface",
+                    "subsurface",
+                    "missile",
+                    "land"
+                  ],
+                  "description": "domain"
+                },
+                "description": "domains",
+                "maxItems": 5
+              },
+              "class": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 32
+                },
+                "description": "unit classes (fighter, ship, missile, ...)",
+                "maxItems": 16
+              },
+              "state": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "live",
+                    "dr",
+                    "dead"
+                  ],
+                  "description": "track state"
+                },
+                "description": "track states (dead tracks are excluded unless asked)",
+                "maxItems": 3
+              },
+              "minThreat": {
+                "type": "number",
+                "description": "minimum threat score 0..1",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "maxAgeS": {
+                "type": "number",
+                "description": "maximum seconds since last held",
+                "minimum": 0,
+                "x-skz-unit": "s"
+              },
+              "minQuality": {
+                "type": "number",
+                "description": "minimum track quality 0..1",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "inboundTo": {
+                "type": "string",
+                "description": "only missiles guiding on this unit: a handle \"v:<id>\", a vessel id or an exact unit name.",
+                "x-skz-handle": "vessel",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "within": {
+                "type": "object",
+                "description": "only tracks within m metres of ref (or of the query's ref)",
+                "properties": {
+                  "ref": {
+                    "type": "string",
+                    "description": "centre unit: a handle \"v:<id>\", a vessel id or an exact unit name.",
+                    "x-skz-handle": "vessel",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "m": {
+                    "type": "number",
+                    "description": "radius",
+                    "minimum": 1,
+                    "x-skz-unit": "m"
+                  }
+                },
+                "required": [
+                  "m"
+                ],
+                "additionalProperties": false
+              },
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^T[0-9]+$"
+                },
+                "description": "track numbers like T12",
+                "maxItems": 64
+              }
+            },
+            "additionalProperties": false
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "threat",
+              "range",
+              "id",
+              "age"
+            ],
+            "description": "row order",
+            "default": "threat"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "maximum rows (default 10, max 50)",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+          },
+          "cursor": {
+            "type": "string",
+            "description": "cursor from a previous result",
+            "maxLength": 16
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "compact",
+              "json"
+            ],
+            "description": "\"compact\" = readable text lines (best for LLMs), \"json\" = structured rows",
+            "default": "compact"
+          }
+        },
+        "additionalProperties": false
+      },
+      "x-skz-listShaped": true
+    },
+    {
+      "name": "tac.sitrep",
+      "version": 1,
+      "provider": "tac",
+      "title": "tac.sitrep",
+      "description": "A short situation report for one own unit: position, weapon manager and missiles, current target as a track number, C2 task and the top threats to it. Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "tactical",
+      "mod": "BDArmory",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "unit": {
+            "type": "string",
+            "description": "own unit: a handle \"v:<id>\", a vessel id or an exact unit name.",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "units": {
+            "type": "string",
+            "enum": [
+              "nm",
+              "km"
+            ],
+            "description": "distance units for text: nm (naval: nm, kt, ft) or km (metric)",
+            "default": "nm"
+          }
+        },
+        "required": [
+          "unit"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "tac.status",
+      "version": 1,
+      "provider": "tac",
+      "title": "tac.status",
+      "description": "Track picture engine status: attached or not, teams with track counts, units, fog and name settings, period cost (mean, max, max slice in ms), missile ledger counts, snapshot rate and source.tactical subscriptions. Works without the binding (attached:false). Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "tactical",
+      "mod": "BDArmory",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "tac.summary",
+      "version": 1,
+      "provider": "tac",
+      "title": "tac.summary",
+      "description": "One compact paragraph of a side's picture: hostile, unknown and friendly counts, hostile missiles, missiles inbound to own units, the shortest time to closest approach, optionally ranged from a reference unit. Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "tactical",
+      "mod": "BDArmory",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "type": "string",
+            "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "ref": {
+            "type": "string",
+            "description": "reference unit for ranges: a handle \"v:<id>\", a vessel id or an exact unit name.",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "units": {
+            "type": "string",
+            "enum": [
+              "nm",
+              "km"
+            ],
+            "description": "distance units for text: nm (naval: nm, kt, ft) or km (metric)",
+            "default": "nm"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "tac.threats",
+      "version": 1,
+      "provider": "tac",
+      "title": "tac.threats",
+      "description": "The ranked threat list of a side (the compact 10-line answer): highest threat first with aspect, closure, range to the threatened unit and time to closest approach; optionally only threats to one unit. Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "tactical",
+      "mod": "BDArmory",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "type": "string",
+            "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "to": {
+            "type": "string",
+            "description": "only threats to this own unit: a handle \"v:<id>\", a vessel id or an exact unit name.",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "units": {
+            "type": "string",
+            "enum": [
+              "nm",
+              "km"
+            ],
+            "description": "distance units for text: nm (naval: nm, kt, ft) or km (metric)",
+            "default": "nm"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "maximum rows (default 10, max 50)",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "compact",
+              "json"
+            ],
+            "description": "\"compact\" = readable text lines (best for LLMs), \"json\" = structured rows",
+            "default": "compact"
+          }
+        },
+        "additionalProperties": false
+      },
+      "x-skz-listShaped": true
+    },
+    {
+      "name": "tac.track.get",
+      "version": 1,
+      "provider": "tac",
+      "title": "tac.track.get",
+      "description": "One track in full: identity, IFF and id state, sources, position, kinematics, quality, age, threat, engagement, missile target and BRAA from ref. Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+      "safety": "read",
+      "scenes": [
+        "FLIGHT"
+      ],
+      "area": "tactical",
+      "mod": "BDArmory",
+      "affinity": "main",
+      "longRunning": false,
+      "idempotent": false,
+      "requires": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "type": "string",
+            "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "track": {
+            "type": "string",
+            "description": "track number, \"T12\" or \"12\"",
+            "minLength": 1,
+            "maxLength": 16
+          },
+          "ref": {
+            "type": "string",
+            "description": "reference unit for BRAA: a handle \"v:<id>\", a vessel id or an exact unit name.",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "units": {
+            "type": "string",
+            "enum": [
+              "nm",
+              "km"
+            ],
+            "description": "distance units for text: nm (naval: nm, kt, ft) or km (metric)",
+            "default": "nm"
+          }
+        },
+        "required": [
+          "track"
+        ],
+        "additionalProperties": false
+      }
     }
   ]
 }

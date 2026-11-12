@@ -62,9 +62,12 @@ namespace Skizzy.C2
         public bool RangeMax;
         public bool HasSecondary;
         public readonly List<uint> Secondary = new List<uint>();
+        /// <summary>EMCON passive: radars off (<see cref="IRadarControl"/>).</summary>
+        public bool Passive;
 
         public void Reset()
         {
+            Passive = false;
             Fire = FireAuthorityMode.Free;
             UseFilter = false;
             Allow.Clear();
@@ -107,11 +110,12 @@ namespace Skizzy.C2
         public bool RangeMax;
         public bool HasSecondary;
         public readonly List<uint> Secondary = new List<uint>();
+        public bool Passive;
 
         /// <summary>Nothing of the engine's is left on the unit (the missile-engagement setting included: it is restored, row 12).</summary>
         public bool IsStock =>
             Fire == FireAuthorityMode.Free && !Filter && Override == 0 && Route == RouteKind.None && !Yield && Leash == 0 && !RangeMax && !HasSecondary &&
-            !EngageMissilesKnown;
+            !EngageMissilesKnown && !Passive;
     }
 
     /// <summary>Everything the engine keeps about one unit.</summary>

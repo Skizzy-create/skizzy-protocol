@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:tac.engagements@1",
+  "title": "tac.engagements",
+  "description": "Current engagements in a side's picture: every non-friendly track that is being engaged or has missiles in the air at it, and how many hostiles are unengaged. Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "tac_engagements",
+  "input": {
+    "type": "object",
+    "properties": {
+      "view": {
+        "type": "string",
+        "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    },
+    "additionalProperties": false
+  }
+}

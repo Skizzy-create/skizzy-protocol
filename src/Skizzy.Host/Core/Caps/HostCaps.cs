@@ -20,6 +20,8 @@ namespace Skizzy.Host.Core.Caps
             CameraCaps.Register(h);
             h.Logs.Register(h);
             C2Host.Register(h);
+            Tactical.TacticalHost.Register(h);
+            // bda.* (BdaHost) stays unregistered until the KSP operations layer (IBdaOps over BDArmory) exists: HANDOFF.md
         }
     }
 

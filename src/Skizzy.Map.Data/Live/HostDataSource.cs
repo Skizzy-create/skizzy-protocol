@@ -49,6 +49,12 @@ public class HostDataSource : IDataSource, ICommandSource
     private string _url = "";
     private List<CatalogEntry> _catalog = new();
     private Task? _loop;
+    // M2 tactical stream: team -> map side (first team seen Blue, second Red, third Green, the rest Other), the
+    // engagement log's last sequence already written to the Messages log, and the per-frame missile scratch
+    private readonly Dictionary<string, Side> _teamSides = new(StringComparer.Ordinal);
+    private long _loggedSeq;
+    private bool _freshSub;
+    private readonly List<(TrackInfo Missile, string? Target, string? Launcher)> _missileRows = new();
 
     public HostDataSource(Func<Endpoint> endpoint, string name = "Live host", SourceKind kind = SourceKind.LiveHost, string? description = null)
     {
@@ -71,6 +77,22 @@ public class HostDataSource : IDataSource, ICommandSource
     /// <summary>"tactical" (M2) or "query" (M0 vessel stream) once subscribed.</summary>
     public string? StreamKind { get; private set; }
 
+    /// <summary>The Engagements panel's note while there is no tactical stream.</summary>
+    public const string NoTacticalNote =
+        "The engagement log needs the M2 tactical stream (source.tactical): the Skizzy BDArmory binding in a flight scene. The map retries every 5 s.";
+
+    /// <summary>The map side a BDArmory team is drawn as (assigned in the order teams first appear).</summary>
+    public Side SideOfTeam(string team)
+    {
+        if (_teamSides.TryGetValue(team, out var s)) return s;
+        s = _teamSides.Count switch { 0 => Side.Blue, 1 => Side.Red, 2 => Side.Green, _ => Side.Other };
+        _teamSides[team] = s;
+        return s;
+    }
+
+    /// <summary>Teams seen so far and their map sides.</summary>
+    public IReadOnlyDictionary<string, Side> TeamSides => _teamSides;
+
     public virtual void Attach(MapData data)
     {
         _data = data;
@@ -79,6 +101,8 @@ public class HostDataSource : IDataSource, ICommandSource
         data.DayLength = 21600;
         data.Losses.Note = "Losses need the M2 tactical stream (kills and expenditure by side). The M0 vessel stream has neither.";
         data.Losses.Version++;
+        data.Engagements.Note = NoTacticalNote;
+        data.Engagements.Touch();
         data.Log.Add(0, LogCategory.System, $"Connecting to {Name}…");
         _loop = Task.Run(() => RunAsync(_cts.Token));
     }
@@ -125,6 +149,8 @@ public class HostDataSource : IDataSource, ICommandSource
                 while (!ct.IsCancellationRequested && client.IsConnected)
                 {
                     await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
+                    // the binding attaches the tactical picture only in a flight scene: move up to it once it is there
+                    if (StreamKind == "query") await TryTacticalAsync(client, ct, replace: true).ConfigureAwait(false);
                     var sw = Stopwatch.StartNew();
                     try
                     {
@@ -197,17 +223,10 @@ public class HostDataSource : IDataSource, ICommandSource
 
     private async Task SubscribeAsync(SkizzyClient client, CancellationToken ct)
     {
-        // M2 tactical first; M0 hosts answer invalid_param and we fall back to the vessel query stream
-        try
-        {
-            var tac = JsonValue.Obj().Set("source", JsonValue.Obj().Set("tactical", JsonValue.Obj())).Set("mode", "delta").Set("rateHz", 10);
-            var res = await client.CallAsync("stream.subscribe", tac, TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
-            _sub = res.GetString("sub");
-            StreamKind = "tactical";
-            SetState(SourceState.Online, "Live · tactical stream");
-            return;
-        }
-        catch (Exception e) when (IsCallError(e)) { }
+        // M2 tactical first; M0 hosts answer invalid_param (and M2 hosts outside a flight scene tactical_not_attached), and
+        // we fall back to the vessel query stream, retrying the tactical one every 5 s
+        StreamKind = null;
+        if (await TryTacticalAsync(client, ct, replace: false).ConfigureAwait(false)) return;
 
         while (!ct.IsCancellationRequested && client.IsConnected)
         {
@@ -241,6 +260,44 @@ public class HostDataSource : IDataSource, ICommandSource
         }
     }
 
+    /// <summary>
+    /// Subscribes to source.tactical. With <paramref name="replace"/> the M0 vessel stream it replaces is dropped once the
+    /// tactical one is live. False when the host refused (no binding attached yet, or an M0 host).
+    /// </summary>
+    private async Task<bool> TryTacticalAsync(SkizzyClient client, CancellationToken ct, bool replace)
+    {
+        try
+        {
+            var tac = JsonValue.Obj().Set("source", JsonValue.Obj().Set("tactical", JsonValue.Obj())).Set("mode", "delta").Set("rateHz", 10);
+            var res = await client.CallAsync("stream.subscribe", tac, TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
+            var old = _sub;
+            var cols = res.GetStringList("columns");
+            string? sub = res.GetString("sub");
+            _inbox.Enqueue(() =>
+            {
+                if (cols is not null) _columns = cols.ToArray();
+                _freshSub = true;
+                if (_data is not null)
+                {
+                    _data.Engagements.Clear(); // the new subscription replays the host's log from its start
+                    _data.Engagements.Note = null;
+                    _data.Losses.Note = null;
+                    _data.Losses.Version++;
+                }
+            });
+            _sub = sub;
+            StreamKind = "tactical";
+            SetState(SourceState.Online, "Live · tactical stream");
+            if (replace && old is not null)
+            {
+                try { await client.CallAsync("stream.unsubscribe", JsonValue.Obj().Set("sub", old), TimeSpan.FromSeconds(5), ct).ConfigureAwait(false); }
+                catch (Exception e) when (IsCallError(e)) { }
+            }
+            return true;
+        }
+        catch (Exception e) when (IsCallError(e)) { return false; }
+    }
+
     private void OnNotification(string method, JsonValue p)
     {
         if (method != "stream.data" || p is null) return;
@@ -249,7 +306,10 @@ public class HostDataSource : IDataSource, ICommandSource
         var rows = p.GetArr("rows");
         double ut = p.GetDouble("ut", double.NaN);
         bool full = p.GetString("kind") != "delta";
+        var log = p.GetArr("log");
+        var totals = p.GetArr("totals");
         if (rows is not null) _inbox.Enqueue(() => ApplyRows(rows, ut, full));
+        if (log is not null || totals is not null) _inbox.Enqueue(() => ApplyLedger(log, totals));
     }
 
     // ------------------------------------------------------------ UI thread
@@ -281,8 +341,10 @@ public class HostDataSource : IDataSource, ICommandSource
         double win = (Stopwatch.GetTimestamp() - _sampleWindowStart) / (double)Stopwatch.Frequency;
         if (win >= 2) { _rateHz = _sampleWindowCount / win; _sampleWindowCount = 0; _sampleWindowStart = Stopwatch.GetTimestamp(); }
 
-        // columns are ["vessel", "vesselName", fields...]; rows follow them exactly
+        // columns are ["vessel", "vesselName", fields...]; rows follow them exactly (the tactical stream adds its own after)
         var seen = new HashSet<string>();
+        bool tactical = Col("team") >= 0;
+        _missileRows.Clear();
         foreach (var row in rows.Items)
         {
             if (!row.IsArray || row.Count < 2) continue;
@@ -308,16 +370,45 @@ public class HostDataSource : IDataSource, ICommandSource
                 _lat0 = lat; _lon0 = lon; _body0 = body;
             }
             var (x, y) = Project(lat, lon, Radii.GetValueOrDefault(body, 600));
+            string? cls = tactical ? F("class")?.AsString() : null;
+            string? rowState = tactical ? F("state")?.AsString() : null;
+            if (rowState == "dead")
+            {
+                // a missile the host's ledger resolved (hit, missed, intercepted, destroyed): it ends where it was last seen
+                var gone = d.GetByKey("vessel:" + handle);
+                if (gone is not null) seen.Add(gone.Key);
+                if (gone is { Alive: true }) EndMissile(d, gone, F("missileState")?.AsString(), t, x, y, (float)alt);
+                continue;
+            }
             var tr = d.GetOrAdd("vessel:" + handle, t, out bool created);
             seen.Add(tr.Key);
             if (!tr.Alive) continue;
-            if (created) d.Log.Add(t, LogCategory.Contact, $"New vessel: {name} ({type}, {situation.ToLowerInvariant().Replace('_', ' ')}).", x, y);
-            Classify(tr, type, situation, alt, active);
+            if (tactical)
+            {
+                ClassifyTactical(tr, cls, F("domain")?.AsString(), F("team")?.AsString(), type);
+                if (created && !tr.IsMissile) d.Log.Add(t, LogCategory.Contact, $"New contact: {name} ({tr.ClassName}{(tr.Side == Side.Other ? "" : ", " + tr.Side)}).", x, y);
+            }
+            else
+            {
+                if (created) d.Log.Add(t, LogCategory.Contact, $"New vessel: {name} ({type}, {situation.ToLowerInvariant().Replace('_', ' ')}).", x, y);
+                Classify(tr, type, situation, alt, active);
+            }
             tr.Name = name;
             tr.Health = -1;
-            tr.ControlText = active ? "Active vessel" : "KSP";
-            tr.Control = active ? ControlState.Manual : ControlState.Bda;
+            tr.ControlText = active ? "Active vessel" : tr.IsMissile ? "Missile" : "KSP";
+            tr.Control = active ? ControlState.Manual : tr.IsMissile ? ControlState.None : ControlState.Bda;
             tr.Details.Extra.Clear();
+            if (tactical && tr.IsMissile)
+            {
+                string? weapon = F("weapon")?.AsString(), launcherName = F("launcherName")?.AsString(), target = F("missileTarget")?.AsString();
+                double cost = F("cost")?.AsDouble(double.NaN) ?? double.NaN;
+                if (weapon is not null) tr.Details.Extra.Add(new("Weapon", weapon));
+                if (launcherName is not null) tr.Details.Extra.Add(new("Launcher", launcherName));
+                tr.Details.Extra.Add(new("State", F("missileState")?.AsString() ?? "flying"));
+                if (!double.IsNaN(cost)) tr.Details.Extra.Add(new("Cost", EngagementBook.Funds(cost) + " funds"));
+                _missileRows.Add((tr, target, F("launcher")?.AsString()));
+            }
+            if (tactical && F("team")?.AsString() is { } team) tr.Details.Extra.Add(new("Team", team));
             tr.Details.Extra.Add(new("Situation", situation.Replace('_', ' ').ToLowerInvariant()));
             tr.Details.Extra.Add(new("Body", body));
             tr.Details.Extra.Add(new("Lat, lon", $"{lat.ToString("0.0000", CultureInfo.InvariantCulture)}, {lon.ToString("0.0000", CultureInfo.InvariantCulture)}"));
@@ -339,11 +430,13 @@ public class HostDataSource : IDataSource, ICommandSource
                 if (miss >= 3)
                 {
                     d.MarkDead(tr, t);
-                    d.Log.Add(t, LogCategory.Damage, $"{tr.Name} left the picture (destroyed, recovered or unloaded).", tr.X, tr.Y);
+                    // a missile's end is in the engagement log; only other vessels get the line
+                    if (!tr.IsMissile) d.Log.Add(t, LogCategory.Damage, $"{tr.Name} left the picture (destroyed, recovered or unloaded).", tr.X, tr.Y);
                     _missing.Remove(tr.Key);
                 }
             }
         }
+        if (_missileRows.Count > 0) LinkMissiles(d);
         d.LiveTime = Math.Max(d.LiveTime, t);
         if (_samples % 50 == 0) d.Prune();
     }
@@ -360,6 +453,181 @@ public class HostDataSource : IDataSource, ICommandSource
         tr.AffRed = active ? Affiliation.Hostile : Affiliation.Unknown;
         tr.DetBlue = TrackDetection.Shared;
         tr.DetRed = TrackDetection.Shared;
+    }
+
+    /// <summary>A tactical row: kind and domain from the engine's class, side and affiliations from the team.</summary>
+    private void ClassifyTactical(TrackInfo tr, string? cls, string? domain, string? team, string type)
+    {
+        switch (cls)
+        {
+            case "missile":
+                if (!tr.IsMissile) tr.Kind = TrackKind.AirToAirMissile; // refined by LinkMissiles once launcher and target are known
+                tr.Domain = TrackDomain.Air; tr.ClassName = KindInfo.Of(tr.Kind).ClassName; tr.Code = KindInfo.Of(tr.Kind).Code;
+                break;
+            case "carrier": Set(TrackKind.Carrier, TrackDomain.Surface, "Carrier", "CV"); break;
+            case "ship": Set(TrackKind.Destroyer, TrackDomain.Surface, "Ship", "SHIP"); break;
+            case "submarine": Set(TrackKind.Submarine, TrackDomain.Subsurface, "Submarine", "SUB"); break;
+            case "aew": Set(TrackKind.EarlyWarning, TrackDomain.Air, "AEW", "AEW"); break;
+            case "bomber": Set(TrackKind.Strike, TrackDomain.Air, "Bomber", "BMR"); break;
+            case "drone": Set(TrackKind.Uav, TrackDomain.Air, "Drone", "UAV"); break;
+            case "fighter": Set(TrackKind.Fighter, TrackDomain.Air, "Fighter", "FTR"); break;
+            case "airfield" or "ground": Set(TrackKind.Unknown, TrackDomain.Surface, cls == "airfield" ? "Airfield" : "Ground", cls == "airfield" ? "AF" : "GND"); break;
+            default:
+                if (domain == "air") Set(TrackKind.Fighter, TrackDomain.Air, "Aircraft", "AC");
+                else if (domain == "subsurface") Set(TrackKind.Submarine, TrackDomain.Subsurface, "Submarine", "SUB");
+                else Set(TrackKind.Destroyer, TrackDomain.Surface, type == "Ship" ? "Ship" : type, "SHIP");
+                break;
+        }
+        tr.Rcs = KindInfo.Of(tr.Kind).Rcs;
+        if (team is null)
+        {
+            tr.Side = Side.Other;
+            tr.AffBlue = tr.AffRed = Affiliation.Unknown;
+        }
+        else
+        {
+            tr.Side = SideOfTeam(team);
+            tr.AffBlue = tr.Side == Side.Blue ? Affiliation.Friend : Affiliation.Hostile;
+            tr.AffRed = tr.Side == Side.Red ? Affiliation.Friend : Affiliation.Hostile;
+        }
+        tr.DetBlue = TrackDetection.Shared;
+        tr.DetRed = TrackDetection.Shared;
+
+        void Set(TrackKind k, TrackDomain dm, string name, string code) { tr.Kind = k; tr.Domain = dm; tr.ClassName = name; tr.Code = code; }
+    }
+
+    /// <summary>Missile target ids (target lines, inbound rings) and the missile kind from what it was fired from and at.</summary>
+    private void LinkMissiles(MapData d)
+    {
+        foreach (var (m, target, launcher) in _missileRows)
+        {
+            var tg = target is null ? null : d.GetByKey("vessel:" + target);
+            var ln = launcher is null ? null : d.GetByKey("vessel:" + launcher);
+            m.TargetId = tg?.Id ?? 0;
+            m.Details.TargetName = tg?.Name;
+            bool fromSurface = ln is not null && ln.Domain is TrackDomain.Surface or TrackDomain.Subsurface;
+            var kind = tg is null ? (fromSurface ? TrackKind.SurfaceToAirMissile : m.Kind)
+                : tg.IsMissile ? TrackKind.SurfaceToAirMissile
+                : tg.Domain is TrackDomain.Surface or TrackDomain.Subsurface ? TrackKind.AntiShipMissile
+                : fromSurface ? TrackKind.SurfaceToAirMissile : TrackKind.AirToAirMissile;
+            if (kind != m.Kind)
+            {
+                m.Kind = kind;
+                m.ClassName = KindInfo.Of(kind).ClassName;
+                m.Code = KindInfo.Of(kind).Code;
+                m.Rcs = KindInfo.Of(kind).Rcs;
+            }
+            if (tg is not null) m.Details.Extra.Insert(Math.Min(2, m.Details.Extra.Count), new("Target", tg.Name));
+        }
+        _missileRows.Clear();
+    }
+
+    /// <summary>A missile the host resolved: last position, dead, and a plot event for how it ended.</summary>
+    private static void EndMissile(MapData d, TrackInfo tr, string? state, double t, double x, double y, float alt)
+    {
+        tr.SetSample(t, x, y, alt, tr.HeadingDeg, 0, 0, 0, d.LiveTime);
+        d.MarkDead(tr, t);
+        var kind = state switch
+        {
+            "hit" => PlotEventKind.Impact,
+            "intercepted" => PlotEventKind.Intercept,
+            "destroyed" => PlotEventKind.Ciws,
+            _ => PlotEventKind.Miss,
+        };
+        d.AddEvent(kind, x, y, t);
+    }
+
+    /// <summary>The tactical stream's "log" and "totals": the engagement book, the Messages log and the Losses tab.</summary>
+    private void ApplyLedger(JsonValue? log, JsonValue? totals)
+    {
+        var d = _data;
+        if (d is null) return;
+        double epoch = double.IsNaN(d.Epoch) ? 0 : d.Epoch;
+        var book = d.Engagements;
+        if (log is not null && log.Count > 0)
+        {
+            if (_freshSub)
+            {
+                // a new subscription replays the log from the start: a host that restarted counts from 1 again
+                long first = log[0].GetLong("seq", 0);
+                if (first <= 1)
+                {
+                    long max = 0;
+                    foreach (var e in log.Items) max = Math.Max(max, e.GetLong("seq", 0));
+                    if (max < _loggedSeq) _loggedSeq = 0;
+                }
+            }
+            foreach (var e in log.Items)
+            {
+                long seq = e.GetLong("seq", 0);
+                string kind = e.GetString("kind") ?? "?";
+                double t = e.GetDouble("ut", double.NaN) - epoch;
+                if (double.IsNaN(t)) t = d.LiveTime;
+                var entry = new EngagementEntry(seq, t, kind, e.GetString("team"), e.GetString("weapon"), e.GetString("missile"), e.GetString("launcherName"),
+                    e.GetString("targetName"), e.GetString("targetTeam"), e.GetString("otherName"), e.GetString("otherTeam"), e.GetDouble("cost", double.NaN),
+                    e.GetString("source"), e.GetString("text") ?? kind);
+                if (!book.Add(entry) || seq <= _loggedSeq) continue;
+                _loggedSeq = seq;
+                // the Messages tab gets the line at the missile's (or, for a kill, the victim's) last position
+                string? at = kind == "killed" ? e.GetString("other") : e.GetString("missile");
+                var tr = at is null ? null : d.GetByKey("vessel:" + at);
+                d.Log.Add(t, EngagementBook.CategoryOf(kind), entry.Text, tr?.X, tr?.Y);
+                if (kind == "killed" && tr is not null)
+                {
+                    d.AddEvent(PlotEventKind.Kill, tr.X, tr.Y, t);
+                    Side? side = entry.OtherTeam is null ? null : SideOfTeam(entry.OtherTeam);
+                    var col = side == Side.Blue ? d.Losses.Blue : side == Side.Red ? d.Losses.Red : null;
+                    if (col is not null)
+                    {
+                        string cls = string.IsNullOrEmpty(tr.ClassName) ? "Vessel" : tr.ClassName;
+                        int i = col.Lost.FindIndex(kv => kv.Key == cls);
+                        if (i < 0) col.Lost.Add(new(cls, 1)); else col.Lost[i] = new(cls, col.Lost[i].Value + 1);
+                        d.Losses.Version++;
+                    }
+                }
+            }
+            _freshSub = false;
+        }
+        if (totals is not null)
+        {
+            var list = new List<EngagementTotals>(totals.Count);
+            foreach (var o in totals.Items)
+            {
+                string? team = o.GetString("team");
+                if (team is null) continue;
+                SideOfTeam(team);
+                list.Add(new EngagementTotals(team, o.GetInt("fired"), o.GetInt("inFlight"), o.GetInt("hits"), o.GetInt("misses"), o.GetInt("intercepted"),
+                    o.GetInt("destroyed"), o.GetInt("interceptsMade"), o.GetInt("kills"), o.GetDouble("spent", double.NaN), o.GetDouble("interceptedCost", double.NaN),
+                    o.GetDouble("hitCost", double.NaN), o.GetDouble("missedCost", double.NaN), o.GetInt("costUnknown")));
+            }
+            long v = book.Version;
+            book.SetTotals(list);
+            if (book.Version != v) FillLosses(d, list);
+        }
+    }
+
+    /// <summary>The Losses tab's expenditure lines for the Blue and Red teams.</summary>
+    private void FillLosses(MapData d, List<EngagementTotals> totals)
+    {
+        d.Losses.Blue.Lines.Clear();
+        d.Losses.Red.Lines.Clear();
+        foreach (var t in totals)
+        {
+            var side = SideOfTeam(t.Team);
+            var col = side == Side.Blue ? d.Losses.Blue : side == Side.Red ? d.Losses.Red : null;
+            if (col is null) continue;
+            col.Lines.Add(new("Team", t.Team));
+            col.Lines.Add(new("Missiles fired", N(t.Fired)));
+            col.Lines.Add(new("Hits", N(t.Hits)));
+            col.Lines.Add(new("Missed", N(t.Misses)));
+            col.Lines.Add(new("Lost to intercepts", N(t.Intercepted)));
+            col.Lines.Add(new("Intercepts made", N(t.InterceptsMade)));
+            col.Lines.Add(new("Kills", N(t.Kills)));
+            col.Lines.Add(new("Funds spent", EngagementBook.Funds(t.Spent)));
+        }
+        d.Losses.Version++;
+
+        static string N(int n) => n.ToString(CultureInfo.InvariantCulture);
     }
 
     // ------------------------------------------------------------ ICommandSource

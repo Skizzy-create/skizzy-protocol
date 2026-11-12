@@ -45,6 +45,13 @@ namespace Skizzy.C2
                 h.Fire = w.Fire;
             }
 
+            // EMCON (radar modules on/off)
+            if (w.Passive != h.Passive)
+            {
+                if (_radar != null) _radar.SetRadarActive(id, !w.Passive);
+                h.Passive = w.Passive;
+            }
+
             // F1
             if (w.Override == 0)
             {

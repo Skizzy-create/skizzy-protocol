@@ -140,8 +140,19 @@ namespace Skizzy.Bda.Ksp
         private void UnsubscribeF6b() { HookF6b.Unsubscribe(); }
         private void SubscribeF9() { HookF9.Subscribe(OnMissileFired); }
         private void UnsubscribeF9() { HookF9.Unsubscribe(); }
-        private void SubscribeF10() { HookF10.Subscribe(OnTargetDetected, OnTargetLost, OnDeath); }
-        private void UnsubscribeF10() { HookF10.Unsubscribe(); }
+        private void SubscribeF10()
+        {
+            HookF10.Subscribe(OnTargetDetected, OnTargetLost, OnDeath);
+            // M2 missile ledger: BDArmory's own hits and kills (an F10 build without OnHit only loses the scoring source)
+            try { HookScores.Subscribe(OnScoredHit, OnScoredDeath); }
+            catch (Exception e) { Debug.LogWarning("[Skizzy.BDArmory] scoring events unavailable, missile hits fall back to proximity: " + e.Message); }
+        }
+        private void UnsubscribeF10()
+        {
+            HookF10.Unsubscribe();
+            try { HookScores.Unsubscribe(); }
+            catch (Exception) { }
+        }
 
         private static uint IdOf(TargetInfo t)
         {
@@ -179,8 +190,16 @@ namespace Skizzy.Bda.Ksp
         private void OnTargetDetected(TargetInfo t, BDTeam team) { if (team != null) _binding?.GameTargetDetected(IdOf(t), team.Name); }
         private void OnTargetLost(TargetInfo t, BDTeam team) { if (team != null) _binding?.GameTargetLost(IdOf(t), team.Name); }
         private void OnDeath(string victim) { _binding?.GameDeath(victim); }
+        private void OnScoredHit(string attacker, string victim, int damageFrom, int parts) { _game?.ScoredHitEvent(attacker, victim, damageFrom, parts); }
+        private void OnScoredDeath(string victim, string attacker, int damageFrom, int state) { _game?.ScoredDeathEvent(victim, attacker, damageFrom, state); }
 
-        private void OnVesselWillDestroy(Vessel v) { if (v != null) _binding?.GameVesselDestroyed(v.persistentId); }
+        private void OnVesselWillDestroy(Vessel v)
+        {
+            if (v == null) return;
+            try { _game?.MissileVesselWillDestroy(v); } // M2: how a missile ended, while its state is still valid
+            catch (Exception e) { Debug.LogError("[Skizzy.BDArmory] missile end: " + e.Message); }
+            _binding?.GameVesselDestroyed(v.persistentId);
+        }
         private void OnVesselGoOnRails(Vessel v) { if (v != null) _binding?.GamePacked(v.persistentId); }
         private void OnVesselUnloaded(Vessel v) { if (v != null) _binding?.GameUnloaded(v.persistentId); }
 

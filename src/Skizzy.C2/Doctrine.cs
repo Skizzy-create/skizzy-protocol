@@ -12,6 +12,13 @@ namespace Skizzy.C2
         Hold = 2,
     }
 
+    /// <summary>Emission control (parity row 76): passive = the unit's radars off (BDArmory radar modules), the rest of its sensors on.</summary>
+    public enum Emcon
+    {
+        Active = 0,
+        Passive = 1,
+    }
+
     /// <summary>What a unit does when a new hostile appears during an order (rows 5 and 6).</summary>
     public enum OnContact
     {
@@ -62,6 +69,7 @@ namespace Skizzy.C2
         public AirEngageMissiles AirEngageMissiles = AirEngageMissiles.WhenNoAir;
         public Posture Posture = Posture.Defensive;
         public WeaponsControl RtbWeapons = WeaponsControl.Tight;
+        public Emcon Emcon = Emcon.Active;
 
         public double PatrolLeashKm = 55;
         public double SelfDefenceFighterKm = 25;
@@ -187,6 +195,7 @@ namespace Skizzy.C2
             Enum("airEngageMissiles", new[] { "when_no_air", "always", "never" }, d => (int)d.AirEngageMissiles, (d, v) => d.AirEngageMissiles = (AirEngageMissiles)v);
             Enum("posture", new[] { "defensive", "proactive" }, d => (int)d.Posture, (d, v) => d.Posture = (Posture)v);
             Enum("rtbWeapons", new[] { "free", "tight", "hold" }, d => (int)d.RtbWeapons, (d, v) => d.RtbWeapons = (WeaponsControl)v);
+            Enum("emcon", new[] { "active", "passive" }, d => (int)d.Emcon, (d, v) => d.Emcon = (Emcon)v);
             Num("patrolLeashKm", d => d.PatrolLeashKm, (d, v) => d.PatrolLeashKm = v);
             Num("selfDefenceFighterKm", d => d.SelfDefenceFighterKm, (d, v) => d.SelfDefenceFighterKm = v);
             Num("selfDefenceOverrideS", d => d.SelfDefenceOverrideS, (d, v) => d.SelfDefenceOverrideS = v);

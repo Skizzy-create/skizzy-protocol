@@ -14,6 +14,9 @@ namespace Skizzy.C2.Fake
         public double RadarRangeM = 45000;
         /// <summary>Multiplier on other units' radar range against this one (stealth below 1).</summary>
         public double Rcs = 1;
+        /// <summary>Radar emitting (EMCON active); false = passive, the unit's own radar holds nothing.</summary>
+        public bool RadarOn = true;
+        public bool HasRadar = true;
         public double GuardRangeM = 30000;
         public double EngageRangeM = 20000;
         public double ExtendedRangeM = 30000;
@@ -75,7 +78,7 @@ namespace Skizzy.C2.Fake
     /// inactive), F6b yield / leash / 30 s cooldown (pilot AI only; Hold never yields; Tight yields only to permitted
     /// targets), F9 launches and F10 deaths. Hook events go to <see cref="Sink"/> synchronously.
     /// </summary>
-    public sealed class FakeBda : IC2World, IBdaControl, IHookReport
+    public sealed class FakeBda : IC2World, IBdaControl, IHookReport, IRadarControl, Skizzy.C2.Tactical.IMissileOutcomes
     {
         public string Description => "FakeBda, " + (Hooks == HookSet.All ? "all Overdrive hooks" : "hooks " + Hooks);
         public double Now { get; set; } = 1000;
@@ -174,14 +177,81 @@ namespace Skizzy.C2.Fake
             return u;
         }
 
-        /// <summary>A missile in flight from <paramref name="shooter"/> homing on <paramref name="target"/>.</summary>
-        public FakeUnit AddMissile(FakeUnit shooter, FakeUnit target, double eastKm, double northKm)
+        /// <summary>
+        /// A missile in flight from <paramref name="shooter"/> homing on <paramref name="target"/>. <paramref name="partCosts"/>
+        /// prices it like the KSP binding does (sum of its parts' costs); null leaves the cost unknown.
+        /// </summary>
+        public FakeUnit AddMissile(FakeUnit shooter, FakeUnit target, double eastKm, double northKm, string weapon = null, params double[] partCosts)
         {
             var m = Add(shooter.S.Name + " missile", shooter.S.Side, UnitClass.Missile, eastKm, northKm, 3000);
-            m.S.MissileTarget = target.Id;
+            m.S.MissileTarget = target != null ? target.Id : 0;
+            m.S.Launcher = shooter.Id;
             m.S.SpeedMps = m.CruiseMps;
-            m.S.HeadingDeg = Geo.Bearing(m.S.Pos, target.S.Pos);
+            m.S.HeadingDeg = target != null ? Geo.Bearing(m.S.Pos, target.S.Pos) : 0;
+            m.S.Weapon = weapon;
+            m.S.Cost = partCosts != null && partCosts.Length > 0 ? Skizzy.C2.Tactical.MissileCosts.Sum(partCosts) : double.NaN;
             return m;
+        }
+
+        // ------------------------------------------------------------------ missile outcomes (IMissileOutcomes)
+
+        private readonly Dictionary<uint, Skizzy.C2.Tactical.MissileEnd> _ends = new Dictionary<uint, Skizzy.C2.Tactical.MissileEnd>();
+        private readonly List<Skizzy.C2.Tactical.KillReport> _scoredKills = new List<Skizzy.C2.Tactical.KillReport>();
+
+        /// <summary>
+        /// Ends a missile the way the KSP binding reports it: the verdict the game knows (Flying = it does not know) and
+        /// the vessel hit or the interceptor. <paramref name="vanish"/> removes it from the world (KSP), else it stays
+        /// reported dead.
+        /// </summary>
+        public void EndMissile(uint id, Skizzy.C2.Tactical.MissileFate fate, uint other = 0, bool vanish = true, string source = "fake")
+        {
+            if (fate != Skizzy.C2.Tactical.MissileFate.Flying)
+                _ends[id] = new Skizzy.C2.Tactical.MissileEnd
+                {
+                    Fate = fate,
+                    Victim = fate == Skizzy.C2.Tactical.MissileFate.Hit ? other : 0,
+                    By = fate == Skizzy.C2.Tactical.MissileFate.Hit ? 0 : other,
+                    Source = source,
+                };
+            if (vanish) Remove(id); else Kill(id);
+        }
+
+        /// <summary>A kill as BDArmory competition scoring reports it (F10 OnDeath).</summary>
+        public void ScoreKill(uint victim, string attackerName, string damage = "Missiles")
+        {
+            var v = Get(victim);
+            _scoredKills.Add(new Skizzy.C2.Tactical.KillReport
+            {
+                Victim = victim, VictimName = v != null ? v.S.Name : null, VictimTeam = v != null ? v.S.Side : null, AttackerName = attackerName,
+                Damage = damage, Ut = Now, Source = "bda_scoring",
+            });
+            Kill(victim);
+        }
+
+        /// <summary>Takes a unit out of the world entirely (KSP: the vessel is destroyed or unloaded and no longer listed).</summary>
+        public void Remove(uint id)
+        {
+            var u = Get(id);
+            if (u == null) return;
+            bool wasAlive = u.S.Alive;
+            u.S.Alive = false;
+            List.Remove(u);
+            Units.Remove(id);
+            _senseDirty = true;
+            if (wasAlive) Sink?.OnUnitDestroyed(id);
+        }
+
+        public bool TryGetEnd(uint missile, out Skizzy.C2.Tactical.MissileEnd end)
+        {
+            if (_ends.TryGetValue(missile, out end)) { _ends.Remove(missile); return true; }
+            return false;
+        }
+
+        public void DrainKills(List<Skizzy.C2.Tactical.KillReport> into)
+        {
+            if (_scoredKills.Count == 0) return;
+            into.AddRange(_scoredKills);
+            _scoredKills.Clear();
         }
 
         public FakeUnit Get(uint id)
@@ -480,7 +550,7 @@ namespace Skizzy.C2.Fake
                 var u = List[i];
                 List<uint> mine;
                 if (!_contacts.TryGetValue(u.Id, out mine)) _contacts[u.Id] = mine = new List<uint>();
-                if (!u.S.Alive || u.RadarRangeM <= 0 || u.S.Side == null) continue;
+                if (!u.S.Alive || u.RadarRangeM <= 0 || !u.RadarOn || u.S.Side == null) continue;
                 HashSet<uint> view;
                 if (!_sideView.TryGetValue(u.S.Side, out view)) _sideView[u.S.Side] = view = new HashSet<uint>();
                 for (int k = 0; k < List.Count; k++)
@@ -653,6 +723,16 @@ namespace Skizzy.C2.Fake
             Calls.Add("Release " + unit);
             var u = Live(unit);
             if (u != null) u.FlyToActive = false;
+        }
+
+        public bool SetRadarActive(uint unit, bool active)
+        {
+            var u = Live(unit);
+            Calls.Add("radar " + unit + " " + (active ? "active" : "passive"));
+            if (u == null || !u.HasRadar) return false;
+            u.RadarOn = active;
+            _senseDirty = true;
+            return true;
         }
 
         public void SetGuardMode(uint unit, bool on)

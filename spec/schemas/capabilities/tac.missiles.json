@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:tac.missiles@1",
+  "title": "tac.missiles",
+  "description": "Missiles in flight in a side's picture, most threatening first: track, team or IFF, position and velocity, weapon, launcher, target, state, fired time, cost in KSP funds and time to closest approach. Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "tac_missiles",
+  "input": {
+    "type": "object",
+    "properties": {
+      "view": {
+        "type": "string",
+        "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "limit": {
+        "type": "integer",
+        "description": "maximum rows (default 10, max 50)",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 10
+      }
+    },
+    "additionalProperties": false
+  }
+}

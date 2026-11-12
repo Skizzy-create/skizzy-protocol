@@ -62,6 +62,7 @@ public sealed class PlotRenderer : IDisposable
     private readonly SKPath _orderMarks = new(), _racetracks = new(), _arrows = new(), _vipBrackets = new(), _routes = new(), _routeEnds = new();
     private readonly SegmentBatch _marshal = new(), _vipRing = new(), _vipRingSelected = new();
     private readonly SegmentBatch[] _ownSensor = [new(), new(), new(), new()];
+    private readonly SKPath _inbound = new();
 
     public PlotRenderer(Theme? theme = null, FontSet? fonts = null)
     {
@@ -437,9 +438,11 @@ public sealed class PlotRenderer : IDisposable
         foreach (var p in _trailOld) p.Reset();
         foreach (var p in _trailNew) p.Reset();
         var tracks = scene.Tracks;
+        bool missileTrails = st.Options.MissileTrails;
         for (int i = 0; i < st.ItemCount; i++)
         {
             ref var it = ref st.Items[i];
+            if (it.Missile && !missileTrails) continue;
             var t = tracks[it.TrackIndex];
             var tr = t.Trail;
             int n = tr.Count;
@@ -526,7 +529,7 @@ public sealed class PlotRenderer : IDisposable
     {
         var tracks = scene.Tracks;
         var stats = st.LastFrame;
-        _vipRing.Reset(); _vipRingSelected.Reset(); _vipBrackets.Reset();
+        _vipRing.Reset(); _vipRingSelected.Reset(); _vipBrackets.Reset(); _inbound.Reset();
         foreach (var b in _ownSensor) b.Reset();
 
         for (int i = 0; i < tracks.Count; i++)
@@ -543,6 +546,11 @@ public sealed class PlotRenderer : IDisposable
         for (int i = 0; i < st.ItemCount; i++)
         {
             ref var it = ref st.Items[i];
+            if (it.Missile && tracks[it.TrackIndex].InboundToFriend)
+            {
+                _inbound.AddCircle(it.Sx, it.Sy, SymbolSizer.InboundRadius(it.S));
+                stats.InboundMarks++;
+            }
             if (it.OwnSensor)
             {
                 var t = tracks[it.TrackIndex];
@@ -557,6 +565,13 @@ public sealed class PlotRenderer : IDisposable
             tags |= it.Selected;
         }
 
+        if (!_inbound.IsEmpty)
+        {
+            // missiles inbound to a friendly: a solid 1.5 px ring in the critical red, under the arrowhead
+            _stroke.Color = Theme.A(_theme.Crit, .9f);
+            _stroke.StrokeWidth = 1.5f;
+            c.DrawPath(_inbound, _stroke);
+        }
         if (!_vipRing.IsEmpty) { Hairline(Theme.A(_theme.Accent, .16f)); _vipRing.Draw(c, _stroke); }
         if (!_vipRingSelected.IsEmpty) { Hairline(Theme.A(_theme.Accent, .45f)); _vipRingSelected.Draw(c, _stroke); }
         for (int a = 0; a < 4; a++)
@@ -1210,7 +1225,7 @@ public sealed class PlotRenderer : IDisposable
         foreach (var arr in new[] { _trailOld, _trailNew, _dots, _mslFill, _mslStroke })
             foreach (var p in arr) p.Dispose();
         _gridLo.Dispose(); _gridHi.Dispose(); _scratch.Dispose(); _labelBacks.Dispose(); _brackets.Dispose();
-        _orderMarks.Dispose(); _racetracks.Dispose(); _arrows.Dispose(); _vipBrackets.Dispose();
+        _orderMarks.Dispose(); _racetracks.Dispose(); _arrows.Dispose(); _vipBrackets.Dispose(); _inbound.Dispose();
         _fill.Dispose(); _stroke.Dispose(); _ink.Dispose();
     }
 }

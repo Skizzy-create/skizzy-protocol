@@ -42,6 +42,8 @@ public sealed class MapConfig
     public bool Zones { get; set; } = true;
     public bool Events { get; set; } = true;
     public bool ScaleBar { get; set; } = true;
+    public bool Missiles { get; set; } = true;
+    public bool MissileTrails { get; set; } = true;
     public string SizeMode { get; set; } = "Auto";
     public double SizeScale { get; set; } = 1;
     public string PlotFilter { get; set; } = "All";

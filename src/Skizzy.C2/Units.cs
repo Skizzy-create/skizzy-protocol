@@ -127,6 +127,17 @@ namespace Skizzy.C2
         public bool IsBase;
         /// <summary>For missiles: the vessel it is guiding on (0 = unknown).</summary>
         public uint MissileTarget;
+        /// <summary>For missiles: the vessel that launched it (0 = unknown). Lets the picture declare the launcher hostile (08 §12.1).</summary>
+        public uint Launcher;
+        /// <summary>For missiles: the weapon (BDArmory short name, else the part title); null = unknown.</summary>
+        public string Weapon;
+        /// <summary>
+        /// Funds value from KSP's own part costs (catalog cost plus module costs, summed over every part of the vessel, so a
+        /// multi-part or modular missile counts all its parts); NaN = unknown. The binding fills it for missiles.
+        /// </summary>
+        public double Cost = double.NaN;
+        /// <summary>Vertical speed, m/s, up positive (0 when the binding does not report it).</summary>
+        public double ClimbMps;
 
         public Domain Domain => UnitClasses.DomainOf(Class);
         public bool IsMissile => Class == UnitClass.Missile;
@@ -156,6 +167,10 @@ namespace Skizzy.C2
             HasHome = s.HasHome;
             IsBase = s.IsBase;
             MissileTarget = s.MissileTarget;
+            Launcher = s.Launcher;
+            Weapon = s.Weapon;
+            Cost = s.Cost;
+            ClimbMps = s.ClimbMps;
         }
 
         public bool IsArmed => MissilesMax > 0 || HasGuns;

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:tac.threats@1",
+  "title": "tac.threats",
+  "description": "The ranked threat list of a side (the compact 10-line answer): highest threat first with aspect, closure, range to the threatened unit and time to closest approach; optionally only threats to one unit. Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "tac_threats",
+  "input": {
+    "type": "object",
+    "properties": {
+      "view": {
+        "type": "string",
+        "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "to": {
+        "type": "string",
+        "description": "only threats to this own unit: a handle \"v:<id>\", a vessel id or an exact unit name.",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "units": {
+        "type": "string",
+        "enum": [
+          "nm",
+          "km"
+        ],
+        "description": "distance units for text: nm (naval: nm, kt, ft) or km (metric)",
+        "default": "nm"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "maximum rows (default 10, max 50)",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 10
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "compact",
+          "json"
+        ],
+        "description": "\"compact\" = readable text lines (best for LLMs), \"json\" = structured rows",
+        "default": "compact"
+      }
+    },
+    "additionalProperties": false
+  }
+}

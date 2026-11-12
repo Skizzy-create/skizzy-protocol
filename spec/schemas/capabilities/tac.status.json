@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:tac.status@1",
+  "title": "tac.status",
+  "description": "Track picture engine status: attached or not, teams with track counts, units, fog and name settings, period cost (mean, max, max slice in ms), missile ledger counts, snapshot rate and source.tactical subscriptions. Works without the binding (attached:false). Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "tac_status",
+  "input": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}

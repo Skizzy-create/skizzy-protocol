@@ -294,6 +294,8 @@ public sealed class MapView : UserControl
             Ui.Label("Symbols"), _sizeMode, _sizeMul, Ui.Sep(),
             Tg("trails", "Trails"), Tg("stalks", "Altitude"), Tg("lines", "Target lines"), Tg("rings", "Rings"), Tg("labels", "Labels"),
             Tg("counts", "Counts", "Optional: group missiles and drones into counts"), Ui.Sep(),
+            Tg("missiles", "Missiles", "Show or hide missiles in flight (with their trails and inbound rings)"),
+            Tg("msltrails", "Missile trails", "Missile trails on or off (other tracks follow Trails)"), Ui.Sep(),
             zout, zin, fit, Ui.Sep(), _viewSeg);
         foreach (var c in row1.Children) c.VerticalAlignment = VerticalAlignment.Center;
 
@@ -321,6 +323,8 @@ public sealed class MapView : UserControl
             case "rings": o.Rings = on; break;
             case "labels": o.Labels = on; break;
             case "counts": o.Counts = on; break;
+            case "missiles": o.Missiles = on; break;
+            case "msltrails": o.MissileTrails = on; break;
         }
         _vm.NotifyChanged();
     }
@@ -337,6 +341,8 @@ public sealed class MapView : UserControl
             _toggles["rings"].IsChecked = o.Rings;
             _toggles["labels"].IsChecked = o.Labels;
             _toggles["counts"].IsChecked = o.Counts;
+            _toggles["missiles"].IsChecked = o.Missiles;
+            _toggles["msltrails"].IsChecked = o.MissileTrails;
             _sizeMode.SelectedIndex = (int)o.SizeMode;
             _sizeMul.Value = o.SizeScale;
             _viewSeg.SetSelected((int)_vm.View);

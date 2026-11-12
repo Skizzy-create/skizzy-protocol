@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:tac.query@1",
+  "title": "tac.query",
+  "description": "Lists tracks of a side's picture: one line each with track number, IFF, class, position or BRAA from ref, speed, threat, engagement. Filter by iff, domain, class, state, threat, age, quality, inboundTo, within or ids; sort by threat, range, id or age; page with cursor. Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "tac_query",
+  "input": {
+    "type": "object",
+    "properties": {
+      "view": {
+        "type": "string",
+        "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "ref": {
+        "type": "string",
+        "description": "reference unit for BRAA and range sort: a handle \"v:<id>\", a vessel id or an exact unit name.",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "units": {
+        "type": "string",
+        "enum": [
+          "nm",
+          "km"
+        ],
+        "description": "distance units for text: nm (naval: nm, kt, ft) or km (metric)",
+        "default": "nm"
+      },
+      "filter": {
+        "type": "object",
+        "description": "Row filter; all conditions must match.",
+        "properties": {
+          "iff": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "hostile",
+                "unknown",
+                "friend",
+                "neutral"
+              ],
+              "description": "iff"
+            },
+            "description": "IFF states",
+            "maxItems": 4
+          },
+          "domain": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "air",
+                "surface",
+                "subsurface",
+                "missile",
+                "land"
+              ],
+              "description": "domain"
+            },
+            "description": "domains",
+            "maxItems": 5
+          },
+          "class": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "description": "unit classes (fighter, ship, missile, ...)",
+            "maxItems": 16
+          },
+          "state": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "live",
+                "dr",
+                "dead"
+              ],
+              "description": "track state"
+            },
+            "description": "track states (dead tracks are excluded unless asked)",
+            "maxItems": 3
+          },
+          "minThreat": {
+            "type": "number",
+            "description": "minimum threat score 0..1",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "maxAgeS": {
+            "type": "number",
+            "description": "maximum seconds since last held",
+            "minimum": 0,
+            "x-skz-unit": "s"
+          },
+          "minQuality": {
+            "type": "number",
+            "description": "minimum track quality 0..1",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "inboundTo": {
+            "type": "string",
+            "description": "only missiles guiding on this unit: a handle \"v:<id>\", a vessel id or an exact unit name.",
+            "x-skz-handle": "vessel",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "within": {
+            "type": "object",
+            "description": "only tracks within m metres of ref (or of the query's ref)",
+            "properties": {
+              "ref": {
+                "type": "string",
+                "description": "centre unit: a handle \"v:<id>\", a vessel id or an exact unit name.",
+                "x-skz-handle": "vessel",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "m": {
+                "type": "number",
+                "description": "radius",
+                "minimum": 1,
+                "x-skz-unit": "m"
+              }
+            },
+            "required": [
+              "m"
+            ],
+            "additionalProperties": false
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^T[0-9]+$"
+            },
+            "description": "track numbers like T12",
+            "maxItems": 64
+          }
+        },
+        "additionalProperties": false
+      },
+      "sort": {
+        "type": "string",
+        "enum": [
+          "threat",
+          "range",
+          "id",
+          "age"
+        ],
+        "description": "row order",
+        "default": "threat"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "maximum rows (default 10, max 50)",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 10
+      },
+      "cursor": {
+        "type": "string",
+        "description": "cursor from a previous result",
+        "maxLength": 16
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "compact",
+          "json"
+        ],
+        "description": "\"compact\" = readable text lines (best for LLMs), \"json\" = structured rows",
+        "default": "compact"
+      }
+    },
+    "additionalProperties": false
+  }
+}

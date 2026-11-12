@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:tac.summary@1",
+  "title": "tac.summary",
+  "description": "One compact paragraph of a side's picture: hostile, unknown and friendly counts, hostile missiles, missiles inbound to own units, the shortest time to closest approach, optionally ranged from a reference unit. Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "tac_summary",
+  "input": {
+    "type": "object",
+    "properties": {
+      "view": {
+        "type": "string",
+        "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "ref": {
+        "type": "string",
+        "description": "reference unit for ranges: a handle \"v:<id>\", a vessel id or an exact unit name.",
+        "x-skz-handle": "vessel",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "units": {
+        "type": "string",
+        "enum": [
+          "nm",
+          "km"
+        ],
+        "description": "distance units for text: nm (naval: nm, kt, ft) or km (metric)",
+        "default": "nm"
+      }
+    },
+    "additionalProperties": false
+  }
+}

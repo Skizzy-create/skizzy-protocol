@@ -76,7 +76,7 @@ namespace Skizzy.C2
         }
 
         /// <summary>Replaces the allow set with <paramref name="ids"/> (duplicates allowed); bumps <see cref="Version"/> only when it changed.</summary>
-        internal void SetTo(List<uint> ids)
+        public void SetTo(List<uint> ids)
         {
             _next.Clear();
             for (int i = 0; i < ids.Count; i++) _next.Add(ids[i]);

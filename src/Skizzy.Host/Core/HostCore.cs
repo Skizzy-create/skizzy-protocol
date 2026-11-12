@@ -41,6 +41,10 @@ namespace Skizzy.Host.Core
         public readonly LogManager Logs;
         /// <summary>The C2 orders engine slot (src/Skizzy.C2); inert until the BDArmory binding attaches an engine.</summary>
         public readonly C2Host C2;
+        /// <summary>M2: per-team track picture engine (tac.*, source.tactical); attached with the C2 engine.</summary>
+        public readonly Tactical.TacticalHost Tactical;
+        /// <summary>M2: BDArmory operations (bda.*); the BDArmory plugin attaches them in flight.</summary>
+        public readonly Bda.BdaHost Bda;
         public readonly HostStats Stats = new HostStats();
         public readonly WorldEvents WorldEvents;
 #if !SKIZZY_KSP
@@ -87,6 +91,8 @@ namespace Skizzy.Host.Core
             Catalog = Builtins.Registry;
             Streams = new StreamManager(this);
             Logs = new LogManager(this);
+            Tactical = new Tactical.TacticalHost(this);
+            Bda = new Bda.BdaHost(this);
             C2 = new C2Host(this);
             WorldEvents = new WorldEvents(this);
             _perm = new PermissionEngine(PermissionConfig.BattleLab());
@@ -216,7 +222,7 @@ namespace Skizzy.Host.Core
         {
             get
             {
-                if (Dispatcher.HasWork || Ops.RunningCount > 0 || Logs.ActiveCount > 0 || Streams.Count > 0 || Prompts.Count > 0 || C2.WantsTicks) return true;
+                if (Dispatcher.HasWork || Ops.RunningCount > 0 || Logs.ActiveCount > 0 || Streams.Count > 0 || Prompts.Count > 0 || C2.WantsTicks || Tactical.SubscriptionCount > 0) return true;
                 if (AttachedSessionCount > 0) return true;
                 return Clock.NowMs - Volatile.Read(ref _lastActiveMs) < GraceS * 1000;
             }
@@ -244,6 +250,7 @@ namespace Skizzy.Host.Core
         {
             long t0 = Clock.Ticks;
             Dispatcher.DrainFixed();
+            if (Tactical.WantsTicks) Tactical.OnFixedUpdate(); // M2: one TPE slice per physics step, a full picture every 10
             if (C2.WantsTicks) C2.OnFixedUpdate(); // C2 slot: 5 Hz engine tick while a c2.* command is live
 #if SKIZZY_KSP
             if (Logs.ActiveCount > 0) Logs.Sample();

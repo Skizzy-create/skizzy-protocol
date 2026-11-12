@@ -105,6 +105,7 @@ namespace Skizzy.C2
             _world = world ?? throw new ArgumentNullException(nameof(world));
             _ctl = control ?? throw new ArgumentNullException(nameof(control));
             _geo = new Geo(world.BodyRadius);
+            AttachFeed();
         }
 
         public DoctrineStore Doctrine => _doctrine;
@@ -387,15 +388,15 @@ namespace Skizzy.C2
 
         // ------------------------------------------------------------------ IHookEvents (queued)
 
-        public void OnOverrideLost(uint unit, uint target, OverrideLostReason reason) { Enqueue(new HookEvt { Kind = HookEvtKind.OverrideLost, Unit = unit, Target = target, Reason = reason }); }
-        public void OnUnitDestroyed(uint unit) { Enqueue(new HookEvt { Kind = HookEvtKind.UnitDestroyed, Unit = unit }); }
-        public void OnTargetDetected(uint target, string side) { Enqueue(new HookEvt { Kind = HookEvtKind.TargetDetected, Target = target, Side = side }); }
-        public void OnTargetLost(uint target, string side) { Enqueue(new HookEvt { Kind = HookEvtKind.TargetLost, Target = target, Side = side }); }
-        public void OnWaypointReached(uint unit, int index, int lap) { Enqueue(new HookEvt { Kind = HookEvtKind.WaypointReached, Unit = unit, Index = index, Lap = lap }); }
-        public void OnRouteCompleted(uint unit) { Enqueue(new HookEvt { Kind = HookEvtKind.RouteCompleted, Unit = unit }); }
-        public void OnPatrolEngage(uint unit, uint target) { Enqueue(new HookEvt { Kind = HookEvtKind.PatrolEngage, Unit = unit, Target = target }); }
-        public void OnPatrolResume(uint unit, bool leashBroke) { Enqueue(new HookEvt { Kind = HookEvtKind.PatrolResume, Unit = unit, Flag = leashBroke }); }
-        public void OnMissileFired(uint shooter, uint missile, uint target) { Enqueue(new HookEvt { Kind = HookEvtKind.MissileFired, Unit = shooter, Target = target, Index = (int)missile }); }
+        public void OnOverrideLost(uint unit, uint target, OverrideLostReason reason) { Tap?.OnOverrideLost(unit, target, reason); Enqueue(new HookEvt { Kind = HookEvtKind.OverrideLost, Unit = unit, Target = target, Reason = reason }); }
+        public void OnUnitDestroyed(uint unit) { Tap?.OnUnitDestroyed(unit); Enqueue(new HookEvt { Kind = HookEvtKind.UnitDestroyed, Unit = unit }); }
+        public void OnTargetDetected(uint target, string side) { Tap?.OnTargetDetected(target, side); Enqueue(new HookEvt { Kind = HookEvtKind.TargetDetected, Target = target, Side = side }); }
+        public void OnTargetLost(uint target, string side) { Tap?.OnTargetLost(target, side); Enqueue(new HookEvt { Kind = HookEvtKind.TargetLost, Target = target, Side = side }); }
+        public void OnWaypointReached(uint unit, int index, int lap) { Tap?.OnWaypointReached(unit, index, lap); Enqueue(new HookEvt { Kind = HookEvtKind.WaypointReached, Unit = unit, Index = index, Lap = lap }); }
+        public void OnRouteCompleted(uint unit) { Tap?.OnRouteCompleted(unit); Enqueue(new HookEvt { Kind = HookEvtKind.RouteCompleted, Unit = unit }); }
+        public void OnPatrolEngage(uint unit, uint target) { Tap?.OnPatrolEngage(unit, target); Enqueue(new HookEvt { Kind = HookEvtKind.PatrolEngage, Unit = unit, Target = target }); }
+        public void OnPatrolResume(uint unit, bool leashBroke) { Tap?.OnPatrolResume(unit, leashBroke); Enqueue(new HookEvt { Kind = HookEvtKind.PatrolResume, Unit = unit, Flag = leashBroke }); }
+        public void OnMissileFired(uint shooter, uint missile, uint target) { Tap?.OnMissileFired(shooter, missile, target); Enqueue(new HookEvt { Kind = HookEvtKind.MissileFired, Unit = shooter, Target = target, Index = (int)missile }); }
 
         private void Enqueue(HookEvt e)
         {
@@ -435,7 +436,7 @@ namespace Skizzy.C2
                     continue;
                 }
                 bool managed = IsSideManaged(r.S.Side) || r.Move != null || r.Engage != null || r.Hold != null ||
-                               r.Doc.WeaponsControl != WeaponsControl.Free;
+                               r.Doc.WeaponsControl != WeaponsControl.Free || r.Doc.Emcon != Emcon.Active;
                 if (!managed && r.Have.IsStock && r.Have.Route == RouteKind.None) { r.Managed = false; continue; }
                 r.Managed = managed;
                 long a = Profile ? Stopwatch.GetTimestamp() : 0;
@@ -697,6 +698,11 @@ namespace Skizzy.C2
                 var r = _unitList[i];
                 if (r.Alive && r.P != null && (r.Managed || r.Move != null || r.Engage != null || r.Hold != null)) r.P.Active = true;
             }
+            if (_feed != null)
+            {
+                PicturesFromFeed();
+                return;
+            }
             int sides = _sideList.Count;
             int slices = ContactSlices < 1 ? 1 : ContactSlices;
             // own-sensor contacts per unit (F5), identification (row 24), holders (row 7): time-sliced, counted on the
@@ -772,17 +778,22 @@ namespace Skizzy.C2
                     if (t.S.IsMissile) { p.HostileMissiles.Add(t.Id); p.MissileRecs.Add(t); }
                     else { p.Hostiles.Add(t.Id); p.HostileRecs.Add(t); }
                 }
-                // own-sensor-only contacts (row 7): log once per track
-                foreach (var kv in p.SoleHolder)
-                {
-                    if (!p.IsOwnSensorOnly(kv.Key) || p.OwnOnlyReported.Contains(kv.Key)) continue;
-                    var t = Rec(kv.Key);
-                    var h = Rec(kv.Value);
-                    if (t == null || h == null || t.S.IsMissile || !UnitClasses.IsAircraft(h.S.Class)) continue;
-                    p.OwnOnlyReported.Add(kv.Key);
-                    Emit(C2EventKind.Contact, "contact", p.Side, 0, t.Id, "own_sensor_only",
-                        "Own-sensor contact: " + h.Name + "'s own radar holds " + t.Name + " at " + Km(h, t) + " km. No other unit holds it.");
-                }
+                ReportOwnSensorOnly(p);
+            }
+        }
+
+        /// <summary>Own-sensor-only contacts (row 7): logged once per track.</summary>
+        private void ReportOwnSensorOnly(SidePicture p)
+        {
+            foreach (var kv in p.SoleHolder)
+            {
+                if (!p.IsOwnSensorOnly(kv.Key) || p.OwnOnlyReported.Contains(kv.Key)) continue;
+                var t = Rec(kv.Key);
+                var h = Rec(kv.Value);
+                if (t == null || h == null || t.S.IsMissile || !UnitClasses.IsAircraft(h.S.Class)) continue;
+                p.OwnOnlyReported.Add(kv.Key);
+                Emit(C2EventKind.Contact, "contact", p.Side, 0, t.Id, "own_sensor_only",
+                    "Own-sensor contact: " + h.Name + "'s own radar holds " + t.Name + " at " + Km(h, t) + " km. No other unit holds it.");
             }
         }
 

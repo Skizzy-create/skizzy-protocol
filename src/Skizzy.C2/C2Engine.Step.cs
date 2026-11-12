@@ -96,6 +96,9 @@ namespace Skizzy.C2
             w.RangeMax = UnitClasses.IsShip(r.S.Class) && r.S.HasWeaponManager &&
                          ((r.Engage != null && r.Engage.RangeMax) || (p.Managed && r.Doc.Posture == Posture.Proactive));
 
+            // 6b. EMCON (doctrine emcon: passive = radars off), when the binding controls radars
+            w.Passive = _radar != null && r.Doc.Emcon == Emcon.Passive;
+
             // 7. hooks this BDArmory lacks: never want what cannot be applied (a stock BDA degrades to HOOK_MISSING
             // refusals at issue and plain guard behaviour here, never to calls the binding cannot make)
             if (_hooks != HookSet.All) MaskMissingHooks(w);
@@ -329,12 +332,16 @@ namespace Skizzy.C2
                     int v = IsVipThreat(p, t, 1.0) ? 0 : 1;
                     int cc = c > 0 ? 1 : 0;
                     if (air != null && (v > bv || (v == bv && cc > bc))) continue;
-                    // the closing test (trigonometry) only when it can decide
-                    int o = Closing(r, t) ? 0 : 1;
-                    if (air == null || v < bv || cc < bc || o < bo || (o == bo && dd < bd))
+                    // the closing test (trigonometry) only when it can decide: bo -1 = the best's closing not computed yet
+                    if (air != null && v == bv && cc == bc)
                     {
-                        air = t; bv = v; bc = cc; bo = o; bd = dd;
+                        if (bo < 0) bo = Closing(r, air) ? 0 : 1;
+                        if (bo == 0 && dd >= bd) continue; // cannot beat a nearer closing best
+                        int o = bo == 1 && dd < bd ? -1 : (Closing(r, t) ? 0 : 1);
+                        if (o < 0 || o < bo || (o == bo && dd < bd)) { air = t; bo = o; bd = dd; }
+                        continue;
                     }
+                    air = t; bv = v; bc = cc; bo = -1; bd = dd;
                 }
             }
             UnitRec msl = null;

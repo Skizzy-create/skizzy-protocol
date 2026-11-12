@@ -27,4 +27,16 @@ public sealed class PlotOptions
 
     /// <summary>Missile labels appear only when selected or zoomed past this scale (px/km). Mockup: 9.</summary>
     public float MissileLabelMinScale { get; set; } = 9f;
+
+    /// <summary>Missiles on the plot (the toolbar's Missiles filter). Off hides every missile, its trail and its inbound ring.</summary>
+    public bool Missiles { get; set; } = true;
+
+    /// <summary>Missile trails (the toolbar's Missile trails toggle); the other tracks' trails follow <see cref="Trails"/>.</summary>
+    public bool MissileTrails { get; set; } = true;
+
+    /// <summary>
+    /// Smallest missile symbol in px (M2): a missile never shrinks below this, whatever the zoom or the salvo spacing, so a
+    /// raid stays a set of headed arrowheads when the view spans 30+ km. 0 restores the mockup rule (dots below 5 px).
+    /// </summary>
+    public float MissileMinPx { get; set; } = 6f;
 }

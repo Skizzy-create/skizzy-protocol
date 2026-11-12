@@ -64,6 +64,8 @@ namespace Skizzy.Host.Core
         private string _bindingDescription;
 
         public C2Engine Engine => _engine;
+        /// <summary>The binding's own world (truth plus BDArmory's detection), not the track-picture view the engine reads.</summary>
+        public IC2World World => _world;
         public bool Attached => _engine != null;
         public string Source => _source;
         /// <summary>A c2.* call commanded something since the attach; the engine ticks only then.</summary>
@@ -82,7 +84,11 @@ namespace Skizzy.Host.Core
             if (world == null) throw new ArgumentNullException(nameof(world));
             if (control == null) throw new ArgumentNullException(nameof(control));
             if (_engine != null) Detach("replaced");
-            _engine = new C2Engine(world, control);
+            // M2: the engine reads its pictures from the track picture engine over the same world (the TPE is stepped by
+            // the host's fixed update; the engine's unit list still comes straight from the binding)
+            var fed = _h.Tactical.Attach(world, control, source);
+            _engine = new C2Engine(fed ?? world, control);
+            _engine.Tap = _h.Bda.HookTap;
             _world = world;
             _source = source ?? "binding";
             var report = control as IHookReport;
@@ -103,10 +109,13 @@ namespace Skizzy.Host.Core
         {
             if (_engine == null) return;
             try { Publish(); } catch (Exception e) { _h.Log.Warn("c2: publish on detach failed: " + e.Message); }
+            _engine.Tap = null;
             _engine = null;
             _world = null;
             Engaged = false;
             _managedSides.Clear();
+            try { _h.Tactical.Detach(reason); } catch (Exception e) { _h.Log.Warn("c2: tactical detach failed: " + e.Message); }
+            _h.Bda.Detach(reason); // the in-game BDArmory operations live and die with the binding
             _h.Log.Info("c2: engine detached (" + reason + ")");
             _h.Events.Emit("host.c2_detached", "c2", "C2 engine detached: " + reason, JsonValue.Obj().Set("reason", reason));
             var d = Detached;
@@ -352,7 +361,7 @@ namespace Skizzy.Host.Core
         }
 
         /// <summary>The side a call acts for: the parameter, else the session's side. Other sides need a human, referee or director.</summary>
-        private static string ActingSide(CallContext c, string requested, bool required)
+        internal static string ActingSide(CallContext c, string requested, bool required)
         {
             var s = c.Session;
             string own = s != null ? s.Side : null;
@@ -381,6 +390,17 @@ namespace Skizzy.Host.Core
             }
         }
 
+        /// <summary>Main thread: as <see cref="ResolveUnit"/>, names looked up in the track picture engine's unit list.</summary>
+        internal uint ResolveUnitIn(Skizzy.C2.Tactical.TrackPictureEngine tpe, string reference, string pointer)
+        {
+            var saved = _resolveFrom;
+            _resolveFrom = tpe;
+            try { return ResolveUnit(reference, pointer); }
+            finally { _resolveFrom = saved; }
+        }
+
+        private Skizzy.C2.Tactical.TrackPictureEngine _resolveFrom;
+
         /// <summary>Main thread: "active", "v:&lt;id&gt;", a numeric id, or a unit name known to the C2 world.</summary>
         internal uint ResolveUnit(string reference, string pointer)
         {
@@ -390,6 +410,12 @@ namespace Skizzy.Host.Core
                 if (a == null) throw SkizzyError.NotFound("active", "unknown", "There is no active vessel.");
                 return a.PersistentId;
             }
+            if (_resolveFrom != null)
+            {
+                _units.Clear();
+                _resolveFrom.GetUnits(_units);
+                return C2Wire.ResolveInList(_units, reference, pointer);
+            }
             return C2Wire.ResolveInWorld(_world, _units, reference, pointer);
         }
 
@@ -398,10 +424,13 @@ namespace Skizzy.Host.Core
         private JsonValue Issue(CallContext c)
         {
             var e = Need();
-            var req = C2Wire.ParseIssue(c.Params, ResolveUnit);
+            // targets may be track numbers (T12) of the ordering side's tactical picture (M2)
+            string side = ActingSide(c, c.Str("side"), true);
+            var req = C2Wire.ParseIssue(c.Params, (r, ptr) => ptr.StartsWith("/target", StringComparison.Ordinal)
+                ? _h.Tactical.ResolveTarget(c, r, side, ptr) : ResolveUnit(r, ptr));
             req.Issuer = By(c);
             req.Role = RoleOf(c.Session);
-            req.Side = ActingSide(c, c.Str("side"), true);
+            req.Side = side;
             var r = e.Issue(req);
             Publish(); // order.accepted / refused reports go out with the reply
             if (!r.Accepted) throw C2Wire.Refusal(r);

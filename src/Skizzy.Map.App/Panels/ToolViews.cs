@@ -51,6 +51,8 @@ public sealed class LayersView : UserControl
             return b;
         }
         _root.Children.Add(Ui.V(6, Ui.Label("Tracks"), Ui.Wrap(6, 6, T("trails", "Trails"), T("stalks", "Altitude"), T("labels", "Labels"), T("lines", "Target lines"), T("counts", "Counts"))));
+        _root.Children.Add(Ui.V(6, Ui.Label("Missiles"), Ui.Wrap(6, 6, T("missiles", "Missiles"), T("msltrails", "Missile trails")),
+            Ui.Text("Missiles are coloured by team with a heading arrowhead; a red ring marks one inbound to a friendly. They never shrink below a readable arrowhead.", "note")));
         _root.Children.Add(Ui.V(6, Ui.Label("Overlays"), Ui.Wrap(6, 6, T("rings", "Range rings"), T("zones", "Zones"), T("events", "Events"), T("orders", "Orders"), T("grid", "Grid"), T("scale", "Scale bar"))));
         _legend = Ui.Toggle("Legend", true, on => { if (_bound is not null && !_syncing) { _bound.ShowLegend = on; _bound.NotifyChanged(); } }, "tg");
         _root.Children.Add(Ui.V(6, Ui.Label("Map furniture"), Ui.Wrap(6, 6, _legend)));
@@ -93,6 +95,8 @@ public sealed class LayersView : UserControl
             case "labels": o.Labels = on; break;
             case "lines": o.TargetLines = on; break;
             case "counts": o.Counts = on; break;
+            case "missiles": o.Missiles = on; break;
+            case "msltrails": o.MissileTrails = on; break;
             case "rings": o.Rings = on; break;
             case "zones": o.Zones = on; break;
             case "events": o.Events = on; break;
@@ -117,6 +121,7 @@ public sealed class LayersView : UserControl
             _t["lines"].IsChecked = o.TargetLines; _t["counts"].IsChecked = o.Counts; _t["rings"].IsChecked = o.Rings;
             _t["zones"].IsChecked = o.Zones; _t["events"].IsChecked = o.Events; _t["orders"].IsChecked = o.Orders;
             _t["grid"].IsChecked = o.Grid; _t["scale"].IsChecked = o.ScaleBar;
+            _t["missiles"].IsChecked = o.Missiles; _t["msltrails"].IsChecked = o.MissileTrails;
             _legend.IsChecked = m.ShowLegend;
             _view.SetSelected((int)m.View);
             _size.SetSelected((int)o.SizeMode);

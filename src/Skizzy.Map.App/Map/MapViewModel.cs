@@ -301,6 +301,7 @@ public sealed class MapViewModel : IDisposable
             Title = Title, View = View.ToString(), CenterX = _tcx, CenterY = _tcy, Scale = _tscale,
             Trails = o.Trails, Altitude = o.AltitudeStalks, TargetLines = o.TargetLines, Rings = o.Rings, Labels = o.Labels, Counts = o.Counts,
             Grid = o.Grid, Zones = o.Zones, Events = o.Events, ScaleBar = o.ScaleBar, SizeMode = o.SizeMode.ToString(), SizeScale = o.SizeScale,
+            Missiles = o.Missiles, MissileTrails = o.MissileTrails,
             PlotFilter = Filter.ToString(), Legend = ShowLegend,
         };
     }
@@ -311,6 +312,7 @@ public sealed class MapViewModel : IDisposable
         var o = Options;
         o.Trails = c.Trails; o.AltitudeStalks = c.Altitude; o.TargetLines = c.TargetLines; o.Rings = c.Rings; o.Labels = c.Labels; o.Counts = c.Counts;
         o.Grid = c.Grid; o.Zones = c.Zones; o.Events = c.Events; o.ScaleBar = c.ScaleBar;
+        o.Missiles = c.Missiles; o.MissileTrails = c.MissileTrails;
         o.SizeMode = Enum.TryParse<SizeMode>(c.SizeMode, out var sm) ? sm : SizeMode.Auto;
         o.SizeScale = (float)Math.Clamp(c.SizeScale, .6, 1.8);
         View = Enum.TryParse<ViewSide>(c.View, out var v) ? v : ViewSide.Blue;

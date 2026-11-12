@@ -187,6 +187,8 @@ public sealed class MapData
     public long CommsVersion { get; private set; }
     public List<PlotEvent> Events { get; } = new();
     public LossReport Losses { get; } = new();
+    /// <summary>Missile engagement log and per-team totals (live tactical stream; empty for other sources).</summary>
+    public EngagementBook Engagements { get; } = new();
     public List<PlotZone> Zones { get; } = new();
 
     /// <summary>The current orders (drawn on the plot in live view).</summary>
@@ -299,6 +301,8 @@ public sealed class MapData
         Losses.Blue.Lost.Clear(); Losses.Blue.Lines.Clear(); Losses.Red.Lost.Clear(); Losses.Red.Lines.Clear();
         Losses.Note = null;
         Losses.Version++;
+        Engagements.Clear();
+        Engagements.Note = null;
         Zones.Clear();
         Orders.Clear();
         GroupOverrides.Clear();

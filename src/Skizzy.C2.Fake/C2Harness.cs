@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using Skizzy.C2.Tactical;
 
 namespace Skizzy.C2.Fake
 {
@@ -11,11 +12,23 @@ namespace Skizzy.C2.Fake
         public readonly C2Engine Engine;
         public readonly List<C2Event> Events = new List<C2Event>();
         public double Dt = 0.2;
+        /// <summary>The track picture engine feeding the C2 engine (M2), or null on the legacy direct path.</summary>
+        public readonly TpeWorld Tpe;
 
-        public C2Harness()
+        /// <summary>Whether new harnesses feed the engine from the track picture engine (the M2 default).</summary>
+        public static bool DefaultTpe = true;
+
+        public C2Harness() : this(DefaultTpe) { }
+
+        public C2Harness(bool tpe)
         {
             World = new FakeBda();
-            Engine = new C2Engine(World, World);
+            if (tpe)
+            {
+                Tpe = new TpeWorld(World, new FakeSensors(World));
+                Engine = new C2Engine(Tpe, World);
+            }
+            else Engine = new C2Engine(World, World);
             World.Sink = Engine;
         }
 

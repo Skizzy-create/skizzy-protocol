@@ -422,6 +422,7 @@ namespace Skizzy.Protocol.Catalog
                     .Closed());
 
             foreach (var d in C2()) yield return d;
+            foreach (var d in M2Defs.All()) yield return d;
         }
 
         // ---------------- c2 (09 §2, §11.1; 24 Phase v1). Executed by Skizzy.C2 through the BDArmory binding. ----------------

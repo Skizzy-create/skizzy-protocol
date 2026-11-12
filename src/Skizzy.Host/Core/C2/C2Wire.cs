@@ -37,6 +37,16 @@ namespace Skizzy.Host.Core
             if (uint.TryParse(reference, NumberStyles.None, CultureInfo.InvariantCulture, out id)) return id;
             scratch.Clear();
             if (world != null) world.GetUnits(scratch);
+            return ResolveInList(scratch, reference, pointer);
+        }
+
+        /// <summary>As <see cref="ResolveInWorld"/> over an already filled unit list (e.g. a track picture's units).</summary>
+        public static uint ResolveInList(List<UnitState> scratch, string reference, string pointer)
+        {
+            if (string.IsNullOrEmpty(reference)) throw SkizzyError.InvalidParam(pointer, "empty unit reference");
+            uint id;
+            if (HandleRegistry.TryParseVessel(reference, out id)) return id;
+            if (uint.TryParse(reference, NumberStyles.None, CultureInfo.InvariantCulture, out id)) return id;
             UnitState ci = null;
             int ciCount = 0;
             foreach (var u in scratch)

@@ -70,9 +70,13 @@ namespace Skizzy.Host.Core.Caps
         {
             switch (method)
             {
-                case "stream.subscribe": Subscribe(s, id, p); break;
+                case "stream.subscribe":
+                    if (p.GetObj("source")?.GetObj("tactical") != null) { _host.Tactical.Subscribe(s, id, p); break; } // M2 source.tactical
+                    Subscribe(s, id, p);
+                    break;
                 case "stream.unsubscribe":
                     {
+                        if (_host.Tactical.Unsubscribe(s, id, p.GetString("sub"))) break;
                         var sub = Find(s, p.GetString("sub"));
                         Remove(sub);
                         _host.SendResult(s, id, JsonValue.Obj().Set("sub", sub.SubId).Set("ok", true).Set("samples", sub.Samples));

@@ -39,6 +39,10 @@ public struct FrameStats
     public int VipRings;
     /// <summary>On-screen tracks marked "own sensor only".</summary>
     public int OwnSensorMarks;
+    /// <summary>On-screen missiles given the inbound-to-friendly ring.</summary>
+    public int InboundMarks;
+    /// <summary>Missiles left off the plot by the Missiles filter.</summary>
+    public int MissilesHidden;
     /// <summary>Visible tracks not drawn because the viewing side has not detected them.</summary>
     public int Undetected;
 }

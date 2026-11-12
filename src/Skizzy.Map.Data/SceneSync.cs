@@ -81,6 +81,7 @@ public sealed class SceneSync
             p.Control = tr.Control;
             p.Health = tr.Health;
             p.TargetId = tr.TargetId;
+            p.InboundToFriend = tr.TargetId != 0 && p.Affiliation != Affiliation.Friend && tr.IsMissile && InboundToFriend(data, tr.TargetId);
             p.Rings = tr.Rings;
             p.Vip = tr.Vip;
             p.VipRadiusKm = tr.VipRadiusKm;
@@ -124,6 +125,13 @@ public sealed class SceneSync
     }
 
     private readonly HashSet<int> _seen = new();
+
+    /// <summary>True when the missile's target is an alive vessel (not a missile) friendly to this window's view.</summary>
+    private bool InboundToFriend(MapData data, int targetId)
+    {
+        var tg = data.Get(targetId);
+        return tg is { Alive: true, IsMissile: false } && tg.AffiliationFor(View) == Affiliation.Friend;
+    }
 
     // orders: copied into pooled scene objects only when the picture changed (live view only; replay shows none)
     private readonly List<PlotOrder> _orderPool = new();

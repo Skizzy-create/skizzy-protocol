@@ -56,6 +56,9 @@ public sealed class PlotTrack
     /// <summary>Missile target, for the optional target lines; 0 = none.</summary>
     public int TargetId { get; set; }
 
+    /// <summary>A missile (not the viewer's own) whose target is friendly to the viewing side: drawn with a red inbound ring.</summary>
+    public bool InboundToFriend { get; set; }
+
     /// <summary>Range rings for own ships. Null = none.</summary>
     public RangeRing[]? Rings { get; set; }
 

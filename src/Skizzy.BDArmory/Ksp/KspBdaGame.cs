@@ -20,7 +20,7 @@ namespace Skizzy.Bda.Ksp
     /// Per-tick work is pooled: unit records, side detection sets, secondary-target providers and filter delegates
     /// are reused, and the expensive per-vessel facts (class, armament) are cached and refreshed every few seconds.
     /// </summary>
-    public sealed class KspBdaGame : IBdaGame
+    public sealed partial class KspBdaGame : IBdaGame
     {
         private sealed class VesselInfo
         {
@@ -129,6 +129,7 @@ namespace Skizzy.Bda.Ksp
                     if (kv.Key == null || _stamp - kv.Value.SeenStamp > 255) _infoGone.Add(kv.Key);
                 for (int i = 0; i < _infoGone.Count; i++) _info.Remove(_infoGone[i]);
                 _infoGone.Clear();
+                SweepMissiles();
             }
         }
 
@@ -182,6 +183,7 @@ namespace Skizzy.Bda.Ksp
             s.Home = info.Home;
             s.HasHome = info.HasHome;
             s.MissileTarget = 0;
+            s.Launcher = 0;
             g.Vessel = v;
             g.Wm = wm;
             g.Ai = ai as PartModule;
@@ -216,6 +218,9 @@ namespace Skizzy.Bda.Ksp
             s.HasHome = false;
             var t = mb.targetVessel;
             s.MissileTarget = t != null && t.Vessel != null ? t.Vessel.persistentId : 0;
+            var src = mb.SourceVessel;
+            s.Launcher = src != null ? src.persistentId : 0;
+            FillMissileFacts(v, mb, s);
             g.Vessel = v;
             g.Wm = null;
             g.Ai = null;
@@ -650,6 +655,7 @@ namespace Skizzy.Bda.Ksp
             _filters.Clear();
             _sides.Clear();
             _info.Clear();
+            ClearMissiles();
         }
     }
 }

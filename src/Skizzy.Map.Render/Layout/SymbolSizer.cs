@@ -80,7 +80,7 @@ internal static class SymbolSizer
         float minX = -CullMarginPx, maxX = vp.Width + CullMarginPx, minY = -CullMarginPx, maxY = vp.Height + CullMarginPx;
 
         st.IndexById.Clear();
-        int undetected = 0;
+        int undetected = 0, hiddenMissiles = 0;
         for (int i = 0; i < n; i++)
         {
             var t = tracks[i];
@@ -90,6 +90,7 @@ internal static class SymbolSizer
                 if (t.Visible) undetected++; // a stealth contact nobody sees: not drawn, and it takes no space
                 continue;
             }
+            if (!opt.Missiles && t.IsMissile) { hiddenMissiles++; continue; } // the Missiles filter: no symbol, trail or ring
             float sx = vp.ToScreenX(t.X), sy = vp.ToScreenY(t.Y);
             // written so a NaN position (bad data on the wire) is culled: it would otherwise index the grid at int.MinValue
             if (!(sx > minX && sx < maxX && sy > minY && sy < maxY)) continue;
@@ -105,6 +106,7 @@ internal static class SymbolSizer
         }
         var stats = st.LastFrame;
         stats.Undetected = undetected;
+        stats.MissilesHidden = hiddenMissiles;
         st.LastFrame = stats;
         st.Pills.Clear();
         if (opt.Counts) count = GroupForCounts(tracks, items, count, st);
@@ -186,6 +188,7 @@ internal static class SymbolSizer
             s *= t.SizeMultiplier * (it.Selected ? SelectedFactor : 1f);
             s = MathF.Min(s, MaxSizePx);
             if (!float.IsFinite(s)) s = MinSizePx; // NaN RCS or size override: still drawn, as a dot
+            if (iM && s < opt.MissileMinPx) s = opt.MissileMinPx; // M2: missiles stay readable arrowheads when zoomed out
 
             if (!st.Visuals.TryGetValue(t.Id, out var v))
             {
@@ -217,6 +220,7 @@ internal static class SymbolSizer
             // markers drawn around the symbol are part of its footprint, so labels clear them too
             if (it.Vip) it.Half = MathF.Max(it.Half, VipBracketRadius(s) * .93f + 1f);
             if (it.OwnSensor) it.Half = MathF.Max(it.Half, OwnSensorRadius(s) + 1f);
+            if (iM && t.InboundToFriend) it.Half = MathF.Max(it.Half, InboundRadius(s) + 1f);
         }
     }
 
@@ -242,6 +246,9 @@ internal static class SymbolSizer
 
     /// <summary>Radius of the VIP corner brackets (the mockup's <c>drawVips</c>: s/2 + 6).</summary>
     public static float VipBracketRadius(float s) => s / 2f + 6f;
+
+    /// <summary>Radius of the red ring around a missile inbound to a friendly.</summary>
+    public static float InboundRadius(float s) => MathF.Max(7f, 0.6f * MathF.Max(MissilePx, s) + 4f);
 
     /// <summary>Radius of the dashed "own sensor only" halo.</summary>
     public static float OwnSensorRadius(float s) => MathF.Max(6f, s / 2f + 3.5f);

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:tac.configure@1",
+  "title": "tac.configure",
+  "description": "Picture settings for every side (human, referee or director only): fog (IFF unknown until identified), revealNames, dropAfterS for tracks no longer held, and sampleHz, the main-thread snapshot rate that drives the picture, the missile ledger and source.tactical (1-10 Hz, default 5). Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+  "x-skz-safety": "control",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "tac_configure",
+  "input": {
+    "type": "object",
+    "properties": {
+      "fog": {
+        "type": "boolean",
+        "description": "IFF unknown until identified"
+      },
+      "revealNames": {
+        "type": "boolean",
+        "description": "show names of identified hostiles"
+      },
+      "dropAfterS": {
+        "type": "number",
+        "description": "drop tracks not held for this long",
+        "minimum": 5,
+        "maximum": 600,
+        "x-skz-unit": "s"
+      },
+      "sampleHz": {
+        "type": "number",
+        "description": "snapshot rate of the picture and missile ledger",
+        "minimum": 1,
+        "maximum": 10,
+        "x-skz-unit": "Hz"
+      }
+    },
+    "additionalProperties": false
+  }
+}

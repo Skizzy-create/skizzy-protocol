@@ -373,6 +373,9 @@ public sealed class PlotSurface : IDisposable
         to.SizeMode = from.SizeMode;
         to.SizeScale = from.SizeScale;
         to.MissileLabelMinScale = from.MissileLabelMinScale;
+        to.Missiles = from.Missiles;
+        to.MissileTrails = from.MissileTrails;
+        to.MissileMinPx = from.MissileMinPx;
     }
 
     public void Dispose()

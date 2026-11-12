@@ -261,6 +261,7 @@ namespace Skizzy.Host.Tests
                 "Connection.Send", "WsFrameReader.Read", "WsFrameWriter.Write", "ByteBuffer.Ensure", "ByteBufferPool.Rent",
                 "JsonWriter.Separator", "JsonWriter.WriteQuoted", "NumberFormat.WriteLong", "NumberFormat.WriteDouble",
                 "FakeVessel.ReadField", "FakeModule.Accessor.Read",
+                "TacticalHost.SampleStreams", // TacticalFeedTests.Feed_allocates_nothing_in_steady_state (0 B per sample at 150 missiles)
             };
             string src = FindRepoDir("src");
             // Same line only: a bare "// skizzy:hot" must not capture the first word of the next line.

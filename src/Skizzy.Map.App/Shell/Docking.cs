@@ -19,11 +19,12 @@ namespace Skizzy.Map.App.Shell;
 public sealed class ShellDockFactory : Factory
 {
     public const string Tracks = "tracks", Unit = "unit", Messages = "messages", Comms = "comms", Losses = "losses",
-        Layers = "layers", Health = "health", Maps = "maps", Left = "left", Right = "right", Bottom = "bottom";
+        Engagements = "engagements", Layers = "layers", Health = "health", Maps = "maps", Left = "left", Right = "right", Bottom = "bottom";
 
     public static readonly (string Id, string Title)[] ToolDefs =
     [
-        (Tracks, "Tracks"), (Unit, "Unit"), (Messages, "Messages"), (Comms, "Comms"), (Losses, "Losses"), (Layers, "Layers"), (Health, "Host health"),
+        (Tracks, "Tracks"), (Unit, "Unit"), (Messages, "Messages"), (Comms, "Comms"), (Losses, "Losses"), (Engagements, "Engagements"), (Layers, "Layers"),
+        (Health, "Host health"),
     ];
 
     private readonly AppState _app;
@@ -40,7 +41,7 @@ public sealed class ShellDockFactory : Factory
     /// <summary>The dock a panel goes to by default (Tracks left, Unit/Layers/Health right, the log tabs bottom).</summary>
     public static IToolDock? DefaultDockFor(IRootDock root, string toolId)
     {
-        string want = toolId switch { Tracks => Left, Messages or Comms or Losses => Bottom, _ => Right };
+        string want = toolId switch { Tracks => Left, Messages or Comms or Losses or Engagements => Bottom, _ => Right };
         var docks = Walk(root).OfType<IToolDock>().ToList();
         return docks.FirstOrDefault(d => d.Id == want) ?? docks.FirstOrDefault(d => d.Id == Right) ?? docks.FirstOrDefault();
     }
@@ -70,7 +71,7 @@ public sealed class ShellDockFactory : Factory
         }
         var left = Tools(Left, Alignment.Left, 0.21, Tracks);
         var right = Tools(Right, Alignment.Right, 0.215, Unit, Layers, Health);
-        var bottom = Tools(Bottom, Alignment.Bottom, 0.25, Messages, Comms, Losses);
+        var bottom = Tools(Bottom, Alignment.Bottom, 0.25, Messages, Comms, Losses, Engagements);
 
         var map = NewMapDoc("map:1");
         var docs = NewMapsDock(Maps, 0.75);
@@ -161,6 +162,7 @@ public sealed class ShellDockFactory : Factory
                     Messages => new Func<IServiceProvider, object>(_ => new MessagesView(_app)),
                     Comms => new Func<IServiceProvider, object>(_ => new CommsView(_app)),
                     Losses => new Func<IServiceProvider, object>(_ => new LossesView(_app)),
+                    Engagements => new Func<IServiceProvider, object>(_ => new EngagementsView(_app)),
                     Layers => new Func<IServiceProvider, object>(_ => new LayersView(_app)),
                     Health => new Func<IServiceProvider, object>(_ => new HealthView(_app)),
                     _ => t.Content,

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:skizzy:capability:tac.engagement_log@1",
+  "title": "tac.engagement_log",
+  "description": "The missile engagement log and costs: newest first, lines like \"A Hornet-1 fired AIM-120 at Kirov\", \"intercepted by B Kirov SM-2\", \"hit Kirov\", \"missed\", plus per-team totals (fired, intercepts made, hits, misses, destroyed) and funds: spent, cost of own missiles intercepted, cost of hits. Costs are KSP part costs summed over each missile's parts. Page backwards with before, or poll forwards with since (the last seq you saw). Needs the BDArmory binding in a flight scene (EXECUTOR_UNAVAILABLE tactical_not_attached without it).",
+  "x-skz-safety": "read",
+  "x-skz-scenes": [
+    "FLIGHT"
+  ],
+  "x-skz-affinity": "main",
+  "x-skz-mcpTool": "tac_engagement_log",
+  "input": {
+    "type": "object",
+    "properties": {
+      "view": {
+        "type": "string",
+        "description": "Picture to read: a team name (your own side unless you are a human, referee or director), or \"god\" for the truth (needs privilege or fog off). Defaults to the session's side.",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "team": {
+        "type": "string",
+        "description": "only entries where this team fired or was fired at",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "since": {
+        "type": "integer",
+        "description": "only entries with seq greater than this (polling)",
+        "minimum": 0
+      },
+      "before": {
+        "type": "integer",
+        "description": "only entries with seq less than this (paging back)",
+        "minimum": 1
+      },
+      "limit": {
+        "type": "integer",
+        "description": "maximum rows (default 10, max 50)",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 10
+      },
+      "format": {
+        "type": "string",
+        "enum": [
+          "compact",
+          "json"
+        ],
+        "description": "\"compact\" = readable text lines (best for LLMs), \"json\" = structured rows",
+        "default": "compact"
+      }
+    },
+    "additionalProperties": false
+  }
+}
