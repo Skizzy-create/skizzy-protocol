@@ -57,6 +57,8 @@ public sealed class TrackInfo
     public TrackKind Kind { get; set; }
     public TrackDomain Domain { get; set; }
     public Side Side { get; set; }
+    /// <summary>BDArmory team on the live tactical stream (null elsewhere).</summary>
+    public string? Team { get; set; }
     public string Name { get; set; } = "";
     /// <summary>Class name ("Destroyer") and short code ("DDG").</summary>
     public string ClassName { get; set; } = "";

@@ -250,6 +250,22 @@ public sealed partial class CommandService
         return MoveTo(x, y);
     }
 
+    /// <summary>Live tactical stream: the team the operator commands (drawn Blue); null on the demo and the M0 stream.</summary>
+    public string? CommandedTeam => Source is Skizzy.Map.Data.Live.HostDataSource { StreamKind: "tactical" } h ? h.OwnTeam : null;
+
+    /// <summary>Live tactical stream: command <paramref name="t"/>'s team from now on (it turns Blue; the selection starts over).</summary>
+    public void CommandTeamOf(TrackInfo t)
+    {
+        if (Source is not Skizzy.Map.Data.Live.HostDataSource h || t.Team is not { } team || team == h.OwnTeam) return;
+        h.CommandTeam(team);
+        _app.ClearSelection();
+        Data.TouchRevision();
+        Log($"You now command team {team}. Its units are drawn blue.");
+        _app.Toast($"You now command team {team}: its units are blue. Select them, then right-click where they should go.");
+        Changed?.Invoke();
+        _app.RefreshPanels();
+    }
+
     public Task MoveTo(double x, double y)
     {
         var units = SelectedOwn();

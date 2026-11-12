@@ -114,6 +114,10 @@ namespace Skizzy.Host.Core.Tactical
             _mid = false;
             _handles.Clear();
             _trackNames.Clear();
+            // subscriptions outlive a scene change: a revert or quickload takes game time back and empties the ledger, so
+            // every subscriber starts over (else NextUt waits for the old, later time and LogSeq points past the new log)
+            var subs = _subs;
+            for (int i = 0; i < subs.Length; i++) { subs[i].NextUt = double.NegativeInfinity; subs[i].LastSeq = -1; subs[i].LogSeq = 0; }
             _h.Log.Info("tactical: track picture engine attached (" + _source + ")");
             return _feedWorld;
         }
@@ -774,6 +778,7 @@ namespace Skizzy.Host.Core.Tactical
                 var sub = subs[i];
                 var conn = sub.Session.Conn;
                 if (conn == null || !conn.IsOpen) { Drop(sub); continue; }
+                if (ut < sub.NextUt - 2) sub.NextUt = double.NegativeInfinity; // game time went back (quickload): send now
                 if (!sub.Started || ut < sub.NextUt || sub.LastSeq == tpe.Seq) continue;
                 if (conn.QueuedBytes > 2 * 1024 * 1024) continue; // slow client: skip, it catches up with the next frame
                 var p = tpe.Team(sub.View);
@@ -831,11 +836,23 @@ namespace Skizzy.Host.Core.Tactical
         {
             bool god = p.Index < 0;
             var row = default(FeedRow);
+            uint active = 0;
+            try { var av = _h.World != null ? _h.World.ActiveVessel : null; active = av != null ? av.PersistentId : 0; }
+            catch (Exception) { active = 0; }
             for (int i = 0; i < p.Tracks.Count; i++)
             {
                 var t = p.Tracks[i];
-                if (t.State == TrackState.Dead) continue;
                 bool named = god || t.Iff == Iff.Friend;
+                if (t.State == TrackState.Dead)
+                {
+                    // the map ends the track at once instead of waiting for it to miss frames (it keeps dead rows idempotent)
+                    if (tpe.Now - t.StateUt > DeadRowS) continue;
+                    var lm = t.IsMissile && named ? _ledger.Find(t.Vessel) : null;
+                    if (lm != null && lm.State != MissileFate.Flying && (god || lm.Team == p.Team)) continue; // the resolved rows below carry it
+                    DeadRow(p, t, named, ref row);
+                    v.Add(ref row);
+                    continue;
+                }
                 row.Vessel = named ? Handle(t.Vessel) : TrackName(p, t, false);
                 row.Name = t.Name ?? TrackName(p, t, true);
                 row.Type = TypeOf(t);
@@ -843,6 +860,7 @@ namespace Skizzy.Host.Core.Tactical
                 row.Lat = t.Pos.Lat; row.Lon = t.Pos.Lon; row.Alt = t.Pos.Alt; row.Speed = t.SpeedMps; row.Heading = t.HeadingDeg;
                 var truth = named ? tpe.Unit(t.Vessel) : null;
                 row.Climb = truth != null ? truth.ClimbMps : 0;
+                row.Active = named && active != 0 && t.Vessel == active;
                 row.Track = t.Number;
                 row.Team = god || t.Iff != Iff.Unknown ? t.Side : null;
                 row.Iff = god ? "god" : TrackPictureEngine.IffText(t.Iff);
@@ -879,6 +897,7 @@ namespace Skizzy.Host.Core.Tactical
             {
                 var m = ended[i];
                 if (!god && m.Team != p.Team) continue;
+                row.Active = false;
                 row.Vessel = Handle(m.Id);
                 row.Name = m.Name ?? m.Weapon;
                 row.Type = "Probe";
@@ -906,6 +925,37 @@ namespace Skizzy.Host.Core.Tactical
                 row.FiredUt = m.FiredUt;
                 v.Add(ref row);
             }
+        }
+
+        /// <summary>Game seconds a destroyed track is still sent as a "dead" row (several frames, so a skipped frame loses nothing).</summary>
+        public const double DeadRowS = 2;
+
+        /// <summary>A track that died: its last position, state "dead" (missile state "gone" until the ledger resolves it).</summary>
+        private void DeadRow(TeamPicture p, Track t, bool named, ref FeedRow row)
+        {
+            row.Vessel = named ? Handle(t.Vessel) : TrackName(p, t, false);
+            row.Name = t.Name ?? TrackName(p, t, true);
+            row.Type = TypeOf(t);
+            row.Situation = SituationOf(t);
+            row.Lat = t.Pos.Lat; row.Lon = t.Pos.Lon; row.Alt = t.Pos.Alt; row.Speed = 0; row.Heading = t.HeadingDeg; row.Climb = 0;
+            row.Active = false;
+            row.Track = t.Number;
+            row.Team = p.Index < 0 || t.Iff != Iff.Unknown ? t.Side : null;
+            row.Iff = p.Index < 0 ? "god" : TrackPictureEngine.IffText(t.Iff);
+            row.Domain = TrackPictureEngine.DomainText(t.Domain);
+            row.Class = UnitClasses.Name(t.Class);
+            row.IdState = "detected";
+            row.Quality = 0;
+            row.Age = 0;
+            row.State = "dead";
+            row.Threat = 0;
+            row.EngagedBy = 0;
+            row.MissilesAt = 0;
+            row.MissileTarget = null;
+            row.Sources = TrackPictureEngine.SourceText(t.Sources);
+            row.Launcher = row.LauncherName = row.Weapon = null;
+            row.MslState = t.IsMissile ? "gone" : null;
+            row.Cost = row.FiredUt = double.NaN;
         }
 
         // ------------------------------------------------------------------ engagement log

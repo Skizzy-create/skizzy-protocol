@@ -509,6 +509,9 @@ public sealed class TopBar : Border
             _play.IsEnabled = (s.Caps & SourceCaps.Pause) != 0;
             _speeds.IsVisible = (s.Caps & SourceCaps.Speed) != 0;
             _restart.IsVisible = (s.Caps & SourceCaps.Restart) != 0;
+            bool live = s is Skizzy.Map.Data.Live.HostDataSource;
+            _restart.Content = live ? "Reconnect" : "Restart";
+            ToolTip.SetTip(_restart, live ? "Drop the connection to KSP and connect again (the stream and the engagement log are fetched afresh)." : "Restart the scenario");
             int si = Array.IndexOf(AppState.Speeds, s.Speed);
             _speeds.SetSelected(si < 0 ? 2 : si);
             bool adv = s is DemoBattleSource dd ? dd.AdvanceOnContact : cmd.Advance;

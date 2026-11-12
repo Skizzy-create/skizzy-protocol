@@ -194,4 +194,178 @@ public class LiveControlTests
         Idle(h);
         Assert.StartsWith("Move refused: the C2 engine is not attached", h.Logged("Move refused"));
     }
+
+    // ------------------------------------------------------------ the M2 tactical stream: teams, orders, deaths
+
+    private static void Until(UiHarness h, Func<bool> cond, string what, double seconds = 20)
+    {
+        var sw = Stopwatch.StartNew();
+        while (!cond() && sw.Elapsed < TimeSpan.FromSeconds(seconds))
+        {
+            Thread.Sleep(30);
+            h.Pump(1);
+        }
+        Assert.True(cond(), what);
+    }
+
+    /// <summary>
+    /// FakeKSP with a BDArmory binding: Hornet 1 (team A, first seen) and team B's Kirov and Viper 1, Viper being KSP's
+    /// active vessel. Returns once the map is on source.tactical with the three units.
+    /// </summary>
+    private static UiHarness Tactical(out FakeKspDataSource src, out FakeBda bda, out uint viperId, out uint hornetId)
+    {
+        src = FakeKspDataSource.Start();
+        var h = new UiHarness(src);
+        var s = src;
+        Until(h, () => s.StreamKind is not null && h.App.Data.Tracks.Any(t => t.Alive && t.Control == ControlState.Manual), "no active vessel on the vessel stream");
+        uint activePid = Pid(h.App.Data.Tracks.First(t => t.Alive && t.Control == ControlState.Manual));
+        var b = new FakeBda();
+        var sim = src.Sim;
+        FakeUnit hornet = null!;
+        OnMain(sim, () =>
+        {
+            hornet = b.Add("Hornet 1", "A", UnitClass.Fighter, 0, 0);
+            var kirov = b.Add("Kirov", "B", UnitClass.Ship, 40, 0);
+            var viper = b.Add("Viper 1", "B", UnitClass.Fighter, 40, 5);
+            b.Units.Remove(viper.Id);
+            viper.S.Id = activePid;
+            b.Units[activePid] = viper;
+            foreach (var u in new[] { hornet, kirov, viper }) { u.Scripted = true; u.S.GuardMode = false; u.S.SpeedMps = 0; }
+            b.Sink = sim.Host.C2.Attach(b, b, "fakebda");
+        });
+        Until(h, () => s.StreamKind == "tactical", "the map did not move up to source.tactical", 15);
+        var d = h.App.Data;
+        Until(h, () => d.Tracks.Any(t => t.Alive && t.Name == "Hornet 1") && d.Tracks.Any(t => t.Alive && t.Name == "Kirov")
+                       && d.Tracks.Any(t => t.Alive && t.Name == "Viper 1" && t.Team == "B"), "the units are not on the map");
+        bda = b;
+        viperId = activePid;
+        hornetId = hornet.Id;
+        return h;
+    }
+
+    [AvaloniaFact]
+    public void Live_Tactical_ActiveVesselsTeamIsBlue_AndEitherTeamTakesMoveOrders()
+    {
+        using var h = Tactical(out var src, out var bda, out uint viperId, out uint hornetId);
+        var sim = src.Sim;
+        var d = h.App.Data;
+        // the commanded team follows KSP's active vessel (Viper, team B), not the order the teams appeared in
+        Until(h, () => src.OwnTeam == "B", "the active vessel's team is not commanded: " + src.OwnTeam);
+        h.Pump(2);
+        var vt = h.Track("Viper 1");
+        var kt = h.Track("Kirov");
+        var ht = h.Track("Hornet 1");
+        Until(h, () => vt.Side == Side.Blue && kt.Side == Side.Blue && ht.Side == Side.Red, $"sides: Viper {vt.Side}, Kirov {kt.Side}, Hornet {ht.Side}");
+        Assert.Equal(ControlState.Manual, vt.Control); // isActive comes through the tactical stream
+        Assert.True(h.Cmd().IsOwn(vt));
+        Assert.False(h.Cmd().IsOwn(ht));
+
+        // select Viper, right-click empty plot: move_to for team B, the waypoint reaches BDArmory
+        h.Select("Viper 1");
+        var p = h.Focus(vt, 10);
+        var e = h.Empty(p.X + 6, p.Y + 6);
+        h.RightClick(e.X, e.Y);
+        Idle(h);
+        var (args, reply) = h.Issued("move_to");
+        Assert.Equal("B", args.GetString("side"));
+        Assert.Equal(1, reply.GetInt("accepted"));
+        h.Logged("Viper 1: move to bearing");
+        BdaCall(sim, bda, "F6 set " + viperId);
+
+        // the context menu's "Command team A" (on Hornet): Hornet turns blue and takes orders, B turns red
+        h.Cmd().CommandTeamOf(ht);
+        Assert.Equal("A", src.OwnTeam);
+        Assert.Equal(Side.Blue, ht.Side);
+        Assert.Equal(Side.Red, kt.Side);
+        Assert.Empty(h.App.Selection);
+        h.Logged("You now command team A.");
+        h.Select("Hornet 1");
+        p = h.Focus(ht, 10);
+        e = h.Empty(p.X + 6, p.Y + 6);
+        h.RightClick(e.X, e.Y);
+        Idle(h);
+        (args, reply) = h.Issued("move_to");
+        Assert.Equal("A", args.GetString("side"));
+        Assert.Equal(1, reply.GetInt("accepted"));
+        BdaCall(sim, bda, "F6 set " + hornetId);
+        // a picked team stays picked: the active vessel (team B) no longer moves it
+        for (int i = 0; i < 4; i++) { OnMain(sim, () => bda.Step(0.2)); Thread.Sleep(60); h.Pump(1); }
+        Assert.Equal("A", src.OwnTeam);
+        Assert.Equal(Side.Red, h.Track("Viper 1").Side);
+    }
+
+    /// <summary>Advances FakeBda's game clock 0.2 s at a time (the host samples on game time) until the condition holds; returns the steps.</summary>
+    private static int StepUntil(UiHarness h, SimHost sim, FakeBda bda, Func<bool> cond, string what)
+    {
+        for (int i = 1; i <= 40; i++)
+        {
+            OnMain(sim, () => bda.Step(0.2));
+            var sw = Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < 250) { Thread.Sleep(15); h.Pump(1); if (cond()) return i; }
+        }
+        Assert.Fail(what);
+        return -1;
+    }
+
+    [AvaloniaFact]
+    public void Live_Tactical_DestroyedUnitEndsOnTheNextFrame()
+    {
+        using var h = Tactical(out var src, out var bda, out uint viperId, out uint hornetId);
+        var sim = src.Sim;
+        var d = h.App.Data;
+        var vt = h.Track("Viper 1");
+        OnMain(sim, () => bda.Kill(viperId));
+        int frames = StepUntil(h, sim, bda, () => !vt.Alive, "the destroyed unit is still alive on the map");
+        Assert.True(frames <= 3, $"the destroyed unit ended after {frames} game steps of 0.2 s");
+        // the host's "dead" row ended it (not the missed-frames fallback, which logs "left the picture")
+        Assert.Contains(d.Log.Entries, x => x.Category == LogCategory.Damage && x.Text == "Viper 1 destroyed.");
+        Assert.DoesNotContain(d.Log.Entries, x => x.Text.StartsWith("Viper 1 left the picture", StringComparison.Ordinal));
+        // and a unit taken out of the world entirely (KSP destroyed the vessel) ends the same way
+        var ht = h.Track("Hornet 1");
+        OnMain(sim, () => bda.Remove(hornetId));
+        frames = StepUntil(h, sim, bda, () => !ht.Alive, "the removed unit is still alive on the map");
+        Assert.True(frames <= 3, $"the removed unit ended after {frames} game steps of 0.2 s");
+        Assert.Contains(d.Log.Entries, x => x.Category == LogCategory.Damage && x.Text == "Hornet 1 destroyed.");
+        // the Losses tab counts both from the destructions (no BDArmory competition running): Viper is team B, the
+        // commanded team (KSP's active vessel), so Blue; Hornet is team A, Red
+        Assert.Contains(d.Losses.Blue.Lost, kv => kv.Key == "Fighter" && kv.Value == 1);
+        Assert.Contains(d.Losses.Red.Lost, kv => kv.Key == "Fighter" && kv.Value == 1);
+    }
+
+    [AvaloniaFact]
+    public void Live_Tactical_RevertTakesTimeBack_TheMapStartsOverAndKeepsUpdating()
+    {
+        using var h = Tactical(out var src, out var bda, out _, out _);
+        var sim = src.Sim;
+        var d = h.App.Data;
+        // play on a while, then revert: the binding detaches, KSP reloads the scene 60 s earlier, the binding attaches again
+        StepUntil(h, sim, bda, () => d.LiveTime > 1.5, "game time did not run");
+        var bda2 = new FakeBda { Now = bda.Now - 60 };
+        OnMain(sim, () =>
+        {
+            sim.Host.C2.Detach("scene change");
+            var a = bda2.Add("Hornet 1", "A", UnitClass.Fighter, 0, 0);
+            var k = bda2.Add("Kirov", "B", UnitClass.Ship, 40, 0);
+            foreach (var u in new[] { a, k }) { u.Scripted = true; u.S.GuardMode = false; u.S.SpeedMps = 0; }
+            bda2.Sink = sim.Host.C2.Attach(bda2, bda2, "fakebda");
+        });
+        StepUntil(h, sim, bda2, () => d.Log.Entries.Any(x => x.Text.StartsWith("Game time went back", StringComparison.Ordinal)), "the map did not notice the revert");
+        // the stream did not stall waiting for the old time: the new scene's units come and keep moving on the map
+        var t0 = d.LiveTime;
+        StepUntil(h, sim, bda2, () => d.Tracks.Any(t => t.Alive && t.Name == "Kirov") && d.LiveTime > t0 + 0.5, "no frames after the revert");
+        Assert.DoesNotContain(d.Tracks, t => t.Alive && t.Name == "Viper 1"); // the old picture is gone
+        Assert.Equal(SourceState.Online, src.State);
+    }
+
+    [AvaloniaFact]
+    public void Control_ReconnectButton_ShowsForLiveAndReconnects()
+    {
+        using var h = Tactical(out var src, out _, out _, out _);
+        var bar = h.Find<TopBar>()!;
+        var btn = bar.GetLogicalDescendants().OfType<Button>().First(b => b.Content as string == "Reconnect");
+        Assert.True(btn.IsVisible);
+        h.Click(btn);
+        Until(h, () => h.App.Data.Log.Entries.Any(x => x.Text == "Reconnecting…"), "no reconnect");
+        Until(h, () => src.State == SourceState.Online && src.StreamKind == "tactical", "did not come back online on the tactical stream", 20);
+    }
 }

@@ -116,12 +116,15 @@ namespace Skizzy.Bda.Ksp
             {
                 var v = loaded[i];
                 if (v == null || v.state == Vessel.State.DEAD) continue;
+                int before = into.Count;
                 try { Fill(v, into, now); }
                 catch (Exception e)
                 {
                     if (++_scanFaults <= 20) Log?.Invoke("[Skizzy.BDArmory] scan of " + v.vesselName + " failed: " + e.GetType().Name + ": " + e.Message);
                 }
+                if (into.Count == before) _last.Remove(v.persistentId); // loaded and no longer a unit (lost its weapon manager, missile ended)
             }
+            ScanUnloaded(into);
             // forget vessels that are no longer loaded (every few hundred scans)
             if ((_stamp & 255) == 0)
             {
@@ -129,7 +132,53 @@ namespace Skizzy.Bda.Ksp
                     if (kv.Key == null || _stamp - kv.Value.SeenStamp > 255) _infoGone.Add(kv.Key);
                 for (int i = 0; i < _infoGone.Count; i++) _info.Remove(_infoGone[i]);
                 _infoGone.Clear();
+                foreach (var kv in _last)
+                    if (_stamp - Math.Max(kv.Value.Stamp, kv.Value.UnloadedStamp) > 255) _lastGone.Add(kv.Key);
+                for (int i = 0; i < _lastGone.Count; i++) _last.Remove(_lastGone[i]);
+                _lastGone.Clear();
                 SweepMissiles();
+            }
+        }
+
+        // the last state of every unit seen loaded: a vessel KSP unloads (out of physics range at a 100 km fight) still
+        // exists, so it stays listed (position from KSP, on rails, no weapon manager) instead of reading as destroyed
+        private sealed class LastSeen
+        {
+            public readonly Skizzy.C2.UnitState S = new Skizzy.C2.UnitState();
+            public int Stamp, UnloadedStamp;
+        }
+
+        private readonly Dictionary<uint, LastSeen> _last = new Dictionary<uint, LastSeen>();
+        private readonly List<uint> _lastGone = new List<uint>();
+
+        private void Remember(Skizzy.C2.UnitState s)
+        {
+            if (!_last.TryGetValue(s.Id, out var l)) _last[s.Id] = l = new LastSeen();
+            l.S.CopyFrom(s);
+            l.Stamp = _stamp;
+        }
+
+        /// <summary>Units seen loaded before that KSP has unloaded but not destroyed (FlightGlobals.Vessels, not loaded).</summary>
+        private void ScanUnloaded(List<GameUnit> into)
+        {
+            if (_last.Count == 0) return;
+            var all = FlightGlobals.Vessels;
+            if (all == null) return;
+            for (int i = 0; i < all.Count; i++)
+            {
+                var v = all[i];
+                if (v == null || v.loaded || v.state == Vessel.State.DEAD) continue;
+                if (!_last.TryGetValue(v.persistentId, out var l) || l.Stamp == _stamp) continue;
+                l.UnloadedStamp = _stamp;
+                var g = Next(into);
+                g.S.CopyFrom(l.S);
+                g.S.Pos = new GeoPoint(v.latitude, v.longitude, v.altitude);
+                g.S.SpeedMps = v.srfSpeed;
+                g.S.AiActive = false;
+                g.Vessel = v;
+                g.Wm = null;
+                g.Ai = null;
+                g.Packed = true;
             }
         }
 
@@ -188,12 +237,22 @@ namespace Skizzy.Bda.Ksp
             g.Wm = wm;
             g.Ai = ai as PartModule;
             g.Packed = v.packed;
+            Remember(s);
         }
 
         private void FillMissile(Vessel v, List<GameUnit> into)
         {
             var mb = VesselModuleRegistry.GetModule<MissileBase>(v);
             if (mb == null || !mb.HasFired) return;
+            if (mb.HasExploded)
+            {
+                // A modular missile that detonates through its proximity action group (or a warhead that went off without
+                // the guidance part) leaves its body flying: BDArmory sets HasExploded but destroys no parts. The missile
+                // ended here, not when the wreck finally dies: record the end now and stop listing it.
+                MissileVesselWillDestroy(v);
+                _last.Remove(v.persistentId);
+                return;
+            }
             var g = Next(into);
             var s = g.S;
             s.Id = v.persistentId;
@@ -225,6 +284,7 @@ namespace Skizzy.Bda.Ksp
             g.Wm = null;
             g.Ai = null;
             g.Packed = v.packed;
+            Remember(s);
         }
 
         private static double Heading(Vessel v)

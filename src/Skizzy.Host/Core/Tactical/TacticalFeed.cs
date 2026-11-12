@@ -15,6 +15,7 @@ namespace Skizzy.Host.Core.Tactical
     {
         public string Vessel, Name, Type, Situation;
         public double Lat, Lon, Alt, Speed, Heading, Climb;
+        public bool Active; // KSP's active vessel (named rows only)
         public long Track;
         public string Team, Iff, Domain, Class, IdState;
         public double Quality, Age;
@@ -311,7 +312,7 @@ namespace Skizzy.Host.Core.Tactical
             Str(w, r.Type);
             Str(w, r.Situation);
             w.String("Kerbin");
-            w.Number(r.Lat).Number(r.Lon).Number(r.Alt).Number(r.Speed).Number(r.Heading).Number(r.Climb).Bool(false).Number(0L).Null();
+            w.Number(r.Lat).Number(r.Lon).Number(r.Alt).Number(r.Speed).Number(r.Heading).Number(r.Climb).Bool(r.Active).Number(0L).Null();
             w.Number(r.Track);
             Str(w, r.Team);
             Str(w, r.Iff);

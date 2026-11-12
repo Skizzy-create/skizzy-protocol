@@ -37,6 +37,8 @@ public class HostDataSource : IDataSource, ICommandSource
     private string[] _columns = [];
     private double _lastUt = double.NaN;
     private long _lastUtWall;
+    // game seconds per wall second between samples (KSP slows below real time in big fights): extrapolation follows it
+    private double _gameRate = 1;
     private double? _lat0, _lon0;
     private string? _body0;
     private readonly Dictionary<string, int> _missing = new();
@@ -49,9 +51,16 @@ public class HostDataSource : IDataSource, ICommandSource
     private string _url = "";
     private List<CatalogEntry> _catalog = new();
     private Task? _loop;
-    // M2 tactical stream: team -> map side (first team seen Blue, second Red, third Green, the rest Other), the
-    // engagement log's last sequence already written to the Messages log, and the per-frame missile scratch
+    // M2 tactical stream: team -> map side (the commanded team Blue, the others Red, Green, then Other in the order seen),
+    // the engagement log's last sequence already written to the Messages log, and the per-frame missile scratch
     private readonly Dictionary<string, Side> _teamSides = new(StringComparer.Ordinal);
+    private readonly List<string> _teamOrder = new();
+    private string? _ownTeam;
+    private bool _ownPinned;
+    // missiles ended by a "dead" row before the ledger said how (their plot event follows with the resolved row)
+    private readonly HashSet<string> _awaitOutcome = new(StringComparer.Ordinal);
+    // vessels ended only because they went missing from frames (they come back if the host lists them again)
+    private readonly HashSet<string> _revivable = new(StringComparer.Ordinal);
     private long _loggedSeq;
     private bool _freshSub;
     private readonly List<(TrackInfo Missile, string? Target, string? Launcher)> _missileRows = new();
@@ -68,7 +77,7 @@ public class HostDataSource : IDataSource, ICommandSource
     public string Description { get; }
     public SourceKind Kind { get; }
     /// <summary>Orders go to the host's c2.* capabilities; the host answers (or refuses) them itself.</summary>
-    public virtual SourceCaps Caps => SourceCaps.Catalog | SourceCaps.Orders;
+    public virtual SourceCaps Caps => SourceCaps.Catalog | SourceCaps.Orders | SourceCaps.Restart;
     public SourceState State { get; private set; } = SourceState.Idle;
     public string StatusText { get; private set; } = "Not connected";
     public bool Paused => false;
@@ -85,13 +94,65 @@ public class HostDataSource : IDataSource, ICommandSource
     public Side SideOfTeam(string team)
     {
         if (_teamSides.TryGetValue(team, out var s)) return s;
-        s = _teamSides.Count switch { 0 => Side.Blue, 1 => Side.Red, 2 => Side.Green, _ => Side.Other };
-        _teamSides[team] = s;
-        return s;
+        _teamOrder.Add(team);
+        AssignSides();
+        return _teamSides[team];
     }
 
     /// <summary>Teams seen so far and their map sides.</summary>
     public IReadOnlyDictionary<string, Side> TeamSides => _teamSides;
+
+    /// <summary>Teams in the order the stream showed them.</summary>
+    public IReadOnlyList<string> Teams => _teamOrder;
+
+    /// <summary>
+    /// The team the operator commands, drawn Blue (the map's own side: selection, groups and orders follow Blue). It
+    /// follows KSP's active vessel until <see cref="CommandTeam"/> picks one; before either, the first team seen.
+    /// </summary>
+    public string? OwnTeam => _ownTeam ?? (_teamOrder.Count > 0 ? _teamOrder[0] : null);
+
+    /// <summary>Raised on the UI thread when the commanded team changed (sides were reassigned).</summary>
+    public event Action? TeamsChanged;
+
+    /// <summary>Commands <paramref name="team"/> from now on (it becomes Blue) and stops following the active vessel.</summary>
+    public void CommandTeam(string team)
+    {
+        _ownPinned = true;
+        SetOwnTeam(team);
+    }
+
+    private void SetOwnTeam(string team)
+    {
+        if (_ownTeam == team) return;
+        _ownTeam = team;
+        if (!_teamOrder.Contains(team)) _teamOrder.Add(team);
+        AssignSides();
+        // recolour what is on the map now; the next frame reclassifies every live row anyway
+        if (_data is { } d)
+            foreach (var tr in d.Tracks)
+                if (tr.Team is { } tm && _teamSides.TryGetValue(tm, out var side)) SetSide(tr, side);
+        TeamsChanged?.Invoke();
+    }
+
+    private void AssignSides()
+    {
+        string? own = OwnTeam;
+        _teamSides.Clear();
+        if (own is not null) _teamSides[own] = Side.Blue;
+        int k = 0;
+        foreach (var t in _teamOrder)
+        {
+            if (t == own) continue;
+            _teamSides[t] = k++ switch { 0 => Side.Red, 1 => Side.Green, _ => Side.Other };
+        }
+    }
+
+    private static void SetSide(TrackInfo tr, Side side)
+    {
+        tr.Side = side;
+        tr.AffBlue = side == Side.Blue ? Affiliation.Friend : Affiliation.Hostile;
+        tr.AffRed = side == Side.Red ? Affiliation.Friend : Affiliation.Hostile;
+    }
 
     public virtual void Attach(MapData data)
     {
@@ -320,8 +381,10 @@ public class HostDataSource : IDataSource, ICommandSource
         while (n++ < 256 && _inbox.TryDequeue(out var a)) a();
         var d = _data;
         if (d is null || double.IsNaN(_lastUt) || double.IsNaN(d.Epoch)) return;
-        // between samples the clock runs on wall time (bounded): tracks extrapolate smoothly at 60 fps
-        double since = Math.Min(1.0, (Stopwatch.GetTimestamp() - _lastUtWall) / (double)Stopwatch.Frequency);
+        // between samples the clock runs at the game's own pace (KSP slows below real time in a big fight) and at most
+        // MaxExtrapolateS past the last sample: a track that just died does not fly on ahead of where it ended
+        double wall = (Stopwatch.GetTimestamp() - _lastUtWall) / (double)Stopwatch.Frequency;
+        double since = Math.Min(MaxExtrapolateS, wall * _gameRate);
         if (!d.InReplay) d.LiveTime = Math.Max(d.LiveTime, _lastUt - d.Epoch + since);
     }
 
@@ -332,9 +395,16 @@ public class HostDataSource : IDataSource, ICommandSource
         var d = _data;
         if (d is null) return;
         if (double.IsNaN(ut)) ut = double.IsNaN(_lastUt) ? 0 : _lastUt + 0.2;
+        if (!double.IsNaN(_lastUt) && ut < _lastUt - 1) NewBattle(d, "Game time went back (revert or quickload): the picture starts over.");
         if (double.IsNaN(d.Epoch)) { d.Epoch = ut; d.ReplayStart = 0; }
+        long nowWall = Stopwatch.GetTimestamp();
+        if (!double.IsNaN(_lastUt))
+        {
+            double dw = (nowWall - _lastUtWall) / (double)Stopwatch.Frequency, dg = ut - _lastUt;
+            if (dw > 0.02 && dg >= 0) _gameRate = 0.7 * _gameRate + 0.3 * Math.Clamp(dg / dw, 0, 4);
+        }
         _lastUt = ut;
-        _lastUtWall = Stopwatch.GetTimestamp();
+        _lastUtWall = nowWall;
         double t = ut - d.Epoch;
         _samples++;
         _sampleWindowCount++;
@@ -374,18 +444,48 @@ public class HostDataSource : IDataSource, ICommandSource
             string? rowState = tactical ? F("state")?.AsString() : null;
             if (rowState == "dead")
             {
-                // a missile the host's ledger resolved (hit, missed, intercepted, destroyed): it ends where it was last seen
+                // the host says it is gone: a destroyed vessel, or a missile that ended (resolved: hit, missed, intercepted,
+                // destroyed; "gone": the ledger has not said how yet). It ends where it was last seen, at once.
                 var gone = d.GetByKey("vessel:" + handle);
-                if (gone is not null) seen.Add(gone.Key);
-                if (gone is { Alive: true }) EndMissile(d, gone, F("missileState")?.AsString(), t, x, y, (float)alt);
+                if (gone is null) continue;
+                seen.Add(gone.Key);
+                _missing.Remove(gone.Key);
+                string? ms = F("missileState")?.AsString();
+                bool resolved = ms is "hit" or "missed" or "intercepted" or "destroyed";
+                if (gone.Alive)
+                {
+                    if (gone.IsMissile && resolved) EndMissile(d, gone, ms, t, x, y, (float)alt);
+                    else
+                    {
+                        gone.SetSample(t, x, y, (float)alt, gone.HeadingDeg, 0, 0, 0, d.LiveTime);
+                        d.MarkDead(gone, t);
+                        if (gone.IsMissile) { if (_awaitOutcome.Count > 512) _awaitOutcome.Clear(); _awaitOutcome.Add(gone.Key); }
+                        else
+                        {
+                            d.Log.Add(t, LogCategory.Damage, $"{gone.Name} destroyed.", x, y);
+                            CountLoss(d, gone);
+                        }
+                    }
+                }
+                else if (resolved && _awaitOutcome.Remove(gone.Key)) d.AddEvent(EventOf(ms), x, y, t);
                 continue;
             }
             var tr = d.GetOrAdd("vessel:" + handle, t, out bool created);
             seen.Add(tr.Key);
-            if (!tr.Alive) continue;
+            if (!tr.Alive)
+            {
+                // the host still lists it: it was ended by missed frames (a stall, a reconnect), not destroyed. Missiles stay ended.
+                if (tr.IsMissile || !_revivable.Remove(tr.Key)) continue;
+                tr.Alive = true;
+                tr.DiedT = double.PositiveInfinity;
+                d.TouchRevision();
+            }
             if (tactical)
             {
-                ClassifyTactical(tr, cls, F("domain")?.AsString(), F("team")?.AsString(), type);
+                string? rowTeam = F("team")?.AsString();
+                // the commanded team follows KSP's active vessel until the operator picks one
+                if (active && !_ownPinned && rowTeam is not null && cls != "missile" && rowTeam != _ownTeam) SetOwnTeam(rowTeam);
+                ClassifyTactical(tr, cls, F("domain")?.AsString(), rowTeam, type);
                 if (created && !tr.IsMissile) d.Log.Add(t, LogCategory.Contact, $"New contact: {name} ({tr.ClassName}{(tr.Side == Side.Other ? "" : ", " + tr.Side)}).", x, y);
             }
             else
@@ -427,9 +527,10 @@ public class HostDataSource : IDataSource, ICommandSource
                 if (!tr.Alive || seen.Contains(tr.Key)) { _missing.Remove(tr.Key); continue; }
                 int miss = _missing.GetValueOrDefault(tr.Key) + 1;
                 _missing[tr.Key] = miss;
-                if (miss >= 3)
+                if (miss >= 2) // the host sends "dead" rows for what it saw die; this catches the rest (unloaded, recovered)
                 {
                     d.MarkDead(tr, t);
+                    if (tactical && !tr.IsMissile) _revivable.Add(tr.Key);
                     // a missile's end is in the engagement log; only other vessels get the line
                     if (!tr.IsMissile) d.Log.Add(t, LogCategory.Damage, $"{tr.Name} left the picture (destroyed, recovered or unloaded).", tr.X, tr.Y);
                     _missing.Remove(tr.Key);
@@ -439,6 +540,21 @@ public class HostDataSource : IDataSource, ICommandSource
         if (_missileRows.Count > 0) LinkMissiles(d);
         d.LiveTime = Math.Max(d.LiveTime, t);
         if (_samples % 50 == 0) d.Prune();
+    }
+
+    /// <summary>A revert or quickload: the old picture's times are in the future now, so the map starts over.</summary>
+    private void NewBattle(MapData d, string why)
+    {
+        d.Reset();
+        d.Epoch = double.NaN;
+        d.DayLength = 21600;
+        _lastUt = double.NaN;
+        _gameRate = 1;
+        _missing.Clear();
+        _awaitOutcome.Clear();
+        _revivable.Clear();
+        _loggedSeq = 0;
+        d.Log.Add(0, LogCategory.System, why);
     }
 
     private static void Classify(TrackInfo tr, string type, string situation, double alt, bool active)
@@ -479,17 +595,13 @@ public class HostDataSource : IDataSource, ICommandSource
                 break;
         }
         tr.Rcs = KindInfo.Of(tr.Kind).Rcs;
+        tr.Team = team;
         if (team is null)
         {
             tr.Side = Side.Other;
             tr.AffBlue = tr.AffRed = Affiliation.Unknown;
         }
-        else
-        {
-            tr.Side = SideOfTeam(team);
-            tr.AffBlue = tr.Side == Side.Blue ? Affiliation.Friend : Affiliation.Hostile;
-            tr.AffRed = tr.Side == Side.Red ? Affiliation.Friend : Affiliation.Hostile;
-        }
+        else SetSide(tr, SideOfTeam(team));
         tr.DetBlue = TrackDetection.Shared;
         tr.DetRed = TrackDetection.Shared;
 
@@ -527,15 +639,30 @@ public class HostDataSource : IDataSource, ICommandSource
     {
         tr.SetSample(t, x, y, alt, tr.HeadingDeg, 0, 0, 0, d.LiveTime);
         d.MarkDead(tr, t);
-        var kind = state switch
-        {
-            "hit" => PlotEventKind.Impact,
-            "intercepted" => PlotEventKind.Intercept,
-            "destroyed" => PlotEventKind.Ciws,
-            _ => PlotEventKind.Miss,
-        };
-        d.AddEvent(kind, x, y, t);
+        d.AddEvent(EventOf(state), x, y, t);
     }
+
+    /// <summary>The Losses tab: a vessel of the Blue or Red team the host saw destroyed, by class (every scene, not only competitions).</summary>
+    private static void CountLoss(MapData d, TrackInfo tr)
+    {
+        var col = tr.Side == Side.Blue ? d.Losses.Blue : tr.Side == Side.Red ? d.Losses.Red : null;
+        if (col is null) return;
+        string cls = string.IsNullOrEmpty(tr.ClassName) ? "Vessel" : tr.ClassName;
+        int i = col.Lost.FindIndex(kv => kv.Key == cls);
+        if (i < 0) col.Lost.Add(new(cls, 1)); else col.Lost[i] = new(cls, col.Lost[i].Value + 1);
+        d.Losses.Version++;
+    }
+
+    private static PlotEventKind EventOf(string? state) => state switch
+    {
+        "hit" => PlotEventKind.Impact,
+        "intercepted" => PlotEventKind.Intercept,
+        "destroyed" => PlotEventKind.Ciws,
+        _ => PlotEventKind.Miss,
+    };
+
+    /// <summary>Game seconds a track is drawn ahead of its last sample (about two 5 Hz samples).</summary>
+    public const double MaxExtrapolateS = 0.4;
 
     /// <summary>The tactical stream's "log" and "totals": the engagement book, the Messages log and the Losses tab.</summary>
     private void ApplyLedger(JsonValue? log, JsonValue? totals)
@@ -546,6 +673,12 @@ public class HostDataSource : IDataSource, ICommandSource
         var book = d.Engagements;
         if (log is not null && log.Count > 0)
         {
+            if (!_freshSub && log[0].GetLong("seq", 0) <= 1 && _loggedSeq > 0)
+            {
+                // the binding re-attached (new flight scene, revert): the host's ledger counts from 1 again
+                book.Clear();
+                _loggedSeq = 0;
+            }
             if (_freshSub)
             {
                 // a new subscription replays the log from the start: a host that restarted counts from 1 again
@@ -572,19 +705,8 @@ public class HostDataSource : IDataSource, ICommandSource
                 string? at = kind == "killed" ? e.GetString("other") : e.GetString("missile");
                 var tr = at is null ? null : d.GetByKey("vessel:" + at);
                 d.Log.Add(t, EngagementBook.CategoryOf(kind), entry.Text, tr?.X, tr?.Y);
-                if (kind == "killed" && tr is not null)
-                {
-                    d.AddEvent(PlotEventKind.Kill, tr.X, tr.Y, t);
-                    Side? side = entry.OtherTeam is null ? null : SideOfTeam(entry.OtherTeam);
-                    var col = side == Side.Blue ? d.Losses.Blue : side == Side.Red ? d.Losses.Red : null;
-                    if (col is not null)
-                    {
-                        string cls = string.IsNullOrEmpty(tr.ClassName) ? "Vessel" : tr.ClassName;
-                        int i = col.Lost.FindIndex(kv => kv.Key == cls);
-                        if (i < 0) col.Lost.Add(new(cls, 1)); else col.Lost[i] = new(cls, col.Lost[i].Value + 1);
-                        d.Losses.Version++;
-                    }
-                }
+                // losses are counted from the destruction itself (CountLoss); BDArmory's kill report only marks the spot
+                if (kind == "killed" && tr is not null) d.AddEvent(PlotEventKind.Kill, tr.X, tr.Y, t);
             }
             _freshSub = false;
         }

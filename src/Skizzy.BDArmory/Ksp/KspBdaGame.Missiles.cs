@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using BDArmory.Extensions;
+using BDArmory.Utils;
 using BDArmory.Weapons.Missiles;
 using Skizzy.C2.Tactical;
 using UnityEngine;
@@ -31,6 +33,7 @@ namespace Skizzy.Bda.Ksp
             public bool Exploded, Missed, NearTarget;
             public uint TargetId;
             public uint InterceptedBy;
+            public uint VictimId; // nearest enemy unit inside the blast when it was not the target (GPS / cruise missiles have none)
         }
 
         private struct Detonation
@@ -130,6 +133,7 @@ namespace Skizzy.Bda.Ksp
                 m.TargetId = tgt.persistentId;
                 m.NearTarget = NearestPartM(tgt, pos) <= Math.Max(m.Blast * 1.1, 20.0);
             }
+            if (m.Exploded && !m.NearTarget) m.VictimId = EnemyInBlast(v, pos, m);
             if (m.Exploded)
             {
                 _det[_detNext] = new Detonation { Ut = m.EndUt, Lat = v.latitude, Lon = v.longitude, Alt = v.altitude, Team = m.Team, Id = v.persistentId, Blast = m.Blast };
@@ -147,6 +151,36 @@ namespace Skizzy.Bda.Ksp
                     if (dist <= d.Blast * 1.5 + 30 && dist < best) { best = dist; m.InterceptedBy = d.Id; }
                 }
             }
+        }
+
+        /// <summary>
+        /// The nearest loaded enemy unit (a vessel with a weapon manager on another team, not a missile) with a part inside
+        /// the missile's blast at detonation, or 0. Many missiles (GPS, cruise, unguided) have no target vessel at all.
+        /// </summary>
+        private static uint EnemyInBlast(Vessel missile, Vector3d pos, MslInfo m)
+        {
+            var loaded = FlightGlobals.VesselsLoaded;
+            if (loaded == null) return 0;
+            double radius = Math.Max(m.Blast * 1.1, 20.0), best = double.MaxValue;
+            uint id = 0;
+            for (int i = 0; i < loaded.Count; i++)
+            {
+                var w = loaded[i];
+                if (w == null || w == missile || w.state == Vessel.State.DEAD) continue;
+                if ((w.CoMD - pos).sqrMagnitude > (radius + 300) * (radius + 300)) continue; // no vessel part is that far from its CoM
+                try
+                {
+                    var ac = w.ActiveController();
+                    var wm = ac != null ? ac.WM : null;
+                    if (wm == null || (m.Team != null && wm.teamString == m.Team)) continue;
+                    var mb = VesselModuleRegistry.GetModule<MissileBase>(w);
+                    if (mb != null && mb.HasFired) continue; // missiles: interceptions are scored on their own
+                }
+                catch (Exception) { continue; }
+                double d = NearestPartM(w, pos);
+                if (d <= radius && d < best) { best = d; id = w.persistentId; }
+            }
+            return id;
         }
 
         private static double NearestPartM(Vessel t, Vector3d pos)
@@ -184,6 +218,7 @@ namespace Skizzy.Bda.Ksp
                 uint vid = victim != null ? IdOfName(victim) : 0;
                 if (vid != 0) { end = new MissileEnd { Fate = MissileFate.Hit, Victim = vid, Source = "bda_scoring" }; return true; }
                 if (m.NearTarget) { end = new MissileEnd { Fate = MissileFate.Hit, Victim = m.TargetId, Source = "proximity" }; return true; }
+                if (m.VictimId != 0) { end = new MissileEnd { Fate = MissileFate.Hit, Victim = m.VictimId, Source = "proximity" }; return true; }
                 end = new MissileEnd { Fate = MissileFate.Missed, Source = "proximity" };
                 return true;
             }

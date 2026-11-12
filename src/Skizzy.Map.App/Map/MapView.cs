@@ -736,6 +736,8 @@ public sealed class MapView : UserControl
         items.Add(Item($"Send {sel} here", () => cmd.MoveTo(wx, wy)));
         if (t is { Side: Side.Red }) items.Add(Item($"Attack {t.Name}", () => cmd.Attack(t, wx, wy)));
         if (t is { Side: Side.Blue, IsMissile: false }) items.Add(Item($"Protect {t.Name}", () => cmd.Protect(t)));
+        if (t is { IsMissile: false, Team: { } team } && cmd.CommandedTeam is { } own && team != own)
+            items.Add(Item($"Command team {team}", () => cmd.CommandTeamOf(t)));
         items.Add(Item("Racetrack…", () => cmd.ToggleRacetrack(fromKey: false), gesture: "T"));
         items.Add(Item("Attack nearest", () => cmd.AttackNearest(), gesture: "A"));
         items.Add(Item("RTB & land", () => cmd.Rtb(), gesture: "R"));
